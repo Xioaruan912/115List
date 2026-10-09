@@ -104,6 +104,30 @@ func (d *Pan115) getNewFileByPickCode(pickCode string) (*FileObj, error) {
 	return f, nil
 }
 
+// linkExpiration lets OpenList keep a download link until shortly before the
+// expiry stamped in it (the "t" query parameter, Unix seconds). Without it a
+// link lives only while one response is open, so every read, such as each
+// Range request of a player, asks the drive for a new link and spends its
+// rate budget. The ceiling bounds how long a link the drive revoked early can
+// be served from the cache. A link without a stamp is not cached.
+func linkExpiration(raw string, now time.Time) *time.Duration {
+	const margin = 2 * time.Minute
+	const ceiling = 15 * time.Minute
+	u, err := url.Parse(raw)
+	if err != nil {
+		return nil
+	}
+	stamp, err := strconv.ParseInt(u.Query().Get("t"), 10, 64)
+	if err != nil {
+		return nil
+	}
+	ttl := min(time.Unix(stamp, 0).Sub(now)-margin, ceiling)
+	if ttl <= 0 {
+		return nil
+	}
+	return &ttl
+}
+
 // getUA is the default for API calls. The drive's WAF answers bursts of calls
 // carrying the 115Browser UA with 405, so a plain browser UA is used instead.
 func (d *Pan115) getUA() string {

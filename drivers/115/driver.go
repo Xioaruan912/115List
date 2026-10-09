@@ -4,6 +4,7 @@ import (
 	"context"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/OpenListTeam/OpenList/v4/internal/driver"
 	"github.com/OpenListTeam/OpenList/v4/internal/model"
@@ -75,8 +76,9 @@ func (d *Pan115) Link(ctx context.Context, file model.Obj, args model.LinkArgs) 
 		return nil, err
 	}
 	link := &model.Link{
-		URL:    downloadInfo.Url.Url,
-		Header: downloadInfo.Header,
+		URL:        downloadInfo.Url.Url,
+		Header:     downloadInfo.Header,
+		Expiration: linkExpiration(downloadInfo.Url.Url, time.Now()),
 	}
 	return link, nil
 }
