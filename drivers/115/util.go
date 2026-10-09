@@ -38,6 +38,8 @@ func (d *Pan115) login() error {
 		},
 	}
 	d.client = driver115.New(opts...)
+	// A request the drive's WAF black-holes would otherwise hang forever.
+	d.client.Client.SetTimeout(30 * time.Second)
 	cr := &driver115.Credential{}
 	if d.QRCodeToken != "" {
 		s := &driver115.QRCodeSession{
@@ -102,7 +104,15 @@ func (d *Pan115) getNewFileByPickCode(pickCode string) (*FileObj, error) {
 	return f, nil
 }
 
+// getUA is the default for API calls. The drive's WAF answers bursts of calls
+// carrying the 115Browser UA with 405, so a plain browser UA is used instead.
 func (d *Pan115) getUA() string {
+	return "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+}
+
+// getUploadUA is required by the upload init API (v4.0 files/init), which
+// rejects any other UA with 403 "please upgrade".
+func (d *Pan115) getUploadUA() string {
 	return fmt.Sprintf("Mozilla/5.0 115Browser/%s", appVer)
 }
 
@@ -166,6 +176,7 @@ func (d *Pan115) rapidUpload(fileSize int64, fileName, dirID, preID, fileID stri
 			SetQueryParams(params).
 			SetBody(encrypted).
 			SetHeaderVerbatim("Content-Type", "application/x-www-form-urlencoded").
+			SetHeader("User-Agent", d.getUploadUA()).
 			SetDoNotParseResponse(true)
 		resp, err := req.Post(driver115.ApiUploadInit)
 		if err != nil {

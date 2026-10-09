@@ -68,7 +68,9 @@ func (d *Pan115) Link(ctx context.Context, file model.Obj, args model.LinkArgs) 
 		return nil, err
 	}
 	userAgent := args.Header.Get("User-Agent")
-	downloadInfo, err := d.client.DownloadWithUA(file.(*FileObj).PickCode, userAgent)
+	// The Android download API; the chrome downurl API is blocked (405) by the
+	// drive's WAF after a burst of link requests.
+	downloadInfo, err := d.client.DownloadWithUAByAndroidAPI(file.(*FileObj).PickCode, userAgent)
 	if err != nil {
 		return nil, err
 	}
