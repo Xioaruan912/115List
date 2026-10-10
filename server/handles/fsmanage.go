@@ -380,15 +380,16 @@ func FsRemove(c *gin.Context) {
 		}
 		req.Names[i] = fullPath
 	}
+	paths := make([]string, 0, len(req.Names))
 	for _, path := range req.Names {
-		if path == "" {
-			continue
+		if path != "" {
+			paths = append(paths, path)
 		}
-		err := fs.Remove(c.Request.Context(), path)
-		if err != nil {
-			common.ErrorResp(c, err, 500)
-			return
-		}
+	}
+	// One drive call per storage where the driver supports batch removal.
+	if err := fs.RemoveMany(c.Request.Context(), paths); err != nil {
+		common.ErrorResp(c, err, 500)
+		return
 	}
 	//fs.ClearCache(req.Dir)
 	common.SuccessResp(c)

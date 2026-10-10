@@ -153,6 +153,18 @@ func (d *Pan115) Remove(ctx context.Context, obj model.Obj) error {
 	return d.client.Delete(obj.GetID())
 }
 
+// BatchRemove deletes several files or folders with one drive call.
+func (d *Pan115) BatchRemove(ctx context.Context, objs []model.Obj) error {
+	if err := d.WaitLimit(ctx); err != nil {
+		return err
+	}
+	ids := make([]string, 0, len(objs))
+	for _, obj := range objs {
+		ids = append(ids, obj.GetID())
+	}
+	return d.client.Delete(ids...)
+}
+
 func (d *Pan115) Put(ctx context.Context, dstDir model.Obj, stream model.FileStreamer, up driver.UpdateProgress) (model.Obj, error) {
 	if err := d.WaitLimit(ctx); err != nil {
 		return nil, err
