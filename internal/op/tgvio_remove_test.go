@@ -17,12 +17,16 @@ import (
 type batchLocal struct {
 	*local.Local
 	batches [][]string
+	keep    string // a name the "drive" reports as removed but keeps
 }
 
 func (b *batchLocal) BatchRemove(ctx context.Context, objs []model.Obj) error {
 	names := make([]string, 0, len(objs))
 	for _, obj := range objs {
 		names = append(names, obj.GetName())
+		if obj.GetName() == b.keep {
+			continue
+		}
 		if err := b.Local.Remove(ctx, obj); err != nil {
 			return err
 		}
@@ -88,5 +92,18 @@ func TestRemoveManyFallsBackToSingleRemovals(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(root, "renditions/b.mp4")); err != nil {
 		t.Errorf("an unrelated file was removed: %v", err)
+	}
+}
+
+func TestRemoveManyRemovesWhatABatchSilentlyKept(t *testing.T) {
+	storage, root := localStorage(t, "/tgvio-partial")
+	batch := &batchLocal{Local: storage.(*local.Local), keep: "b.mp4"}
+	if err := op.RemoveMany(context.Background(), batch, []string{"/renditions/a.mp4", "/renditions/b.mp4"}); err != nil {
+		t.Fatalf("RemoveMany: %+v", err)
+	}
+	for _, rel := range []string{"renditions/a.mp4", "renditions/b.mp4"} {
+		if _, err := os.Stat(filepath.Join(root, rel)); !os.IsNotExist(err) {
+			t.Errorf("%s still exists after the batch claimed success", rel)
+		}
 	}
 }

@@ -61,5 +61,41 @@ func RemoveMany(ctx context.Context, storage driver.Driver, paths []string) erro
 	for _, t := range targets {
 		Cache.removeDirectoryObject(storage, t.dir, t.obj)
 	}
+	// A drive can report a batch as done and still keep some of it (115 did, for
+	// 2 of 148 files). Re-list each folder from the drive and remove what is left
+	// one by one, so a caller is never told a file is gone while it is not.
+	byDir := map[string][]model.Obj{}
+	for _, t := range targets {
+		byDir[t.dir] = append(byDir[t.dir], t.obj)
+	}
+	for dir, wanted := range byDir {
+		present, err := List(ctx, storage, dir, model.ListArgs{Refresh: true})
+		if err != nil {
+			if errs.IsObjectNotFound(err) {
+				continue
+			}
+			return errors.WithMessage(err, "failed to verify batch removal")
+		}
+		for _, obj := range wanted {
+			if !containsObj(present, obj) {
+				continue
+			}
+			if err := Remove(ctx, storage, stdpath.Join(dir, obj.GetName())); err != nil {
+				return err
+			}
+		}
+	}
 	return nil
+}
+
+func containsObj(objs []model.Obj, target model.Obj) bool {
+	for _, obj := range objs {
+		if target.GetID() != "" && obj.GetID() == target.GetID() {
+			return true
+		}
+		if target.GetID() == "" && obj.GetName() == target.GetName() {
+			return true
+		}
+	}
+	return false
 }
