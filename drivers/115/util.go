@@ -20,6 +20,7 @@ import (
 	"github.com/OpenListTeam/OpenList/v4/internal/driver"
 	"github.com/OpenListTeam/OpenList/v4/internal/model"
 	netutil "github.com/OpenListTeam/OpenList/v4/internal/net"
+	"github.com/OpenListTeam/OpenList/v4/internal/tgvio"
 	"github.com/OpenListTeam/OpenList/v4/pkg/http_range"
 	"github.com/OpenListTeam/OpenList/v4/pkg/utils"
 	cipher "github.com/SheltonZhu/115driver/pkg/crypto/ec115"
@@ -291,6 +292,15 @@ func (c *Pan115) UploadByOSS(ctx context.Context, params *driver115.UploadOSSPar
 func (d *Pan115) UploadByMultipart(ctx context.Context, params *driver115.UploadOSSParams, fileSize int64, s model.FileStreamer,
 	dirID string, up driver.UpdateProgress, opts ...driver115.UploadMultipartOption,
 ) (*UploadResult, error) {
+	return d.uploadMultipart(ctx, params, fileSize, s, dirID, up, true, opts...)
+}
+
+// uploadMultipart may resume an earlier upload of the same file (see
+// tgvio_resume.go) when allowResume is set; params are always this call's fresh
+// init parameters, used whenever there is nothing to resume.
+func (d *Pan115) uploadMultipart(ctx context.Context, params *driver115.UploadOSSParams, fileSize int64, s model.FileStreamer,
+	dirID string, up driver.UpdateProgress, allowResume bool, opts ...driver115.UploadMultipartOption,
+) (*UploadResult, error) {
 	var (
 		chunks    []oss.FileChunk
 		parts     []oss.UploadPart
@@ -338,13 +348,42 @@ func (d *Pan115) UploadByMultipart(ctx context.Context, params *driver115.Upload
 		return nil, err
 	}
 
-	if imur, err = bucket.InitiateMultipartUpload(params.Object,
-		oss.SetHeader(driver115.OssSecurityTokenHeaderName, ossToken.SecurityToken),
-		oss.UserAgentHeader(driver115.OSSUserAgent),
-		oss.EnableSha1(), oss.Sequential(),
-	); err != nil {
-		return nil, err
+	fresh := params
+	key := ""
+	if params.SHA1 != "" {
+		key = resumeKey(params.SHA1, fileSize, dirID, s.GetName())
 	}
+	resumed := false
+	var done []oss.UploadPart
+	remaining := chunks
+	if session, ok := loadUploadSession(key); ok && allowResume && key != "" && session.params.Bucket == params.Bucket {
+		held, listErr := uploadedParts(bucket, session.imur,
+			oss.SetHeader(driver115.OssSecurityTokenHeaderName, ossToken.SecurityToken),
+			oss.UserAgentHeader(driver115.OSSUserAgent))
+		if listErr == nil {
+			params, imur, resumed = &session.params, session.imur, true
+			done, remaining = splitDone(chunks, held)
+			countResume("started")
+			tgvio.Add("115_upload_resume_parts_skipped", int64(len(done)))
+		} else {
+			dropUploadSession(key)
+			countResume("lost")
+		}
+	}
+	if !resumed {
+		if imur, err = bucket.InitiateMultipartUpload(params.Object,
+			oss.SetHeader(driver115.OssSecurityTokenHeaderName, ossToken.SecurityToken),
+			oss.UserAgentHeader(driver115.OSSUserAgent),
+			oss.EnableSha1(), oss.Sequential(),
+		); err != nil {
+			return nil, err
+		}
+	}
+	if key != "" {
+		// Kept until the upload completes, so a failed or cancelled attempt can resume.
+		saveUploadSession(key, uploadSession{params: *params, imur: imur})
+	}
+	parts = append(parts, done...)
 
 	// Every reader of tmpF must have stopped before this function returns: the
 	// caller then frees the stream's cache, and a late ReadAt on that memory
@@ -359,7 +398,7 @@ func (d *Pan115) UploadByMultipart(ctx context.Context, params *driver115.Upload
 	}()
 
 	wg := sync.WaitGroup{}
-	wg.Add(len(chunks))
+	wg.Add(len(remaining))
 
 	chunksCh := make(chan oss.FileChunk)
 	errCh := make(chan error)
@@ -369,7 +408,7 @@ func (d *Pan115) UploadByMultipart(ctx context.Context, params *driver115.Upload
 	// producer
 	go func() {
 		defer close(chunksCh)
-		for _, chunk := range chunks {
+		for _, chunk := range remaining {
 			select {
 			case chunksCh <- chunk:
 			case <-uploadCtx.Done():
@@ -392,6 +431,7 @@ func (d *Pan115) UploadByMultipart(ctx context.Context, params *driver115.Upload
 	}
 
 	completedNum := atomic.Int32{}
+	completedNum.Store(int32(len(done)))
 	// consumers
 	for i := 0; i < options.ThreadsNum; i++ {
 		consumers.Add(1)
@@ -403,9 +443,16 @@ func (d *Pan115) UploadByMultipart(ctx context.Context, params *driver115.Upload
 				}
 			}()
 			for chunk := range chunksCh {
-				var part oss.UploadPart // 出现错误就继续尝试，共尝试3次
+				var part oss.UploadPart // 出现错误就继续尝试，共尝试5次，间隔 1/2/4/8 秒
 				var err error
-				for retry := 0; retry < 3; retry++ {
+				for retry := 0; retry < 5; retry++ {
+					if retry > 0 {
+						tgvio.Inc("115_upload_part_retries")
+						if !partRetryWait(uploadCtx, retry) {
+							err = uploadCtx.Err()
+							break
+						}
+					}
 					if utils.IsCanceled(uploadCtx) {
 						err = uploadCtx.Err()
 						break
@@ -471,11 +518,25 @@ LOOP:
 
 	// 不知道啥原因，oss那边分片上传不计算sha1，导致115服务器校验错误
 	// params.Callback.Callback = strings.ReplaceAll(params.Callback.Callback, "${sha1}", params.SHA1)
+	sortParts(parts)
 	if _, err := bucket.CompleteMultipartUpload(imur, parts, append(
 		driver115.OssOption(params, ossToken),
 		oss.CallbackResult(&bodyBytes),
 	)...); err != nil {
+		if resumed {
+			// The earlier upload could not be completed (e.g. its callback expired):
+			// forget it and upload the file in full with this call's parameters.
+			dropUploadSession(key)
+			countResume("refused")
+			cancelUpload()
+			consumers.Wait()
+			return d.uploadMultipart(ctx, fresh, fileSize, s, dirID, up, false, opts...)
+		}
 		return nil, err
+	}
+	dropUploadSession(key)
+	if resumed {
+		countResume("completed")
 	}
 
 	var uploadResult UploadResult
