@@ -52,4 +52,7 @@ systemctl start openlist
 
 ## 部署事实
 
+- 本机到 115 上传端（OSS 深圳，80 端口）RTT 约 216 ms、丢包约 5%，单连接上限约 1.8 Mbps，且分片须按序上传；宿主机已改用 BBR（`/etc/sysctl.d/90-tgvio-bbr.conf`），30 MB 上传 744 s → 274 s。秒传命中的上传不受影响。
+- WebDAV PUT 任何失败都会被 OpenList 报成 405；客户端断开不会中止上传（期间对同一路径的 PUT 得到 423）。
+
 systemd `openlist.service`：`/opt/openlist/openlist server`，数据 `/opt/openlist/data`，端口 5244。115 为 5 个同路径挂载 `/115/{照片,Pron,我要看,读书,软件}`。
