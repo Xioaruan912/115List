@@ -40,6 +40,7 @@ func (d *Pan115) login() error {
 	d.client = driver115.New(opts...)
 	// A request the drive's WAF black-holes would otherwise hang forever.
 	d.client.Client.SetTimeout(30 * time.Second)
+	guard.install(d.client.Client)
 	cr := &driver115.Credential{}
 	if d.QRCodeToken != "" {
 		s := &driver115.QRCodeSession{

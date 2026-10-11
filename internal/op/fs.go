@@ -12,6 +12,7 @@ import (
 	"github.com/OpenListTeam/OpenList/v4/internal/errs"
 	"github.com/OpenListTeam/OpenList/v4/internal/model"
 	"github.com/OpenListTeam/OpenList/v4/internal/stream"
+	"github.com/OpenListTeam/OpenList/v4/internal/tgvio"
 	"github.com/OpenListTeam/OpenList/v4/pkg/singleflight"
 	"github.com/OpenListTeam/OpenList/v4/pkg/utils"
 	"github.com/bmatcuk/doublestar/v4"
@@ -244,9 +245,11 @@ func Link(ctx context.Context, storage driver.Driver, path string, args model.Li
 	if ol, exists := Cache.linkCache.GetType(key, typeKey); exists {
 		if ol.link.Expiration != nil ||
 			ol.link.SyncClosers.AcquireReference() || !ol.link.RequireReference {
+			tgvio.Inc("link_cache_hits")
 			return ol.link, ol.obj, nil
 		}
 	}
+	tgvio.Inc("link_cache_misses")
 
 	fn := func() (*objWithLink, error) {
 		file, err := GetUnwrap(ctx, storage, path)
