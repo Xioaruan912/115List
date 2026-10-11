@@ -345,6 +345,18 @@ func (d *Pan115) UploadByMultipart(ctx context.Context, params *driver115.Upload
 		return nil, err
 	}
 
+	// Every reader of tmpF must have stopped before this function returns: the
+	// caller then frees the stream's cache, and a late ReadAt on that memory
+	// crashes the whole process (SIGSEGV in HybridCache.ReadAt). On any early
+	// return the upload is cancelled and the consumers are waited for; every
+	// channel send also gives up once the upload is cancelled, so none blocks.
+	uploadCtx, cancelUpload := context.WithCancel(ctx)
+	consumers := sync.WaitGroup{}
+	defer func() {
+		cancelUpload()
+		consumers.Wait()
+	}()
+
 	wg := sync.WaitGroup{}
 	wg.Add(len(chunks))
 
@@ -354,32 +366,53 @@ func (d *Pan115) UploadByMultipart(ctx context.Context, params *driver115.Upload
 	quit := make(chan struct{})
 
 	// producer
-	go chunksProducer(chunksCh, chunks)
+	go func() {
+		defer close(chunksCh)
+		for _, chunk := range chunks {
+			select {
+			case chunksCh <- chunk:
+			case <-uploadCtx.Done():
+				return
+			}
+		}
+	}()
 	go func() {
 		wg.Wait()
-		quit <- struct{}{}
+		select {
+		case quit <- struct{}{}:
+		case <-uploadCtx.Done():
+		}
 	}()
+	report := func(err error) {
+		select {
+		case errCh <- err:
+		case <-uploadCtx.Done():
+		}
+	}
 
 	completedNum := atomic.Int32{}
 	// consumers
 	for i := 0; i < options.ThreadsNum; i++ {
+		consumers.Add(1)
 		go func(threadId int) {
+			defer consumers.Done()
 			defer func() {
 				if r := recover(); r != nil {
-					errCh <- fmt.Errorf("recovered in %v", r)
+					report(fmt.Errorf("recovered in %v", r))
 				}
 			}()
 			for chunk := range chunksCh {
 				var part oss.UploadPart // 出现错误就继续尝试，共尝试3次
+				var err error
 				for retry := 0; retry < 3; retry++ {
-					if utils.IsCanceled(ctx) {
-						err = ctx.Err()
+					if utils.IsCanceled(uploadCtx) {
+						err = uploadCtx.Err()
 						break
 					}
 					select {
 					case <-ticker.C:
 						if ossToken, err = d.client.GetOSSToken(); err != nil { // 到时重新获取ossToken
-							errCh <- errors.Wrap(err, "刷新token时出现错误")
+							report(errors.Wrap(err, "刷新token时出现错误"))
 						}
 					default:
 					}
@@ -387,26 +420,35 @@ func (d *Pan115) UploadByMultipart(ctx context.Context, params *driver115.Upload
 					if _, err = tmpF.ReadAt(buf, chunk.Offset); err != nil && !errors.Is(err, io.EOF) {
 						continue
 					}
-					if part, err = bucket.UploadPart(imur, driver.NewLimitedUploadStream(ctx, bytes.NewReader(buf)),
+					if part, err = bucket.UploadPart(imur, driver.NewLimitedUploadStream(uploadCtx, bytes.NewReader(buf)),
 						chunk.Size, chunk.Number, driver115.OssOption(params, ossToken)...); err == nil {
 						break
 					}
 				}
 				if err != nil {
-					errCh <- errors.Wrap(err, fmt.Sprintf("上传 %s 的第%d个分片时出现错误：%v", s.GetName(), chunk.Number, err))
-				} else {
-					num := completedNum.Add(1)
-					up(float64(num) * 100.0 / float64(len(chunks)))
+					report(errors.Wrap(err, fmt.Sprintf("上传 %s 的第%d个分片时出现错误：%v", s.GetName(), chunk.Number, err)))
+					return
 				}
-				UploadedPartsCh <- part
+				num := completedNum.Add(1)
+				up(float64(num) * 100.0 / float64(len(chunks)))
+				select {
+				case UploadedPartsCh <- part:
+				case <-uploadCtx.Done():
+					return
+				}
 			}
 		}(i)
 	}
 
 	go func() {
-		for part := range UploadedPartsCh {
-			parts = append(parts, part)
-			wg.Done()
+		for {
+			select {
+			case part := <-UploadedPartsCh:
+				parts = append(parts, part)
+				wg.Done()
+			case <-uploadCtx.Done():
+				return
+			}
 		}
 	}()
 LOOP:
@@ -419,7 +461,7 @@ LOOP:
 			}
 		case <-quit:
 			break LOOP
-		case <-errCh:
+		case err := <-errCh:
 			return nil, err
 		case <-timeout.C:
 			return nil, fmt.Errorf("time out")
@@ -440,12 +482,6 @@ LOOP:
 		return nil, err
 	}
 	return &uploadResult, uploadResult.Err(string(bodyBytes))
-}
-
-func chunksProducer(ch chan oss.FileChunk, chunks []oss.FileChunk) {
-	for _, chunk := range chunks {
-		ch <- chunk
-	}
 }
 
 func SplitFile(fileSize int64) (chunks []oss.FileChunk, err error) {
