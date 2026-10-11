@@ -108,6 +108,8 @@ func Init(e *gin.Engine) {
 	_task(auth.Group("/task", middlewares.AuthNotGuest))
 	_sharing(auth.Group("/share", middlewares.AuthNotGuest))
 	admin(auth.Group("/admin", middlewares.AuthAdmin))
+	// TGVIO: process counters and drive quota for monitoring; recycle bin for admins.
+	auth.GET("/tgvio/stats", middlewares.AuthNotGuest, handles.TgvioStats)
 	if flags.Debug || flags.Dev {
 		debug(g.Group("/debug"))
 	}
@@ -117,6 +119,10 @@ func Init(e *gin.Engine) {
 }
 
 func admin(g *gin.RouterGroup) {
+	tgvioAdmin := g.Group("/tgvio")
+	tgvioAdmin.GET("/recycle", handles.TgvioRecycleList)
+	tgvioAdmin.POST("/recycle/clean", handles.TgvioRecycleClean)
+
 	meta := g.Group("/meta")
 	meta.GET("/list", handles.ListMetas)
 	meta.GET("/get", handles.GetMeta)
