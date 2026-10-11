@@ -174,3 +174,5 @@ func (g *apiGuard) install(client *resty.Client) {
 			return false
 		})
 }
+
+var errNoRecycleIDs = errors.New("no recycle bin entries given")

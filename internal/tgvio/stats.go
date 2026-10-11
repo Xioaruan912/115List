@@ -56,3 +56,12 @@ func State() map[string]any {
 
 // StartedAt is when this process started; a restart (or a crash) resets it.
 func StartedAt() time.Time { return startedAt }
+
+// RecycleItem is one entry of a drive's recycle bin.
+type RecycleItem struct {
+	ID        string `json:"id"`
+	Name      string `json:"name"`
+	Size      int64  `json:"size"`
+	Parent    string `json:"parent"`
+	DeletedAt int64  `json:"deleted_at"`
+}
