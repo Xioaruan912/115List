@@ -11,6 +11,7 @@ export type Dialog =
   | { kind: "decompress"; dir: string; obj: Obj; innerPath: string; archivePass: string }
   | { kind: "share"; dir: string; names: string[] }
   | { kind: "shares" }
+  | { kind: "poster"; name: string }
   | { kind: "account" };
 
 export interface Rect { x: number; y: number; width: number; height: number }

@@ -30,6 +30,7 @@ npm run check      # tsc + vitest + vite build
 | `src/components/Cinema.tsx` | 影院模式：大幅海报位、继续观看、可倾斜的海报墙 |
 | `src/components/Share.tsx`, `src/pages/SharePage.tsx`, `src/api/share.ts` | 创建分享（有效期、提取码、次数）、二维码、我的分享；访客分享页 |
 | `src/lib/errors.ts`, `src/components/ErrorState.tsx` | 报错翻译成人话（不显示原文）；“断片”错误态：胶片撕开、重试时接回 |
+| `src/api/posters.ts`, `src/hooks/usePosters.ts`, `src/components/PosterPicker.tsx` | TMDB 海报：按名字批量查、待查的自动轮询、手动更换 |
 | `src/lib/progress.ts` | 视频播放进度（本机 localStorage），供续播和继续观看 |
 | `src/components/Viewer.tsx` | 预览：FLIP 打开/关回格子、手势、缩放、滚轮切换、各类型视图（视频含加载/外部播放器/续播） |
 | `src/components/VideoPlayer.tsx` | 视频播放器：自绘控制条（缓冲区间、悬停时间、音量、倍速、画中画、全屏）、快捷键、双击快进、续播、卡住/放不了时给外部播放器 |

@@ -1,6 +1,6 @@
 import { ArrowClockwiseIcon, BroomIcon, CheckIcon, RecycleIcon } from "@phosphor-icons/react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { AnimatePresence, motion } from "motion/react";
+import { AnimatePresence, motion, useAnimate } from "motion/react";
 import { useMemo, useState } from "react";
 import { storages, tgvio } from "../../api/admin";
 import { NumberRoll } from "../../components/NumberRoll";
@@ -11,6 +11,7 @@ import type { RecycleItem } from "../../lib/types";
 import { toast } from "../../stores/toast";
 import { PageHeader } from "./Form";
 import { ErrorState } from "../../components/ErrorState";
+import { rawMessage, reason } from "../../lib/errors";
 
 function Quota({ used, total }: { used: number; total: number }) {
   const fraction = total ? used / total : 0;
@@ -90,25 +91,67 @@ function Recycle() {
       </ul>
       <AnimatePresence>
         {confirm && (
-          <Sheet key="confirm" open onClose={() => setConfirm(false)} title={`永久删除 ${chosen.length} 项？`}
-            footer={<><button className="btn btn-ghost" onClick={() => setConfirm(false)}>取消</button>
-              <button className="btn btn-danger" onClick={async () => {
+          <CleanSheet key="confirm" count={chosen.length} bytes={bytes} onClose={() => setConfirm(false)}
+            onClean={async password => {
+              setBusy(true);
+              try {
+                await tgvio.clean(chosen.map(item => item.id), password);
+                toast.success("已清理", formatBytes(bytes));
+                setSelected(new Set());
                 setConfirm(false);
-                setBusy(true);
-                try {
-                  await tgvio.clean(chosen.map(item => item.id));
-                  toast.success("已清理", formatBytes(bytes));
-                  setSelected(new Set());
-                } catch (error) { toast.error("清理失败", error); }
+              } finally {
                 setBusy(false);
                 void client.invalidateQueries({ queryKey: ["recycle"] });
                 void client.invalidateQueries({ queryKey: ["tgvio-stats"] });
-              }}>永久删除</button></>}>
-            <p className="text-muted">从 115 回收站彻底删除，共 {formatBytes(bytes)}，无法恢复。</p>
-          </Sheet>
+              }
+            }} />
         )}
       </AnimatePresence>
     </section>
+  );
+}
+
+const KEY_STORE = "tgvio-web:115-key";
+
+/**
+ * 115 only empties its recycle bin with the account's six-digit security key
+ * (安全密钥) when one is set. It is asked for here, kept for this browser
+ * session only, and sent straight through to the drive.
+ */
+function CleanSheet({ count, bytes, onClose, onClean }: { count: number; bytes: number; onClose: () => void; onClean: (password: string) => Promise<void> }) {
+  const [key, setKey] = useState(() => sessionStorage.getItem(KEY_STORE) ?? "");
+  const [problem, setProblem] = useState("");
+  const [working, setWorking] = useState(false);
+  const [scope, animateField] = useAnimate<HTMLLabelElement>();
+  const submit = async (): Promise<void> => {
+    setWorking(true);
+    setProblem("");
+    try {
+      await onClean(key.trim());
+      if (key.trim()) sessionStorage.setItem(KEY_STORE, key.trim());
+    } catch (error) {
+      const wrongKey = /密钥|key/i.test(rawMessage(error));
+      setProblem(wrongKey ? (key ? "安全密钥不对，再输入一次" : "这个 115 账户设了安全密钥，请先输入") : reason(error));
+      if (wrongKey) sessionStorage.removeItem(KEY_STORE);
+      if (scope.current) void animateField(scope.current, { x: [0, -10, 9, -6, 3, 0] }, { duration: 0.45 });
+    }
+    setWorking(false);
+  };
+  return (
+    <Sheet open onClose={onClose} title={`永久删除 ${count} 项？`}
+      footer={<><button className="btn btn-ghost" onClick={onClose}>取消</button>
+        <button className="btn btn-danger" disabled={working} onClick={() => void submit()}>{working ? "正在清理…" : "永久删除"}</button></>}>
+      <p className="text-muted">从 115 回收站彻底删除，共 {formatBytes(bytes)}，无法恢复。</p>
+      <label ref={scope} className="mt-5 block">
+        <span className="label">115 安全密钥</span>
+        <input className="field font-mono tracking-[0.4em]" type="password" inputMode="numeric" autoComplete="off" maxLength={6} placeholder="6 位数字，没设置就留空"
+          value={key} onChange={event => setKey(event.target.value.replace(/\D/g, ""))} onKeyDown={event => { if (event.key === "Enter") void submit(); }} aria-invalid={!!problem} />
+        <AnimatePresence>
+          {problem && <motion.span className="mt-2 block text-[12.5px] text-danger" initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>{problem}</motion.span>}
+        </AnimatePresence>
+        <span className="mt-1.5 block text-[12.5px] text-faint">在 115 的 账号安全 里设置的那个，只在本次浏览中记住。</span>
+      </label>
+    </Sheet>
   );
 }
 

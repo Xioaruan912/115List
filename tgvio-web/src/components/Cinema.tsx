@@ -1,4 +1,5 @@
-import { FolderSimpleIcon, InfoIcon, PlayIcon } from "@phosphor-icons/react";
+import { FolderSimpleIcon, InfoIcon, PlayIcon, StarIcon } from "@phosphor-icons/react";
+import { posterSrc, type Poster as Art } from "../api/posters";
 import { AnimatePresence, motion, useMotionTemplate, useMotionValue, useReducedMotion, useSpring, useTransform } from "motion/react";
 import { memo, useEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type MouseEvent } from "react";
 import { useCover } from "../hooks/useCover";
@@ -35,23 +36,25 @@ let progressVersion = 0;
 subscribeProgress(() => { progressVersion++; });
 
 /** The best picture for an item: its own thumbnail, else its folder cover. */
-function usePicture(dir: string, obj: Obj, ref: React.RefObject<Element | null>): string {
-  const cover = useCover(join(dir, obj.name), ref, obj.is_dir && !obj.thumb);
+function usePicture(dir: string, obj: Obj, ref: React.RefObject<Element | null>, enabled = true): string {
+  const cover = useCover(join(dir, obj.name), ref, enabled && obj.is_dir && !obj.thumb);
   return obj.thumb || cover?.thumbs[0] || "";
 }
 
 /* -------------------------------------------------------------- poster */
 
-const Poster = memo(function Poster({ dir, obj, index, handlers, onFocus }: {
+const Poster = memo(function Poster({ dir, obj, art, index, handlers, onFocus }: {
   dir: string;
   obj: Obj;
+  art?: Art;
   index: number;
   handlers: TileHandlers;
   onFocus: (obj: Obj) => void;
 }) {
   const reduced = useReducedMotion();
   const frame = useRef<HTMLDivElement>(null);
-  const picture = usePicture(dir, obj, frame);
+  const own = usePicture(dir, obj, frame, !art);
+  const picture = art?.poster ? posterSrc(art.poster, "w500") : own;
   const [broken, setBroken] = useState(false);
   useProgressVersion();
   const seen = watched(join(dir, obj.name));
@@ -128,23 +131,27 @@ const Poster = memo(function Poster({ dir, obj, index, handlers, onFocus }: {
           </span>
         )}
       </motion.div>
-      <p className="mt-2 line-clamp-2 break-all px-0.5 text-[13px] font-medium leading-snug" title={obj.name}>{titleOf(obj)}</p>
+      <p className="mt-2 line-clamp-2 break-all px-0.5 text-[13px] font-medium leading-snug" title={obj.name}>{art?.title ?? titleOf(obj)}</p>
+      {art?.year && <p className="px-0.5 text-[12px] text-muted tabular">{art.year}{art.kind === "tv" ? " 剧集" : " 电影"}</p>}
     </motion.div>
   );
 });
 
 /* -------------------------------------------------------------- billboard */
 
-function Billboard({ dir, obj, handlers }: { dir: string; obj: Obj; handlers: TileHandlers }) {
+function Billboard({ dir, obj, art, handlers }: { dir: string; obj: Obj; art?: Art; handlers: TileHandlers }) {
   const reduced = useReducedMotion();
   const ref = useRef<HTMLDivElement>(null);
-  const picture = usePicture(dir, obj, ref);
+  const own = usePicture(dir, obj, ref, !art);
+  const picture = art?.backdrop ? posterSrc(art.backdrop) : art?.poster ? posterSrc(art.poster, "w780") : own;
   const path = join(dir, obj.name);
   useProgressVersion();
   const progress = getProgress(path);
   const kind = kindOf(obj);
   const action = obj.is_dir ? "打开" : kind === "video" ? (progress ? "继续播放" : "播放") : "查看";
-  const facts = [obj.is_dir ? "文件夹" : extname(obj.name).toUpperCase(), obj.is_dir ? "" : formatBytes(obj.size), formatDate(obj.modified)].filter(Boolean);
+  const facts = art
+    ? [art.year ? String(art.year) : "", art.kind === "tv" ? "剧集" : "电影", obj.is_dir ? "" : formatBytes(obj.size)].filter(Boolean)
+    : [obj.is_dir ? "文件夹" : extname(obj.name).toUpperCase(), obj.is_dir ? "" : formatBytes(obj.size), formatDate(obj.modified)].filter(Boolean);
   return (
     <div ref={ref} className="relative mb-8 h-[min(46vh,400px)] min-h-[280px] sm:h-[min(56vh,520px)] overflow-hidden rounded-[var(--radius-sheet)] bg-[#0b0b0c] text-white" style={{ boxShadow: "inset 0 0 0 1px var(--line)" }}>
       <AnimatePresence initial={false}>
@@ -166,11 +173,14 @@ function Billboard({ dir, obj, handlers }: { dir: string; obj: Obj; handlers: Ti
         <AnimatePresence mode="wait" initial={false}>
           <motion.div key={obj.name} initial={{ opacity: 0, y: 18, filter: "blur(8px)" }} animate={{ opacity: 1, y: 0, filter: "blur(0px)" }} exit={{ opacity: 0, y: -10, filter: "blur(6px)" }}
             transition={{ duration: 0.45, ease: [0.16, 1, 0.3, 1] }}>
-            <h2 className="line-clamp-2 break-all text-[clamp(28px,4.6vw,58px)] font-semibold leading-[1.02] tracking-[-0.045em] [text-shadow:0_6px_30px_rgb(0_0_0/0.5)]">{titleOf(obj)}</h2>
+            <h2 className="line-clamp-2 break-all text-[clamp(28px,4.6vw,58px)] font-semibold leading-[1.02] tracking-[-0.045em] [text-shadow:0_6px_30px_rgb(0_0_0/0.5)]">{art?.title ?? titleOf(obj)}</h2>
+            {art?.original && <p className="mt-1 text-[14px] text-white/55">{art.original}</p>}
             <p className="mt-3 text-[13px] text-white/70 tabular">
               {facts.join("，")}
+              {art?.rating ? <span className="ml-3 inline-flex items-center gap-1 text-white/85"><StarIcon size={12} weight="fill" className="text-accent" />{art.rating.toFixed(1)}</span> : null}
               {progress && <span className="ml-3 text-accent">看到 {formatClock(progress.time)}</span>}
             </p>
+            {art?.overview && <p className="mt-3 line-clamp-2 max-w-[52ch] text-[13.5px] leading-relaxed text-white/70 max-sm:hidden">{art.overview}</p>}
             <div className="mt-5 flex flex-wrap gap-2">
               <button className="btn btn-primary h-11 px-5 text-[14px]" onClick={event => {
                 const poster = document.querySelector<HTMLElement>(`[data-view="active"] .poster-cell[data-name="${CSS.escape(obj.name)}"]`);
@@ -225,24 +235,24 @@ function ContinueRow({ dir, items, handlers }: { dir: string; items: Obj[]; hand
 
 /* -------------------------------------------------------------- view */
 
-export function Cinema({ dir, items, handlers }: { dir: string; items: Obj[]; handlers: TileHandlers }) {
+export function Cinema({ dir, items, handlers, posters = {} }: { dir: string; items: Obj[]; handlers: TileHandlers; posters?: Record<string, Art> }) {
   const [shown, setShown] = useState(PAGE);
   const [focused, setFocused] = useState<Obj | null>(null);
   const featured = useMemo(() => {
     if (focused && items.some(item => item.name === focused.name)) return focused;
     const recent = inProgress(dir).map(entry => items.find(item => item.name === entry.name)).find(Boolean);
-    return recent ?? items.find(item => kindOf(item) === "video" && item.thumb) ?? items.find(item => kindOf(item) === "video") ?? items.find(item => item.is_dir) ?? items[0];
-  }, [focused, items, dir]);
+    return recent ?? items.find(item => posters[item.name]?.backdrop) ?? items.find(item => kindOf(item) === "video" && item.thumb) ?? items.find(item => kindOf(item) === "video") ?? items.find(item => item.is_dir) ?? items[0];
+  }, [focused, items, dir, posters]);
 
   return (
     <div>
-      {featured && <Billboard dir={dir} obj={featured} handlers={handlers} />}
+      {featured && <Billboard dir={dir} obj={featured} art={posters[featured.name]} handlers={handlers} />}
       <ContinueRow dir={dir} items={items} handlers={handlers} />
       <section>
         <h3 className="mb-3 text-[17px] font-semibold tracking-tight">全部 <span className="ml-1 text-[13px] font-normal text-muted tabular">{items.length}</span></h3>
         <div className="grid grid-cols-3 gap-x-2.5 gap-y-5 sm:grid-cols-[repeat(auto-fill,minmax(150px,1fr))] sm:gap-x-5 sm:gap-y-7">
           {items.slice(0, shown).map((obj, index) => (
-            <Poster key={obj.name} dir={dir} obj={obj} index={index} handlers={handlers} onFocus={setFocused} />
+            <Poster key={obj.name} dir={dir} obj={obj} art={posters[obj.name]} index={index} handlers={handlers} onFocus={setFocused} />
           ))}
         </div>
         {items.length > shown && (

@@ -63,5 +63,7 @@ export const tasks = {
 export const tgvio = {
   stats: () => get<TgvioStats>("/tgvio/stats"),
   recycle: (offset: number, limit: number) => get<{ items: RecycleItem[] | null; page_bytes: number; has_more: boolean }>("/admin/tgvio/recycle", { offset, limit }),
-  clean: (ids: string[]) => post<unknown>("/admin/tgvio/recycle/clean", { ids }),
+  /** Admins type folder passwords too, in the web UI only (WebDAV keeps its bypass). */
+  folderLock: (enabled?: boolean) => enabled === undefined ? get<{ enabled: boolean }>("/admin/tgvio/folder_lock") : post<{ enabled: boolean }>("/admin/tgvio/folder_lock", { enabled }),
+  clean: (ids: string[], password = "") => post<unknown>("/admin/tgvio/recycle/clean", { ids, password }),
 };

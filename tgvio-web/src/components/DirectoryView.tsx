@@ -5,6 +5,7 @@ import { animate, motion, useIsPresent, useMotionValue, useScroll, useTransform 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type DragEvent, type FormEvent, type MouseEvent, type PointerEvent } from "react";
 import { useLocation } from "wouter";
 import { dirKey, needsPassword, prefetchDir, rememberPassword, useDir } from "../hooks/useDir";
+import { usePosters } from "../hooks/usePosters";
 import { useIsMobile } from "../hooks/useMedia";
 import { useWidth } from "../hooks/useSize";
 import * as actions from "../lib/actions";
@@ -139,6 +140,7 @@ export function DirectoryView({ path }: { path: string }) {
 
   const items = useMemo(() => sortObjs(query.data?.content ?? [], sortKey, sortDesc), [query.data, sortKey, sortDesc]);
   const writable = can(me, Perm.Write, query.data?.write);
+  const posterMap = usePosters(path, items);
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
@@ -427,7 +429,7 @@ export function DirectoryView({ path }: { path: string }) {
       </div>
     );
   } else if (view === "cinema") {
-    body = <Cinema key={path} dir={path} items={items} handlers={handlers} />;
+    body = <Cinema key={path} dir={path} items={items} handlers={handlers} posters={posterMap} />;
   } else {
     body = (
       <div key={view} className="relative w-full" style={{ height: virtualizer.getTotalSize() }}>
@@ -451,6 +453,7 @@ export function DirectoryView({ path }: { path: string }) {
                   key={obj.name}
                   density={density}
                   dir={path}
+                  poster={posterMap[obj.name]}
                   obj={obj}
                   index={virtual.index * Math.min(per, 4) + offset}
                   selected={selected.has(obj.name)}

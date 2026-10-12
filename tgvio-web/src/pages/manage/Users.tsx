@@ -2,7 +2,7 @@ import { PencilSimpleIcon, PlusIcon, ShieldCheckIcon, TrashIcon, UserIcon } from
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { AnimatePresence, motion } from "motion/react";
 import { useState } from "react";
-import { users } from "../../api/admin";
+import { tgvio, users } from "../../api/admin";
 import { Sheet } from "../../components/Sheet";
 import { spring } from "../../lib/motion";
 import { hasBit, PERM_LABELS } from "../../lib/perm";
@@ -64,7 +64,41 @@ function Editor({ user, onClose }: { user: User | null; onClose: () => void }) {
           <button type="button" role="switch" aria-checked={!!form.disabled} className="switch" onClick={() => set({ disabled: !form.disabled })} />
         </div>
       )}
+      {user?.role === Role.Guest && (
+        <div className="mt-5 flex items-start justify-between gap-4 rounded-xl px-3 py-3 hairline">
+          <div>
+            <p className="text-[13.5px] font-medium">允许访客访问</p>
+            <p className="mt-0.5 text-[12.5px] leading-relaxed text-muted">打开后，不登录也能浏览上面「根目录」里的内容，能做什么由上面的权限决定。设了密码的文件夹照样要输密码。</p>
+          </div>
+          <button type="button" role="switch" aria-checked={!form.disabled} aria-label="允许访客访问" className="switch mt-0.5 shrink-0" onClick={() => set({ disabled: !form.disabled })} />
+        </div>
+      )}
+      {user?.role === Role.Admin && <FolderLock />}
     </Sheet>
+  );
+}
+
+/** Folder passwords for the admin, in the web UI only: WebDAV (the Player, the workers) keeps its bypass. */
+export function FolderLock() {
+  const query = useQuery({ queryKey: ["folder-lock"], queryFn: () => tgvio.folderLock() });
+  const client = useQueryClient();
+  const on = !!query.data?.enabled;
+  const toggle = async (): Promise<void> => {
+    try {
+      const next = await tgvio.folderLock(!on);
+      client.setQueryData(["folder-lock"], next);
+      void client.invalidateQueries({ queryKey: ["list"] });
+      toast.success(next.enabled ? "网页里打开带密码的文件夹会先问密码" : "管理员不再被问文件夹密码");
+    } catch (error) { toast.error("没有改成", error); }
+  };
+  return (
+    <div className="mt-2 flex items-start justify-between gap-4 rounded-xl px-3 py-3 hairline">
+      <div>
+        <p className="text-[13.5px] font-medium">在网页里也输入文件夹密码</p>
+        <p className="mt-0.5 text-[12.5px] leading-relaxed text-muted">打开后，管理员在网页里打开「元信息」设了密码的文件夹也要先输密码。Player 和后台任务走 WebDAV，不受影响。</p>
+      </div>
+      <button type="button" role="switch" aria-checked={on} aria-label="在网页里也输入文件夹密码" className="switch mt-0.5 shrink-0" disabled={query.isPending} onClick={() => void toggle()} />
+    </div>
   );
 }
 
@@ -91,7 +125,7 @@ export default function Users() {
               </span>
               <div className="min-w-0 flex-1">
                 <p className="truncate font-medium">{user.username}</p>
-                <p className="truncate text-[12.5px] text-muted">{ROLE_LABEL[user.role] ?? user.role}，{user.base_path}{user.disabled ? "，已停用" : ""}</p>
+                <p className="truncate text-[12.5px] text-muted">{ROLE_LABEL[user.role] ?? user.role}，{user.base_path}{user.disabled ? (user.role === Role.Guest ? "，访客访问已关闭" : "，已停用") : ""}</p>
               </div>
               <button className="icon-btn" aria-label="编辑" onClick={() => setEditing(user)}><PencilSimpleIcon size={17} /></button>
               {user.role === Role.General && <button className="icon-btn hover:text-danger" aria-label="删除" onClick={() => setConfirm(user)}><TrashIcon size={17} /></button>}
