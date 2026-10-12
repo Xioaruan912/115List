@@ -36,3 +36,29 @@ export function offlineDownload(path: string, urls: string[], tool: string, dele
 }
 
 export const offlineTools = () => get<string[]>("/public/offline_download_tools");
+
+export interface ArchiveNode extends Obj { children: ArchiveNode[] | null }
+export interface ArchiveMeta {
+  comment: string;
+  encrypted: boolean;
+  content: ArchiveNode[] | null;
+  raw_url: string;
+  sign: string;
+}
+
+export function archiveMeta(path: string, password: string, archivePass: string): Promise<ArchiveMeta> {
+  return post("/fs/archive/meta", { path, password, archive_pass: archivePass });
+}
+
+export function archiveList(path: string, password: string, archivePass: string, innerPath: string): Promise<Page<Obj>> {
+  return post("/fs/archive/list", { path, password, archive_pass: archivePass, inner_path: innerPath, page: 1, per_page: 0 });
+}
+
+export interface DecompressOptions { archivePass: string; innerPath: string; intoNewDir: boolean; overwrite: boolean }
+
+export function decompress(srcDir: string, dstDir: string, names: string[], options: DecompressOptions): Promise<unknown> {
+  return post("/fs/archive/decompress", {
+    src_dir: srcDir, dst_dir: dstDir, name: names, archive_pass: options.archivePass, inner_path: options.innerPath,
+    cache_full: false, put_into_new_dir: options.intoNewDir, overwrite: options.overwrite,
+  });
+}

@@ -12,8 +12,9 @@ import { absolute, copyText, downloadUrl } from "../lib/links";
 import { spring } from "../lib/motion";
 import { extname, join, segments } from "../lib/path";
 import { useSession } from "../stores/session";
-import { toast } from "../stores/toast";
+import { toast, useToasts } from "../stores/toast";
 import { useUi, type Dialog } from "../stores/ui";
+import type { Obj } from "../lib/types";
 import { KindIcon } from "./KindIcon";
 import { Sheet } from "./Sheet";
 
@@ -133,6 +134,33 @@ function TransferDialog({ mode, dir, names, onClose }: { mode: "move" | "copy"; 
           <button key={option} className={`relative rounded-lg px-2.5 py-1 ${conflict === option ? "text-ink" : "text-muted"}`} onClick={() => setConflict(option)}>
             {conflict === option && <motion.span layoutId="conflict" className="absolute inset-0 rounded-lg bg-surface hairline" transition={spring.snappy} />}
             <span className="relative">{option === "skip" ? "跳过" : "覆盖"}</span>
+          </button>
+        ))}
+      </div>
+    </Sheet>
+  );
+}
+
+function DecompressDialog({ dir, obj, innerPath, archivePass, onClose }: { dir: string; obj: Obj; innerPath: string; archivePass: string; onClose: () => void }) {
+  const [target, setTarget] = useState(dir);
+  const [intoNewDir, setIntoNewDir] = useState(true);
+  const [overwrite, setOverwrite] = useState(false);
+  const [busy, run] = useBusy();
+  return (
+    <Sheet open onClose={onClose} width={520} title={`解压 ${innerPath === "/" ? obj.name : `${obj.name} 里的 ${innerPath}`}`}
+      footer={<><button className="btn btn-ghost" onClick={onClose}>取消</button>
+        <button className="btn btn-primary" disabled={busy} onClick={() => void run(async () => {
+          try {
+            await fs.decompress(dir, target, [obj.name], { archivePass, innerPath, intoNewDir, overwrite });
+            useToasts.getState().push({ tone: "success", title: "已开始解压", detail: `解压到 ${target}，在服务器任务里看进度`, action: { label: "查看", run: () => useUi.getState().setUploads(true) } });
+            onClose();
+          } catch (error) { toast.error("解压失败", error); return false; }
+        })}>解压到这里</button></>}>
+      <FolderPicker start={dir} value={target} onChange={setTarget} />
+      <div className="mt-4 flex flex-col gap-1">
+        {([["放进以压缩包命名的新文件夹", intoNewDir, setIntoNewDir], ["覆盖同名文件", overwrite, setOverwrite]] as const).map(([label, on, set]) => (
+          <button key={label} type="button" className="flex items-center justify-between rounded-xl px-3 py-2.5 text-left text-[13.5px] hover:bg-[var(--hover)]" onClick={() => set(!on)}>
+            {label}<span role="switch" aria-checked={on} className="switch" />
           </button>
         ))}
       </div>
@@ -275,6 +303,8 @@ function DialogFor({ dialog, onClose }: { dialog: Dialog; onClose: () => void })
       return <OfflineDialog dir={dialog.dir} onClose={onClose} />;
     case "account":
       return <AccountDialog onClose={onClose} />;
+    case "decompress":
+      return <DecompressDialog dir={dialog.dir} obj={dialog.obj} innerPath={dialog.innerPath} archivePass={dialog.archivePass} onClose={onClose} />;
   }
 }
 

@@ -8,6 +8,7 @@ export type Dialog =
   | { kind: "transfer"; mode: "move" | "copy"; dir: string; names: string[] }
   | { kind: "info"; dir: string; obj: Obj }
   | { kind: "offline"; dir: string }
+  | { kind: "decompress"; dir: string; obj: Obj; innerPath: string; archivePass: string }
   | { kind: "account" };
 
 export interface Rect { x: number; y: number; width: number; height: number }

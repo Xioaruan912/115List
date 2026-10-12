@@ -20,6 +20,7 @@ import type { Obj } from "../lib/types";
 import { usePrefs } from "../stores/prefs";
 import { useSession } from "../stores/session";
 import { rectOf, useUi, type Rect } from "../stores/ui";
+import { ArchiveView } from "./ArchiveView";
 import { KindIcon } from "./KindIcon";
 import { Menu } from "./Menu";
 
@@ -457,7 +458,8 @@ function ViewerBody({ dir, name, origin }: { dir: string; name: string; origin: 
             {kind === "video" && <VideoView key={obj.name} src={src} fallback={fallback} thumb={obj.thumb} onAspect={setAspect} />}
             {kind === "audio" && <AudioView obj={obj} src={src} />}
             {(kind === "text" || kind === "code" || kind === "markdown") && <TextView obj={obj} url={fallback} kind={kind} />}
-            {!media && kind !== "audio" && kind !== "text" && kind !== "code" && kind !== "markdown" && <OtherView obj={obj} dir={dir} />}
+            {kind === "archive" && can(me, Perm.ReadArchives) && <ArchiveView dir={dir} obj={obj} />}
+            {!media && kind !== "audio" && kind !== "text" && kind !== "code" && kind !== "markdown" && !(kind === "archive" && can(me, Perm.ReadArchives)) && <OtherView obj={obj} dir={dir} />}
           </motion.div>
         </motion.div>
       </AnimatePresence>
