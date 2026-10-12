@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/OpenListTeam/OpenList/v4/internal/tgvio"
 	"io"
 	"io/fs"
 	"net/http"
@@ -110,6 +111,7 @@ func UpdateIndex() {
 	utils.Log.Debug("Updating index.html with settings...")
 	favicon := setting.GetStr(conf.Favicon)
 	logo := strings.Split(setting.GetStr(conf.Logo), "\n")[0]
+	favicon, logo = tgvioBrand(favicon, logo)
 	title := setting.GetStr(conf.SiteTitle)
 	customizeHead := setting.GetStr(conf.CustomizeHead)
 	customizeBody := setting.GetStr(conf.CustomizeBody)
@@ -141,6 +143,10 @@ func ManifestJSON(c *gin.Context) {
 	// Get logo from settings, use the first line (light theme logo)
 	logoSetting := setting.GetStr(conf.Logo)
 	logoUrl := strings.Split(logoSetting, "\n")[0]
+	icon := ManifestIcon{Src: logoUrl, Sizes: "512x512", Type: "image/png"}
+	if tgvio.IsStockLogo(logoUrl) {
+		icon = ManifestIcon{Src: markURL(), Sizes: "any", Type: "image/svg+xml"}
+	}
 
 	// Use base path from site config for consistency
 	basePath := siteConfig.BasePath
@@ -156,13 +162,7 @@ func ManifestJSON(c *gin.Context) {
 		Scope:    scope,
 		StartURL: startURL,
 		Name:     siteTitle,
-		Icons: []ManifestIcon{
-			{
-				Src:   logoUrl,
-				Sizes: "512x512",
-				Type:  "image/png",
-			},
-		},
+		Icons:    []ManifestIcon{icon},
 	}
 
 	c.Header("Content-Type", "application/json")
@@ -208,6 +208,8 @@ func Static(r *gin.RouterGroup, noRoute func(handlers ...gin.HandlerFunc)) {
 			})
 		}
 	}
+
+	r.GET(tgvio.MarkPath, Mark)
 
 	utils.Log.Debug("Setting up catch-all route...")
 	noRoute(func(c *gin.Context) {
