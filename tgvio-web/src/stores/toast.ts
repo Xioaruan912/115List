@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { reason } from "../lib/errors";
 
 export type ToastTone = "info" | "success" | "error";
 
@@ -37,6 +38,6 @@ export const toast = {
   error: (title: string, error?: unknown) => useToasts.getState().push({
     tone: "error",
     title,
-    detail: error instanceof Error ? error.message : error === undefined ? undefined : String(error),
+    detail: error === undefined ? undefined : reason(error),
   }),
 };

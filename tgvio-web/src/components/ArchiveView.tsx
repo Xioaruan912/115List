@@ -15,6 +15,7 @@ import type { Obj } from "../lib/types";
 import { useSession } from "../stores/session";
 import { useUi } from "../stores/ui";
 import { KindIcon } from "./KindIcon";
+import { ErrorState } from "./ErrorState";
 
 /** Walk the tree the server returned (when it can read the whole index at once). */
 function childrenAt(tree: ArchiveNode[] | null, inner: string): ArchiveNode[] | null {
@@ -114,7 +115,7 @@ export function ArchiveView({ dir, obj }: { dir: string; obj: Obj }) {
                 variants={{ enter: (d: number) => ({ opacity: 0, x: d * 40 }), center: { opacity: 1, x: 0 }, exit: (d: number) => ({ opacity: 0, x: -d * 40 }) }}
                 initial="enter" animate="center" exit="exit" transition={spring.snappy}>
                 {loading && Array.from({ length: 8 }, (_, i) => <li key={i} className="skeleton my-1 h-10 rounded-lg" />)}
-                {error && <li className="p-4 text-danger">读取失败：{error.message}</li>}
+                {error && <li><ErrorState className="m-4" error={error} icon={FileArchiveIcon} /></li>}
                 {!loading && !error && items.length === 0 && <li className="p-4 text-muted">这里是空的</li>}
                 {items.map((item, index) => (
                   <li key={item.name} className="enter group flex h-11 items-center gap-3 rounded-lg px-2.5 hover:bg-[var(--hover)]" style={{ "--i": Math.min(index, 24) } as React.CSSProperties}>

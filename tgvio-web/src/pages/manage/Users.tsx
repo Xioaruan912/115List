@@ -9,6 +9,7 @@ import { hasBit, PERM_LABELS } from "../../lib/perm";
 import { Role, type User } from "../../lib/types";
 import { toast } from "../../stores/toast";
 import { PageHeader } from "./Form";
+import { ErrorState } from "../../components/ErrorState";
 
 const ROLE_LABEL: Record<number, string> = { [Role.General]: "普通用户", [Role.Guest]: "访客", [Role.Admin]: "管理员" };
 
@@ -79,7 +80,7 @@ export default function Users() {
         <button className="btn btn-primary" onClick={() => setEditing("new")}><PlusIcon size={16} weight="bold" />新建</button>
       </PageHeader>
       {query.isPending && <div className="space-y-2">{[0, 1, 2].map(i => <div key={i} className="skeleton h-16 rounded-[var(--radius-tile)]" />)}</div>}
-      {query.isError && <p className="text-danger">{query.error.message}</p>}
+      {query.isError && <ErrorState error={query.error} onRetry={() => query.refetch()} />}
       <ul className="grid gap-2 sm:grid-cols-2">
         <AnimatePresence initial={false}>
           {list.map((user, index) => (

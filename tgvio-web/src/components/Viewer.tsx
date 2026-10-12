@@ -6,7 +6,8 @@ import { useQuery } from "@tanstack/react-query";
 import { animate, AnimatePresence, motion, useMotionValue, useTransform, type MotionValue, type PanInfo } from "motion/react";
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { createPortal } from "react-dom";
-import { useDir } from "../hooks/useDir";
+import { cloudVideo } from "../api/fs";
+import { passwordFor, useDir } from "../hooks/useDir";
 import { useIsMobile } from "../hooks/useMedia";
 import * as actions from "../lib/actions";
 import { formatBytes, formatDate } from "../lib/format";
@@ -24,6 +25,7 @@ import { ArchiveView } from "./ArchiveView";
 import { KindIcon } from "./KindIcon";
 import { VideoPlayer } from "./VideoPlayer";
 import { Menu } from "./Menu";
+import { ErrorState } from "./ErrorState";
 
 const Markdown = lazy(() => import("./Markdown"));
 
@@ -140,7 +142,7 @@ function TextView({ obj, url, kind }: { obj: Obj; url: string; kind: Kind }) {
     <div className="absolute inset-0 overflow-auto rounded-[22px] bg-raised hairline" onPointerDown={event => event.stopPropagation()}>
       {tooBig && <p className="p-6 text-muted">文件超过 3 MB，请下载后查看。</p>}
       {text.isPending && !tooBig && <div className="space-y-2 p-6">{Array.from({ length: 12 }, (_, i) => <div key={i} className="skeleton h-3.5 rounded" style={{ width: `${40 + ((i * 29) % 55)}%` }} />)}</div>}
-      {text.isError && <p className="p-6 text-danger">读取失败：{text.error.message}</p>}
+      {text.isError && <ErrorState className="m-6" error={text.error} onRetry={() => text.refetch()} />}
       {text.data !== undefined && (kind === "markdown" ? (
         <div className="px-6 py-6 sm:px-10"><Suspense fallback={null}><Markdown source={text.data} /></Suspense></div>
       ) : (
@@ -415,6 +417,8 @@ function ViewerBody({ dir, name, origin }: { dir: string; name: string; origin: 
     if (Number.isFinite(value) && value > 0 && Math.abs((aspects[obj.name] ?? 0) - value) > 0.01) setAspects(state => ({ ...state, [obj.name]: value }));
   };
   const draggable = !zoomed && kind !== "video" && kind !== "audio";
+  // 115 keeps its own transcodes; other storages have only the original.
+  const cloudCapable = /115/.test(list.data?.provider ?? "");
   const darkStage = media;
   // Chrome over a dark stage is white; over the light scrim (documents) it follows the theme.
   const tone = darkStage
@@ -466,7 +470,7 @@ function ViewerBody({ dir, name, origin }: { dir: string; name: string; origin: 
             onWheel={onWheel}
           >
             {kind === "image" && <ImageView key={obj.name} src={src} fallback={fallback} thumb={obj.thumb} zoom={zoom} panX={panX} panY={panY} onAspect={setAspect} />}
-            {kind === "video" && <VideoPlayer key={obj.name} path={path} src={src} fallback={fallback} thumb={obj.thumb} chrome={chrome} onAspect={setAspect} onDownload={() => actions.download(dir, obj)} onCopy={() => void actions.copyLinks(dir, [obj])} />}
+            {kind === "video" && <VideoPlayer key={obj.name} path={path} src={src} fallback={fallback} thumb={obj.thumb} chrome={chrome} onAspect={setAspect} cloud={cloudCapable ? () => cloudVideo(path, passwordFor(dir)) : undefined} onDownload={() => actions.download(dir, obj)} onCopy={() => void actions.copyLinks(dir, [obj])} />}
             {kind === "audio" && <AudioView obj={obj} src={src} />}
             {(kind === "text" || kind === "code" || kind === "markdown") && <TextView obj={obj} url={fallback} kind={kind} />}
             {kind === "archive" && can(me, Perm.ReadArchives) && <ArchiveView dir={dir} obj={obj} />}

@@ -3,6 +3,7 @@ import * as auth from "../api/auth";
 import { applyTouchIcon } from "../lib/brand";
 import { onUnauthorized, setToken } from "../lib/api";
 import type { Me, Settings } from "../lib/types";
+import { reason } from "../lib/errors";
 
 type Status = "loading" | "ready" | "login" | "error";
 
@@ -32,7 +33,7 @@ export const useSession = create<SessionState>((set, getState) => ({
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       if (getState().status === "login") return; // the 401 handler already moved us
-      set({ status: "login", me: null, error: /401|登录|token/i.test(message) ? "" : message });
+      set({ status: "login", me: null, error: /401|登录|token/i.test(message) ? "" : reason(error) });
     }
   },
   async signIn(username, password, otp) {

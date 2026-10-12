@@ -306,3 +306,15 @@ button, a, [role="button"] { touch-action: manipulation; }
 .volume-range::-moz-range-thumb { width: 12px; height: 12px; border: 0; border-radius: 99px; background: #fff; }
 .video-player:fullscreen { background: #000; }
 @media (prefers-reduced-motion: reduce) { .loader-bars i, .scrub-wait { animation-duration: 3s; } }
+
+/* Error state: a strip of film, dark in both themes, with punched sprocket holes. */
+.reel { border-radius: 7px; background: #17171a; box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.06), 0 18px 40px -18px rgb(0 0 0 / 0.55); }
+.reel::before, .reel::after { content: ""; position: absolute; left: 0; right: 0; height: 7px; background: linear-gradient(90deg, var(--bg) 0 9px, transparent 9px) 4px 0 / 17px 100% repeat-x; border-radius: 2px; }
+.reel::before { top: 6px; }
+.reel::after { bottom: 6px; }
+.reel-frames { position: absolute; inset: 19px 8px; display: grid; grid-template-columns: 1fr 1fr; gap: 7px; }
+.reel-frames span { border-radius: 3px; box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.05), inset 0 -14px 24px -12px rgb(0 0 0 / 0.6); }
+.reel-left .reel-frames span:first-child { background: linear-gradient(160deg, #3a2618, #8a5228 70%, #c17a3a); }
+.reel-left .reel-frames span:last-child { background: radial-gradient(circle at 30% 35%, #f0c27a 0 14%, transparent 15%), linear-gradient(180deg, #1e2a3c, #4a3a52); }
+.reel-right .reel-frames span:first-child { background: linear-gradient(200deg, #0f2f33, #2d6e6a 65%, #78b8a4); }
+.reel-right .reel-frames span:last-child { background: repeating-linear-gradient(120deg, #2a1420 0 10px, #5a2338 10px 22px); }

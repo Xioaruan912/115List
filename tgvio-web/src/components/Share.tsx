@@ -12,6 +12,7 @@ import { basename, join } from "../lib/path";
 import { toast } from "../stores/toast";
 import { Mark } from "./Mark";
 import { Sheet } from "./Sheet";
+import { ErrorState } from "./ErrorState";
 
 /* ------------------------------------------------------------------ QR code */
 
@@ -296,7 +297,7 @@ export function SharesDialog({ onClose }: { onClose: () => void }) {
   return (
     <Sheet open onClose={onClose} width={620} title="我的分享">
       {query.isPending && <div className="space-y-2">{[0, 1, 2].map(i => <div key={i} className="skeleton h-16 rounded-[var(--radius-tile)]" />)}</div>}
-      {query.isError && <p className="text-danger">{query.error.message}</p>}
+      {query.isError && <ErrorState compact error={query.error} onRetry={() => query.refetch()} />}
       {query.data && list.length === 0 && (
         <div className="flex flex-col items-start gap-2 py-4">
           <ShareNetworkIcon size={28} weight="duotone" className="text-accent-text" />

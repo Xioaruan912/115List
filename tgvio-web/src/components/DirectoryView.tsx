@@ -1,4 +1,4 @@
-import { ArrowClockwiseIcon, FolderPlusIcon, LockIcon, UploadSimpleIcon, WarningCircleIcon } from "@phosphor-icons/react";
+import { ArrowClockwiseIcon, FolderPlusIcon, LockIcon, UploadSimpleIcon } from "@phosphor-icons/react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { animate, motion, useIsPresent, useMotionValue, useScroll, useTransform } from "motion/react";
@@ -22,6 +22,7 @@ import { Readme } from "./Readme";
 import { SplitText } from "./SplitText";
 import { Cinema } from "./Cinema";
 import { FolderTile, GridTile, ListRow, type TileHandlers } from "./Tile";
+import { ErrorState } from "./ErrorState";
 
 const EMPTY = new Set<string>();
 const PULL = 72;
@@ -412,14 +413,7 @@ export function DirectoryView({ path }: { path: string }) {
   } else if (query.isError && needsPassword(query.error)) {
     body = <PasswordGate path={path} onUnlock={() => void client.resetQueries({ queryKey: dirKey(path) })} />;
   } else if (query.isError) {
-    body = (
-      <div className="mt-8 flex max-w-md flex-col items-start gap-3 enter">
-        <WarningCircleIcon size={28} className="text-danger" weight="duotone" />
-        <p className="font-medium">读取失败</p>
-        <p className="break-words text-muted">{query.error.message}</p>
-        <button className="btn btn-line" onClick={() => void query.refetch()}><ArrowClockwiseIcon size={16} />重试</button>
-      </div>
-    );
+    body = <ErrorState className="mt-8" error={query.error} onRetry={() => actions.reload(path)} />;
   } else if (items.length === 0) {
     body = (
       <div className="mt-6 flex flex-col items-start gap-4 enter">
