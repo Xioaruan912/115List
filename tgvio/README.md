@@ -26,13 +26,25 @@
 | `GET /api/admin/tgvio/recycle?offset=&limit=` | 管理员 | 115 回收站一页（≤1000 项）及其大小 |
 | `POST /api/admin/tgvio/recycle/clean` `{"ids":[...]}` | 管理员 | 永久清理 1–1000 个指定条目，绝不清空整个回收站 |
 
+## 前端
+
+默认嵌入 `tgvio-web/` 里的自研前端（React + Vite + Tailwind v4 + Motion），与官方 OpenList-Frontend 无代码关系，只用 OpenList 的 HTTP API。代码地图与约定见 `tgvio-web/README.md`。
+
+- 文件：网格/列表（虚拟滚动，1500+ 项流畅）、进入文件夹的纵深缩放转场、框选/Shift 连选/拖到文件夹或面包屑移动、右键与长按菜单、新建/重命名/移动/复制/删除（FLIP 过渡）、属性与直链、离线下载、文件夹密码。
+- 预览：图片（从格子放大展开、双击/滚轮/双指缩放、左右滑动、下拉关闭、缩略图条）、视频、音频、文本/代码/Markdown；其他类型给下载。
+- 上传：拖入窗口或选择文件/文件夹；16 MB 以上走 `/api/fs/multipart`（分片并发 3、单片重试、断线续传），其余 `/api/fs/put` 作为任务；传输面板含服务器任务。
+- 搜索面板（`/` 或 Ctrl K）：当前文件夹模糊筛选、全局搜索（需开启索引）、命令。
+- 管理（`/@manage`）：概览（115 空间、访问统计、回收站清理）、存储（按驱动定义生成表单）、用户与权限、元信息、设置、任务。
+- 封面默认模糊（悬停/长按显示，搜索面板可切换）；深浅主题跟随系统；`prefers-reduced-motion` 时关闭动效。
+
 ## 构建
 
 ```sh
-bash tgvio/build.sh            # 需要 Go（/usr/local/go）与干净的工作区
+bash tgvio/build.sh                      # 默认嵌入 tgvio-web（先跑 tsc、vitest、vite build）
+TGVIO_UI=official bash tgvio/build.sh    # 改嵌官方前端 v4.2.6
 ```
 
-下载并校验官方前端 dist（v4.2.6），嵌入后编译为 `/root/build/openlist-tgvio/openlist-<commit>`。
+需要 Go（/usr/local/go）、Node（/root/.local/bin）与干净的工作区。输出 `/root/build/openlist-tgvio/openlist-<commit>`；官方前端同时解压在 `/root/build/openlist-tgvio/web/official-v4.2.6/`，在 `data/config.json` 设 `"dist_dir"` 指向它并重启，即可不换二进制切回官方界面（清空 `dist_dir` 再重启切回）。
 
 ## 升级（只换二进制）
 
