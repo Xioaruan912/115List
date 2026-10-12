@@ -18,6 +18,7 @@ import type { Obj } from "../lib/types";
 import { KindIcon } from "./KindIcon";
 import { ShareDialog, SharesDialog } from "./Share";
 import { Sheet } from "./Sheet";
+import { ErrorState } from "./ErrorState";
 
 function useBusy() {
   const [busy, setBusy] = useState(false);
@@ -96,7 +97,7 @@ function FolderPicker({ start, value, onChange }: { start: string; value: string
           <motion.ul key={value} className="absolute inset-0 overflow-y-auto p-1.5"
             initial={{ opacity: 0, x: 30 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -30 }} transition={spring.snappy}>
             {dirs.isPending && Array.from({ length: 5 }, (_, i) => <li key={i} className="skeleton my-1 h-9 rounded-lg" />)}
-            {dirs.isError && <li className="p-3 text-danger">{dirs.error.message}</li>}
+            {dirs.isError && <li><ErrorState compact error={dirs.error} onRetry={() => dirs.refetch()} /></li>}
             {dirs.data?.length === 0 && <li className="p-3 text-muted">没有子文件夹</li>}
             {dirs.data?.map((dir, index) => (
               <li key={dir.name}>

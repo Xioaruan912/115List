@@ -13,6 +13,7 @@ import { toast } from "../stores/toast";
 import { useUi } from "../stores/ui";
 import { useUploads, type UploadJob } from "../stores/uploads";
 import { KindIcon } from "./KindIcon";
+import { reason } from "../lib/errors";
 
 function Bar({ value, tone = "accent" }: { value: number; tone?: "accent" | "danger" | "muted" }) {
   const color = tone === "danger" ? "var(--danger)" : tone === "muted" ? "var(--faint)" : "var(--accent)";
@@ -33,7 +34,7 @@ function JobRow({ job }: { job: UploadJob }) {
   else if (job.state === "running") status = job.phase === "storing" ? `写入网盘 ${Math.round(job.storage)}%` : `${formatBytes(job.sent)} / ${formatBytes(job.size)}${job.rate ? `，${formatRate(job.rate)}` : ""}`;
   else if (job.state === "done") status = <span className="text-accent-text">已完成，{formatBytes(job.size)}</span>;
   else if (job.state === "canceled") status = "已取消";
-  else status = <span className="text-danger">{job.error}</span>;
+  else status = <span className="text-danger" title={job.error}>{job.exists ? "已有同名文件" : reason(job.error)}</span>;
   return (
     <motion.li layout className="flex items-center gap-3 rounded-xl px-2 py-2.5" initial={{ opacity: 0, y: 12, scale: 0.96 }} animate={{ opacity: 1, y: 0, scale: 1 }}
       exit={{ opacity: 0, x: 40, transition: { duration: 0.2 } }} transition={spring.snappy}>
@@ -74,7 +75,7 @@ function TaskRow({ type, task }: { type: TaskType; task: TaskInfo }) {
         {(done || failed || task.state === 4) && <button className="icon-btn size-7" onClick={act(() => tasks.remove(type, task.id))} aria-label="删除"><TrashIcon size={14} /></button>}
       </div>
       <p className={`mt-0.5 text-[12px] tabular ${failed ? "text-danger" : "text-muted"}`}>
-        {STATE_LABEL[task.state] ?? task.state}{task.total_bytes ? `，${formatBytes(task.total_bytes)}` : ""}{task.status ? `，${task.status}` : ""}{task.error ? `：${task.error}` : ""}
+        {STATE_LABEL[task.state] ?? task.state}{task.total_bytes ? `，${formatBytes(task.total_bytes)}` : ""}{task.error ? <span title={task.error}>：{reason(task.error)}</span> : ""}
       </p>
       {!done && !failed && <div className="mt-1.5"><Bar value={task.progress / 100} /></div>}
     </motion.li>

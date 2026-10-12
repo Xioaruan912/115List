@@ -110,6 +110,10 @@ func Init(e *gin.Engine) {
 	admin(auth.Group("/admin", middlewares.AuthAdmin))
 	// TGVIO: process counters and drive quota for monitoring; recycle bin for admins.
 	auth.GET("/tgvio/stats", middlewares.AuthNotGuest, handles.TgvioStats)
+	// TGVIO cloud playback: the drive's own transcodes. Share visitors use it too,
+	// so it lives beside /fs with disabled guests allowed; the handler checks access.
+	api.POST("/tgvio/video", middlewares.Auth(true), handles.TgvioVideo)
+	g.GET("/tgvio/hls/:ticket/:quality/:file", handles.TgvioHLS)
 	if flags.Debug || flags.Dev {
 		debug(g.Group("/debug"))
 	}

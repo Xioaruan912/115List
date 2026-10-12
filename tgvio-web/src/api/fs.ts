@@ -62,3 +62,17 @@ export function decompress(srcDir: string, dstDir: string, names: string[], opti
     cache_full: false, put_into_new_dir: options.intoNewDir, overwrite: options.overwrite,
   });
 }
+
+/** A version of a video the drive transcoded itself (115 keeps 4K, 1080P and lower). */
+export interface CloudQuality { id: string; name: string; width: number; height: number; bandwidth: number }
+
+/** The drive's transcodes of a video, and a ticket for /tgvio/hls. Empty when there are none. */
+export interface CloudVideo { qualities: CloudQuality[]; ticket?: string; reason?: string }
+
+export function cloudVideo(path: string, password: string): Promise<CloudVideo> {
+  return post<CloudVideo>("/tgvio/video", { path, password });
+}
+
+export function cloudVideoInShare(share: string, sharePwd: string, path: string): Promise<CloudVideo> {
+  return post<CloudVideo>("/tgvio/video", { share, share_pwd: sharePwd, path });
+}

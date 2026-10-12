@@ -4,6 +4,8 @@ import {
 } from "@phosphor-icons/react";
 import { AnimatePresence, motion } from "motion/react";
 import { useCallback, useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
+import type { CloudQuality, CloudVideo } from "../api/fs";
+import { apiBase } from "../lib/config";
 import { absolute } from "../lib/links";
 import { spring } from "../lib/motion";
 import { formatClock, resumeAt, saveProgress } from "../lib/progress";
@@ -43,6 +45,22 @@ type Phase = "loading" | "ready" | "blocked" | "failed";
 
 const SPEEDS = [0.75, 1, 1.25, 1.5, 2];
 const VOLUME_KEY = "tgvio-web:volume";
+const QUALITY_KEY = "tgvio-web:quality";
+
+type Source = { kind: "origin" } | { kind: "cloud"; quality: CloudQuality };
+
+/** The cloud version that plays everywhere without eating bandwidth: 1080P or the nearest below. */
+function bestCloud(qualities: CloudQuality[]): CloudQuality {
+  const sorted = [...qualities].sort((a, b) => b.height - a.height);
+  return sorted.find(q => q.height > 0 && q.height <= 1080) ?? sorted[sorted.length - 1];
+}
+
+function firstSource(info: CloudVideo | null): Source {
+  let preferred = "";
+  try { preferred = localStorage.getItem(QUALITY_KEY) ?? ""; } catch { /* ignore */ }
+  if (!info || preferred === "origin") return { kind: "origin" };
+  return { kind: "cloud", quality: info.qualities.find(q => q.name === preferred) ?? bestCloud(info.qualities) };
+}
 
 function savedVolume(): { volume: number; muted: boolean } {
   try { return { volume: 1, muted: false, ...JSON.parse(localStorage.getItem(VOLUME_KEY) ?? "{}") }; } catch { return { volume: 1, muted: false }; }
@@ -122,13 +140,16 @@ function Scrubber({ video, time, duration, buffered, onSeek, onScrub }: {
   );
 }
 
-export function VideoPlayer({ path, src, fallback, thumb, chrome, onAspect, onDownload, onCopy }: {
+export function VideoPlayer({ path, src, fallback, thumb, chrome, cloud, onAspect, onDownload, onCopy }: {
   path: string;
+  /** Asks for the drive's own transcodes (115); absent for other storages. */
+  cloud?: () => Promise<CloudVideo>;
   src: string;
   fallback: string;
   thumb: string;
-  chrome: boolean;
-  onAspect: (aspect: number) => void;
+  /** Whether the surrounding chrome is showing; omit to let the player track activity itself. */
+  chrome?: boolean;
+  onAspect?: (aspect: number) => void;
   onDownload: () => void;
   onCopy: () => void;
 }) {
@@ -156,22 +177,111 @@ export function VideoPlayer({ path, src, fallback, thumb, chrome, onAspect, onDo
   const [resumed, setResumed] = useState(0);
   const [stuck, setStuck] = useState(false);
   const [size, setSize] = useState("");
-  const progressAt = useRef(0);
+  const progressAt = useRef(performance.now());
+  // Outside the viewer nobody hides the controls for us: do it after 3 s without a pointer.
+  const [active, setActive] = useState(true);
+  useEffect(() => {
+    if (chrome !== undefined) return;
+    const element = root.current;
+    if (!element) return;
+    let timer = window.setTimeout(() => setActive(false), 3000);
+    const wake = (): void => { setActive(true); clearTimeout(timer); timer = window.setTimeout(() => setActive(false), 3000); };
+    element.addEventListener("pointermove", wake);
+    element.addEventListener("pointerdown", wake);
+    return () => { clearTimeout(timer); element.removeEventListener("pointermove", wake); element.removeEventListener("pointerdown", wake); };
+  }, [chrome]);
   const saved = useRef(0);
+  const [cloudInfo, setCloudInfo] = useState<CloudVideo | null | undefined>(cloud ? undefined : null);
+  const [source, setSource] = useState<Source | null>(cloud ? null : { kind: "origin" });
+  const [qualityMenu, setQualityMenu] = useState(false);
+  const [notice, setNotice] = useState("");
+  const pendingSeek = useRef<{ time: number } | null>(null);
+  const hlsRef = useRef<{ destroy: () => void } | null>(null);
+
+  // Ask which cloud versions exist before loading anything: a 4K original would
+  // otherwise start downloading only to be thrown away.
+  useEffect(() => {
+    if (!cloud) return;
+    let live = true;
+    cloud()
+      .then(info => { if (live) setCloudInfo(info.qualities.length && info.ticket ? info : null); })
+      .catch(() => { if (live) setCloudInfo(null); });
+    return () => { live = false; };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (!source && cloudInfo !== undefined) setSource(firstSource(cloudInfo));
+  }, [cloudInfo, source]);
+  useEffect(() => {
+    if (!notice) return;
+    const timer = window.setTimeout(() => setNotice(""), 4200);
+    return () => clearTimeout(timer);
+  }, [notice]);
+  useEffect(() => () => hlsRef.current?.destroy(), []);
 
   const video = (): HTMLVideoElement | null => ref.current;
 
-  // Start inside the tap that opened the viewer, so mobile browsers count it as user initiated.
+  const switchTo = useCallback((next: Source, message = "") => {
+    const element = video();
+    pendingSeek.current = element && element.currentTime > 1 ? { time: element.currentTime } : null;
+    setPhase("loading"); setWaiting(true); setStuck(false); setQualityMenu(false);
+    setSource(next);
+    if (message) setNotice(message);
+    try { localStorage.setItem(QUALITY_KEY, next.kind === "origin" ? "origin" : next.quality.name); } catch { /* ignore */ }
+  }, []);
+
+  // The original will not play: the cloud version is the way out, if there is one.
+  const originFailed = useCallback(() => {
+    if (cloudInfo) switchTo({ kind: "cloud", quality: bestCloud(cloudInfo.qualities) }, `原文件放不了，已改用云端 ${bestCloud(cloudInfo.qualities).name}`);
+    else setPhase("failed");
+  }, [cloudInfo, switchTo]);
+
+  // Load the chosen source. Start inside the tap that opened the viewer, so
+  // mobile browsers count playback as user initiated.
   useEffect(() => {
     const element = video();
-    if (!element) return;
-    element.volume = volume;
-    element.muted = muted;
-    progressAt.current = performance.now();
-    element.play().catch((error: unknown) => {
-      if (error instanceof DOMException && error.name === "NotAllowedError") setPhase(state => state === "failed" ? state : "blocked");
-    });
-  }, [url]); // eslint-disable-line react-hooks/exhaustive-deps
+    if (!element || !source) return;
+    hlsRef.current?.destroy();
+    hlsRef.current = null;
+    let cancelled = false;
+    const start = (): void => {
+      element.volume = volume;
+      element.muted = muted;
+      progressAt.current = performance.now();
+      element.play().catch((error: unknown) => {
+        if (error instanceof DOMException && error.name === "NotAllowedError") setPhase(state => state === "failed" ? state : "blocked");
+      });
+    };
+    if (source.kind === "origin") {
+      element.src = url;
+      start();
+      return () => { cancelled = true; };
+    }
+    const playlist = `${apiBase}/tgvio/hls/${cloudInfo!.ticket}/${encodeURIComponent(source.quality.id)}/index.m3u8`;
+    const native = element.canPlayType("application/vnd.apple.mpegurl") !== "" && /Apple/.test(navigator.vendor);
+    if (native) {
+      element.src = playlist; // Safari and iPhone play HLS themselves
+      start();
+    } else {
+      void import("hls.js").then(({ default: Hls }) => {
+        if (cancelled) return;
+        if (!Hls.isSupported()) {
+          if (element.canPlayType("application/vnd.apple.mpegurl")) { element.src = playlist; start(); } else setPhase("failed");
+          return;
+        }
+        const hls = new Hls({ maxBufferLength: 40, backBufferLength: 30, fragLoadingMaxRetry: 4 });
+        hlsRef.current = hls;
+        hls.on(Hls.Events.ERROR, (_event, data) => {
+          if (!data.fatal) return;
+          if (data.type === Hls.ErrorTypes.MEDIA_ERROR) hls.recoverMediaError();
+          else setPhase("failed");
+        });
+        hls.loadSource(playlist);
+        hls.attachMedia(element);
+        start();
+      }).catch(() => setPhase("failed"));
+    }
+    return () => { cancelled = true; };
+  }, [source, url]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Nothing arriving for a long while: offer the way out, without stopping the attempt.
   useEffect(() => {
@@ -279,7 +389,7 @@ export function VideoPlayer({ path, src, fallback, thumb, chrome, onAspect, onDo
     if (state.shown) state.timer = window.setTimeout(toggle, 280); // controls were hidden: this tap only brings them back
   };
 
-  const visible = chrome || !playing || scrubbing || speedMenu;
+  const visible = (chrome ?? active) || !playing || scrubbing || speedMenu || qualityMenu;
   const visibleRef = useRef(visible);
   visibleRef.current = visible;
   const players = externalPlayers(absolute(src));
@@ -290,16 +400,18 @@ export function VideoPlayer({ path, src, fallback, thumb, chrome, onAspect, onDo
     <div ref={root} className={`video-player absolute inset-0 overflow-hidden bg-[#060607] ${visible ? "" : "cursor-none"}`}>
       <video
         ref={ref}
-        src={url}
         playsInline
         preload="metadata"
         className="absolute inset-0 size-full object-contain"
         onLoadedMetadata={event => {
           const v = event.currentTarget;
           setDuration(v.duration || 0);
-          if (v.videoWidth) { onAspect(v.videoWidth / v.videoHeight); setSize(`${v.videoWidth}×${v.videoHeight}`); }
-          const at = resumeAt(path);
-          if (at && v.currentTime < 1) { v.currentTime = at; setResumed(at); }
+          if (v.videoWidth) { onAspect?.(v.videoWidth / v.videoHeight); setSize(`${v.videoWidth}×${v.videoHeight}`); }
+          if (pendingSeek.current) { v.currentTime = pendingSeek.current.time; pendingSeek.current = null; }
+          else {
+            const at = resumeAt(path);
+            if (at && v.currentTime < 1) { v.currentTime = at; setResumed(at); }
+          }
           progressAt.current = performance.now();
         }}
         onDurationChange={event => setDuration(event.currentTarget.duration || 0)}
@@ -308,7 +420,7 @@ export function VideoPlayer({ path, src, fallback, thumb, chrome, onAspect, onDo
         onPlaying={event => {
           setWaiting(false); setStuck(false);
           // Sound and no picture: the codec (usually H.265) is not supported here.
-          if (event.currentTarget.videoWidth === 0) { event.currentTarget.pause(); setPhase("failed"); }
+          if (event.currentTarget.videoWidth === 0) { event.currentTarget.pause(); if (source?.kind === "origin") originFailed(); else setPhase("failed"); }
           else setPhase("ready");
         }}
         onWaiting={() => setWaiting(true)}
@@ -329,6 +441,8 @@ export function VideoPlayer({ path, src, fallback, thumb, chrome, onAspect, onDo
         onRateChange={event => setSpeed(event.currentTarget.playbackRate)}
         onEnded={event => { setPlaying(false); saveProgress(path, event.currentTarget.duration, event.currentTarget.duration); }}
         onError={() => {
+          if (source?.kind !== "origin") { if (!hlsRef.current) setPhase("failed"); return; } // hls.js reports its own errors
+          if (cloudInfo) { originFailed(); return; }
           if (url !== fallback) { setUrl(fallback); setPhase("loading"); setWaiting(true); progressAt.current = performance.now(); }
           else setPhase("failed");
         }}
@@ -353,7 +467,7 @@ export function VideoPlayer({ path, src, fallback, thumb, chrome, onAspect, onDo
             initial={{ opacity: 0 }} animate={{ opacity: 1, transition: { delay: 0.25 } }} exit={{ opacity: 0 }}>
             <div className="flex flex-col items-center gap-3 text-white">
               <span className="loader-bars" aria-hidden><i /><i /><i /><i /></span>
-              <p className="text-[12.5px] text-white/60">{time > 0 ? "缓冲中" : duration ? "正在缓冲" : "正在连接网盘"}</p>
+              <p className="text-[12.5px] text-white/60">{!source ? "正在准备播放" : time > 0 ? "缓冲中" : duration ? "正在缓冲" : "正在连接网盘"}</p>
             </div>
           </motion.div>
         )}
@@ -402,6 +516,11 @@ export function VideoPlayer({ path, src, fallback, thumb, chrome, onAspect, onDo
                   ? "多半是 H.265 这类浏览器解不了的编码。换个播放器打开，画质也更好。"
                   : "网盘传得慢，或者浏览器解不了这个编码（4K、H.265 常见）。可以继续等，也可以换个播放器。"}
               </p>
+              {cloudInfo && source?.kind === "origin" && (
+                <button className="btn btn-primary mt-4 w-full" onClick={() => switchTo({ kind: "cloud", quality: bestCloud(cloudInfo.qualities) })}>
+                  <PlayIcon size={15} weight="fill" />用网盘云端 {bestCloud(cloudInfo.qualities).name} 播放
+                </button>
+              )}
               <div className="mt-4 flex flex-wrap justify-center gap-2">
                 {players.map(player => (
                   <a key={player.label} href={player.href} className="rounded-full bg-white/12 px-3.5 py-1.5 text-[13px] font-medium transition-colors hover:bg-white/20">{player.label}</a>
@@ -420,7 +539,16 @@ export function VideoPlayer({ path, src, fallback, thumb, chrome, onAspect, onDo
       </AnimatePresence>
 
       <AnimatePresence>
-        {resumed > 0 && (
+        {notice && (
+          <motion.div key="notice" className="absolute left-1/2 top-3 z-[1] -translate-x-1/2 whitespace-nowrap rounded-full bg-black/65 px-3.5 py-1.5 text-[13px] text-white backdrop-blur-xl"
+            initial={{ opacity: 0, y: -12, scale: 0.9 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: -8 }} transition={spring.bouncy}>
+            {notice}
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {resumed > 0 && !notice && (
           <motion.div key="resume" className="absolute left-1/2 top-3 flex -translate-x-1/2 items-center gap-1 rounded-full bg-black/60 py-1 pl-3.5 pr-1 text-[13px] text-white backdrop-blur-xl"
             initial={{ opacity: 0, y: -12, scale: 0.9 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: -8 }} transition={spring.bouncy}>
             <span className="tabular">从 {formatClock(resumed)} 继续</span>
@@ -459,9 +587,39 @@ export function VideoPlayer({ path, src, fallback, thumb, chrome, onAspect, onDo
               {formatClock(time)}<span className="text-white/45"> / {duration ? formatClock(duration) : "--:--"}</span>
             </span>
             <span className="flex-1" />
-            {size && <span className="mr-1 rounded-md bg-white/10 px-1.5 py-0.5 font-mono text-[10.5px] text-white/70 max-sm:hidden">{size.split("×")[1]}p</span>}
+            {cloudInfo ? (
+              <div className="relative">
+                <motion.button type="button" whileTap={{ scale: 0.9 }} onClick={() => { setQualityMenu(open => !open); setSpeedMenu(false); }} aria-label="清晰度"
+                  className="flex h-9 items-center gap-1.5 rounded-full px-2.5 text-[12.5px] font-medium text-white transition-colors hover:bg-white/12">
+                  {source?.kind === "cloud" && <span className="size-1.5 rounded-full bg-accent" aria-hidden />}
+                  {source?.kind === "cloud" ? source.quality.name : "原画"}
+                </motion.button>
+                <AnimatePresence>
+                  {qualityMenu && (
+                    <motion.div className="absolute bottom-11 right-0 w-44 overflow-hidden rounded-[12px] bg-black/80 p-1 backdrop-blur-xl" style={{ boxShadow: "inset 0 0 0 1px rgb(255 255 255 / 0.1)", transformOrigin: "100% 100%" }}
+                      initial={{ opacity: 0, scale: 0.85, y: 6 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.9 }} transition={spring.snappy}>
+                      <p className="px-3 pb-1 pt-1.5 text-[11px] text-white/45">网盘云端转码</p>
+                      {[...cloudInfo.qualities].sort((a, b) => b.height - a.height).map(q => {
+                        const active = source?.kind === "cloud" && source.quality.id === q.id;
+                        return (
+                          <button key={q.id} className={`flex w-full items-center justify-between rounded-[8px] px-3 py-1.5 text-left text-[13px] hover:bg-white/12 ${active ? "text-accent" : "text-white"}`}
+                            onClick={() => { if (!active) switchTo({ kind: "cloud", quality: q }); else setQualityMenu(false); }}>
+                            {q.name}<span className="font-mono text-[11px] text-white/40">{(q.bandwidth / 1e6).toFixed(1)}M</span>
+                          </button>
+                        );
+                      })}
+                      <div className="mx-2 my-1 h-px bg-white/10" />
+                      <button className={`flex w-full items-center justify-between rounded-[8px] px-3 py-1.5 text-left text-[13px] hover:bg-white/12 ${source?.kind === "origin" ? "text-accent" : "text-white"}`}
+                        onClick={() => { if (source?.kind !== "origin") switchTo({ kind: "origin" }); else setQualityMenu(false); }}>
+                        原画<span className="text-[11px] text-white/40">原文件</span>
+                      </button>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
+            ) : size ? <span className="mr-1 rounded-md bg-white/10 px-1.5 py-0.5 font-mono text-[10.5px] text-white/70 max-sm:hidden">{size.split("×")[1]}p</span> : null}
             <div className="relative">
-              <motion.button type="button" whileTap={{ scale: 0.9 }} onClick={() => setSpeedMenu(open => !open)} aria-label="播放速度"
+              <motion.button type="button" whileTap={{ scale: 0.9 }} onClick={() => { setSpeedMenu(open => !open); setQualityMenu(false); }} aria-label="播放速度"
                 className={`h-9 rounded-full px-2.5 font-mono text-[12.5px] font-medium transition-colors hover:bg-white/12 ${speed !== 1 ? "text-accent" : "text-white"}`}>
                 {speed}×
               </motion.button>

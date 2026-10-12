@@ -9,6 +9,8 @@ import { spring } from "../../lib/motion";
 import type { DriverInfo, Storage } from "../../lib/types";
 import { toast } from "../../stores/toast";
 import { coerce, Field, PageHeader, type FieldSpec } from "./Form";
+import { ErrorState } from "../../components/ErrorState";
+import { reason } from "../../lib/errors";
 
 type Values = Record<string, unknown>;
 
@@ -161,7 +163,7 @@ export default function Storages() {
       </PageHeader>
 
       {query.isPending && <div className="space-y-2">{[0, 1, 2].map(i => <div key={i} className="skeleton h-[72px] rounded-[var(--radius-tile)]" />)}</div>}
-      {query.isError && <p className="text-danger">{query.error.message}</p>}
+      {query.isError && <ErrorState error={query.error} onRetry={() => query.refetch()} />}
       <motion.ul layout className="flex flex-col gap-2">
         <AnimatePresence initial={false}>
           {list.map((storage, index) => (
@@ -176,7 +178,7 @@ export default function Storages() {
                   <span className="shrink-0 rounded-md px-1.5 py-0.5 text-[11.5px] font-normal text-muted hairline">{storage.driver}</span>
                 </p>
                 <p className={`mt-0.5 truncate text-[12.5px] ${storage.status !== "work" && !storage.disabled ? "text-danger" : "text-muted"}`}>
-                  {storage.disabled ? "已停用" : storage.status === "work" ? `正常，${formatDate(storage.modified)}更新` : <><WarningCircleIcon size={13} className="mr-1 inline" />{storage.status}</>}
+                  {storage.disabled ? "已停用" : storage.status === "work" ? `正常，${formatDate(storage.modified)}更新` : <><WarningCircleIcon size={13} className="mr-1 inline" /><span title={storage.status}>{reason(storage.status)}</span></>}
                   {storage.remark ? `，${storage.remark}` : ""}
                 </p>
               </div>

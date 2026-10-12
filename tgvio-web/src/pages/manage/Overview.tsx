@@ -10,6 +10,7 @@ import { spring } from "../../lib/motion";
 import type { RecycleItem } from "../../lib/types";
 import { toast } from "../../stores/toast";
 import { PageHeader } from "./Form";
+import { ErrorState } from "../../components/ErrorState";
 
 function Quota({ used, total }: { used: number; total: number }) {
   const fraction = total ? used / total : 0;
@@ -50,7 +51,7 @@ function Recycle() {
   const chosen = items.filter(item => selected.has(item.id));
   const bytes = chosen.reduce((sum, item) => sum + item.size, 0);
   const toggle = (item: RecycleItem): void => setSelected(state => { const next = new Set(state); if (next.has(item.id)) next.delete(item.id); else next.add(item.id); return next; });
-  if (query.isError) return <p className="text-[13px] text-muted">回收站不可用：{query.error.message}</p>;
+  if (query.isError) return <ErrorState compact error={query.error} title="回收站暂时打不开" onRetry={() => query.refetch()} />;
   return (
     <section>
       <div className="mb-3 flex flex-wrap items-center justify-between gap-3">

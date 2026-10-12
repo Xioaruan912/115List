@@ -3,7 +3,10 @@ import { useQuery } from "@tanstack/react-query";
 import { AnimatePresence, LayoutGroup, motion, useAnimate } from "motion/react";
 import { lazy, Suspense, useEffect, useMemo, useState, type CSSProperties, type FormEvent } from "react";
 import { Link, useLocation, useSearch } from "wouter";
+import { cloudVideoInShare } from "../api/fs";
 import { shareFileUrl, visit } from "../api/share";
+import { VideoPlayer } from "../components/VideoPlayer";
+import { copyText } from "../lib/links";
 import { KindIcon } from "../components/KindIcon";
 import { Mark } from "../components/Mark";
 import { PosterWall } from "../components/PosterWall";
@@ -16,6 +19,8 @@ import { decodePath, encodePath, join, segments } from "../lib/path";
 import { sortObjs } from "../lib/sort";
 import type { Obj } from "../lib/types";
 import { useSession } from "../stores/session";
+import { ErrorState } from "../components/ErrorState";
+import { explain } from "../lib/errors";
 
 const Markdown = lazy(() => import("../components/Markdown"));
 
@@ -75,7 +80,16 @@ function Gate({ title, initial, failures, busy, onSubmit }: { title: string; ini
 
 /* -------------------------------------------------------------- lightbox */
 
-function Lightbox({ obj, url, onClose }: { obj: Obj; url: string; onClose: () => void }) {
+/** A video in a share: the same player as inside the drive, cloud versions included. */
+function ShareVideo({ obj, url, share }: { obj: Obj; url: string; share: { sid: string; code: string; path: string } }) {
+  return (
+    <VideoPlayer path={`share:${share.sid}${share.path}`} src={url} fallback={url} thumb={obj.thumb}
+      cloud={() => cloudVideoInShare(share.sid, share.code, share.path)}
+      onDownload={() => { location.href = url; }} onCopy={() => void copyText(new URL(url, location.href).href)} />
+  );
+}
+
+function Lightbox({ obj, url, share, onClose }: { obj: Obj; url: string; share: { sid: string; code: string; path: string }; onClose: () => void }) {
   const kind = kindOf(obj);
   useEffect(() => {
     const onKey = (event: KeyboardEvent): void => { if (event.key === "Escape") onClose(); };
@@ -87,7 +101,7 @@ function Lightbox({ obj, url, onClose }: { obj: Obj; url: string; onClose: () =>
       <motion.div className="absolute inset-0 bg-black/85 backdrop-blur-xl" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={onClose} />
       <motion.div layoutId={`share-${obj.name}`} className="relative max-h-full w-full max-w-5xl overflow-hidden rounded-[18px] bg-black" transition={spring.soft}>
         {kind === "image" && <img src={url} alt={obj.name} referrerPolicy="no-referrer" className="mx-auto max-h-[80dvh] object-contain" />}
-        {kind === "video" && <video src={url} poster={obj.thumb || undefined} controls autoPlay playsInline className="max-h-[80dvh] w-full bg-black" />}
+        {kind === "video" && <div className="relative aspect-video max-h-[80dvh] w-full"><ShareVideo obj={obj} url={url} share={share} /></div>}
         {kind === "audio" && <div className="p-8"><p className="mb-4 truncate text-white">{obj.name}</p><audio src={url} controls autoPlay className="w-full" /></div>}
       </motion.div>
       <motion.div className="relative mt-3 flex items-center gap-2" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0, transition: { delay: 0.15 } }} exit={{ opacity: 0 }}>
@@ -121,12 +135,12 @@ function Tile({ obj, index, url, onOpen }: { obj: Obj; index: number; url: strin
   return <a className={className} style={style} href={url} download={obj.name}>{body}</a>;
 }
 
-function Single({ obj, url }: { obj: Obj; url: string }) {
+function Single({ obj, url, share }: { obj: Obj; url: string; share: { sid: string; code: string; path: string } }) {
   const kind = kindOf(obj);
   return (
     <div className="flex flex-col gap-5">
       {kind === "image" && <img src={url} alt={obj.name} referrerPolicy="no-referrer" className="max-h-[62dvh] w-full rounded-[14px] bg-black object-contain" />}
-      {kind === "video" && <video src={url} poster={obj.thumb || undefined} controls playsInline className="max-h-[62dvh] w-full rounded-[14px] bg-black" />}
+      {kind === "video" && <div className="relative aspect-video w-full overflow-hidden rounded-[14px]"><ShareVideo obj={obj} url={url} share={share} /></div>}
       {kind === "audio" && <audio src={url} controls className="w-full" />}
       {kind !== "image" && kind !== "video" && kind !== "audio" && (
         <motion.span className="grid size-24 place-items-center self-start rounded-[22px] bg-white/[0.05] text-accent" initial={{ rotate: -14, scale: 0.6 }} animate={{ rotate: 0, scale: 1 }} transition={{ ...spring.bouncy, delay: 0.5 }}>
@@ -207,7 +221,7 @@ export function SharePage() {
                 <LinkBreakIcon size={30} />
               </motion.span>
               <h1 className="text-[26px] font-semibold tracking-tight text-white">链接已失效</h1>
-              <p className="text-white/60">{/expired|no longer valid/i.test(info.error.message) ? "分享已过期，或访问次数已经用完。" : /not exist/i.test(info.error.message) ? "这个分享不存在，可能已被删除。" : info.error.message}</p>
+              <p className="text-white/60">{/expired|no longer valid/i.test(info.error.message) ? "分享已过期，或访问次数已经用完。" : /not exist/i.test(info.error.message) ? "这个分享不存在，可能已被删除。" : explain(info.error).hint}</p>
             </motion.div>
           )}
           {info.data && (
@@ -234,13 +248,13 @@ export function SharePage() {
                 )}
               </div>
               <div className="px-3 pb-6 sm:px-6 sm:pb-8">
-                {!isDir && <div className="px-2"><Single obj={info.data} url={info.data.raw_url || shareFileUrl(sid, path, code)} /></div>}
+                {!isDir && <div className="px-2"><Single obj={info.data} url={info.data.raw_url || shareFileUrl(sid, path, code)} share={{ sid, code, path }} /></div>}
                 {isDir && list.isPending && (
                   <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-5">
                     {Array.from({ length: 10 }, (_, i) => <div key={i} className="enter p-1.5" style={{ "--i": i } as CSSProperties}><div className="aspect-[4/3] rounded-[12px] bg-white/[0.05]" /><div className="mt-2 h-3.5 w-2/3 rounded bg-white/[0.06]" /></div>)}
                   </div>
                 )}
-                {isDir && list.isError && <p className="px-2 text-danger">{list.error.message}</p>}
+                {isDir && list.isError && <ErrorState className="mx-2" error={list.error} onRetry={() => list.refetch()} />}
                 {isDir && list.data && items.length === 0 && <p className="px-2 text-white/55">这个文件夹是空的。</p>}
                 {isDir && items.length > 0 && (
                   <LayoutGroup>
@@ -251,7 +265,7 @@ export function SharePage() {
                       })}
                     </div>
                     <AnimatePresence>
-                      {open && <Lightbox key={open.name} obj={open} url={shareFileUrl(sid, join(path, open.name), code)} onClose={() => setOpen(null)} />}
+                      {open && <Lightbox key={open.name} obj={open} url={shareFileUrl(sid, join(path, open.name), code)} share={{ sid, code, path: join(path, open.name) }} onClose={() => setOpen(null)} />}
                     </AnimatePresence>
                   </LayoutGroup>
                 )}

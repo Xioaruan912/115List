@@ -8,6 +8,7 @@ import { SplitText } from "../components/SplitText";
 import { ApiError } from "../lib/api";
 import { spring } from "../lib/motion";
 import { useSession } from "../stores/session";
+import { reason } from "../lib/errors";
 
 export function Login() {
   const signIn = useSession(state => state.signIn);
@@ -38,7 +39,7 @@ export function Login() {
       if (err instanceof ApiError && err.code === 402) { setNeedOtp(true); setError(otp ? "两步验证码不正确" : "请输入两步验证码"); }
       else if (err instanceof ApiError && err.code === 429) setError("尝试次数过多，请稍后再试");
       else if (err instanceof ApiError && (err.code === 400 || err.code === 401)) setError("用户名或密码不正确");
-      else setError(err instanceof Error ? err.message : String(err));
+      else setError(reason(err));
       shake();
     }
   };

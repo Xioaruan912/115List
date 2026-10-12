@@ -7,6 +7,7 @@ import type { SettingItem } from "../../lib/types";
 import { useSession } from "../../stores/session";
 import { toast } from "../../stores/toast";
 import { Field, PageHeader } from "./Form";
+import { ErrorState } from "../../components/ErrorState";
 
 const GROUPS: [number, string][] = [[1, "站点"], [2, "样式"], [3, "预览"], [4, "全局"], [11, "流量"], [6, "索引"], [5, "离线下载"], [7, "单点登录"], [8, "LDAP"], [9, "S3"], [10, "FTP"]];
 
@@ -41,7 +42,7 @@ function Group({ group }: { group: number }) {
     setBusy(false);
   };
   if (query.isPending) return <div className="space-y-3">{[0, 1, 2, 3].map(i => <div key={i} className="skeleton h-16 rounded-xl" />)}</div>;
-  if (query.isError) return <p className="text-danger">{query.error.message}</p>;
+  if (query.isError) return <ErrorState error={query.error} onRetry={() => query.refetch()} />;
   return (
     <div>
       <div className="grid gap-5">
