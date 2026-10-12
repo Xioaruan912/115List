@@ -180,7 +180,7 @@ func Static(r *gin.RouterGroup, noRoute func(handlers ...gin.HandlerFunc)) {
 	siteConfig := getSiteConfig()
 	initStatic()
 	initIndex(siteConfig)
-	folders := []string{"assets", "images", "streamer", "static"}
+	folders := staticFolders
 
 	if conf.Conf.Cdn == "" {
 		utils.Log.Debug("Setting up static file serving...")
@@ -215,7 +215,11 @@ func Static(r *gin.RouterGroup, noRoute func(handlers ...gin.HandlerFunc)) {
 			c.Status(405)
 			return
 		}
+		if serveMissingAsset(c) {
+			return
+		}
 		c.Header("Content-Type", "text/html")
+		c.Header("Cache-Control", "no-cache")
 		c.Status(200)
 		if strings.HasPrefix(c.Request.URL.Path, "/@manage") {
 			_, _ = c.Writer.WriteString(conf.ManageHtml)

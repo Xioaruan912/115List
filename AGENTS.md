@@ -58,3 +58,44 @@ Examples:
 If you are not one of the listed assistants, do not add a `Co-authored-by` trailer.
 
 Instead, ask the human collaborator to provide the exact `Co-authored-by` trailer to use. Do not invent, infer, or generate one yourself.
+
+## TGVIO Front End (`tgvio-web/`)
+
+This fork embeds its own front end instead of OpenList-Frontend. Read `tgvio-web/README.md` for the code map and `tgvio/README.md` for build and deploy. The design rules below are the contract; keep new screens consistent with them.
+
+### 定位
+
+一个人用的私人片库与网盘：主要内容是短视频和图片，在 iPhone 和桌面浏览器上都要顺手。界面要像“影院”而不是“后台”：内容（封面）是主角，界面退后；动效要多、要有电影感，但任何时候都不能卡。设计参数：变化度 5、动效 9、密度 6。
+
+### 视觉系统
+
+- 一块近黑底（`#0c0c0d`）或冷灰底（浅色），一个强调色：酸橙绿 `--accent`。强调色只用于焦点、进度、主按钮和选中，不做装饰；危险操作用 `--danger`。不要紫蓝渐变、外发光、渐变大字。
+- 层次靠字号、字重、留白和 1px 发丝线（`hairline`），少用卡片和阴影；需要浮起的东西（Dock、菜单、面板）才用 `glass` 和 `--shadow-float`。
+- 字体 Geist / Geist Mono（自托管）；数字用等宽数字（`tabular`）。大标题紧字距（-0.04em）。
+- 圆角固定三档：控件 10、卡片 14、面板 22，胶囊只用于开关和徽标。
+- 图标只用 Phosphor（`XxxIcon` 命名），不手画 SVG。不用 emoji，界面文字用中文，不用破折号（em dash）。
+- 深浅主题都要能用，默认跟随系统；登录页固定深色（`.theme-dark` 局部作用域）。
+- 片库是成人内容：封面默认模糊（悬停或长按显示），登录前的页面不展示任何网盘内容（登录海报墙由代码绘制）。
+
+### 动效原则
+
+- 动效表达空间关系，而不是装饰：进入文件夹是从点击处“推进”，返回是“拉远”（`Stage`）；预览从缩略图原位放大，关闭时缩回当前文件的格子（`Viewer`）；删除、排序、重命名、捏合换列时其余文件滑向新位置（`lib/flip.ts`）；Dock 在有选择时变形为操作栏；搜索框展开成搜索面板；主题从点击处扩散。
+- 一律弹簧（`lib/motion.ts` 的预设），时长型动画用 expo 缓出。按下有回弹（scale 0.92 到 0.97）。
+- 只动 transform 和 opacity。连续值（指针位置、拖拽、滚动、下拉距离）用 Motion 的 motion value，不进 React state；不要监听 window scroll。
+- 大列表靠虚拟滚动（`@tanstack/react-virtual`，必须 `useFlushSync: false`），格子 `memo`，入场动画用 CSS 关键帧和 `--i` 错峰，只有首屏错峰。
+- 一直在动的东西要自我保护：登录海报墙先测帧率，撑不住就停下来（`useCanDrift`）。颗粒只放在固定层上。
+- `prefers-reduced-motion` 时所有动效关闭（`MotionConfig reducedMotion="user"` 加 CSS 媒体查询），功能不受影响。
+
+### 交互模型
+
+- 桌面：悬停显示次要按钮和光斑，右键菜单、框选、Shift 连选、拖到文件夹或面包屑移动、键盘（`/` 搜索、Backspace 上一级、Ctrl A、Delete、F2）。
+- 手机：长按进入多选（多选中再长按出菜单），菜单一律底部操作表，双指捏合 2/3/4 列，下拉刷新，面板可下滑关闭，输入框 16px，悬停才有的按钮在触屏上隐藏。
+- 每个状态都要设计：骨架屏加载、空文件夹给出下一步、错误就地显示并可重试、需要密码的文件夹给内联表单、操作结果用 toast（可横滑关闭）。
+- 操作先改本地缓存让界面立刻动起来，再后台向服务器重读；失败要回滚并提示。
+
+### 工程约束
+
+- 只调用 OpenList HTTP API，不依赖官方前端代码。新接口加在 `src/api/`，类型在 `src/lib/types.ts`。
+- 115 有风控：不要增加列表请求。悬停预取同时最多一个，且只取未缓存的目录。
+- 站点在 Cloudflare 后面：页面 HTML 是 `no-cache`，`/api` 是 `no-store`，缺失的静态资源返回 404（`server/static/tgvio_cache.go`）；构建会把最近 6 次构建的哈希资源一起嵌入，旧页面不至于白屏。
+- 改完先在本机测试实例 `/root/dev/oltest`（端口 5299，本地存储）上用 Playwright 走一遍桌面和手机流程并截图（`/root/dev/shots/olshot*.sh`），看帧时间，再用 `tgvio/upgrade.sh` 上线。

@@ -29,6 +29,13 @@ rm -rf "$repo/public/dist" && mkdir -p "$repo/public/dist"
 case "$ui" in
     tgvio)
         (cd "$repo/tgvio-web" && npm ci --no-audit --no-fund --loglevel=error && npm run check)
+        # Keep the hashed assets of the last few builds too: a CDN or browser still
+        # holding an older index.html then loads that version instead of a blank page.
+        history="$out/web/tgvio-assets"
+        mkdir -p "$history/$commit" && cp -r "$repo/tgvio-web/dist/assets/." "$history/$commit/"
+        mkdir -p "$repo/public/dist/assets"
+        for old in $(ls -1t "$history" | head -n 6); do cp -rn "$history/$old/." "$repo/public/dist/assets/"; done
+        ls -1t "$history" | tail -n +7 | while read -r gone; do rm -r -- "${history:?}/$gone"; done
         cp -r "$repo/tgvio-web/dist/." "$repo/public/dist/"
         label="tgvio-web-$commit"
         ;;
