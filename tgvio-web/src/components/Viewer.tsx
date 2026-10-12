@@ -1,6 +1,6 @@
 import {
   ArrowSquareOutIcon, CaretLeftIcon, DotsThreeIcon, CaretRightIcon, DownloadSimpleIcon, InfoIcon, LinkIcon, MagnifyingGlassMinusIcon,
-  MagnifyingGlassPlusIcon, PlayIcon, ShareNetworkIcon, TrashIcon, XIcon,
+  MagnifyingGlassPlusIcon, ShareNetworkIcon, TrashIcon, XIcon,
 } from "@phosphor-icons/react";
 import { useQuery } from "@tanstack/react-query";
 import { animate, AnimatePresence, motion, useMotionValue, useTransform, type MotionValue, type PanInfo } from "motion/react";
@@ -11,8 +11,7 @@ import { useIsMobile } from "../hooks/useMedia";
 import * as actions from "../lib/actions";
 import { formatBytes, formatDate } from "../lib/format";
 import { galleryKind, kindOf, type Kind } from "../lib/kind";
-import { absolute, downloadUrl, proxyUrl } from "../lib/links";
-import { formatClock, resumeAt, saveProgress } from "../lib/progress";
+import { downloadUrl, proxyUrl } from "../lib/links";
 import { spring } from "../lib/motion";
 import { extname, join } from "../lib/path";
 import { can, Perm } from "../lib/perm";
@@ -23,6 +22,7 @@ import { useSession } from "../stores/session";
 import { rectOf, useUi, type Rect } from "../stores/ui";
 import { ArchiveView } from "./ArchiveView";
 import { KindIcon } from "./KindIcon";
+import { VideoPlayer } from "./VideoPlayer";
 import { Menu } from "./Menu";
 
 const Markdown = lazy(() => import("./Markdown"));
@@ -107,183 +107,6 @@ function ImageView({ src, fallback, thumb, zoom, panX, panY, onAspect }: {
       {!loaded && !failed && <div className="absolute inset-0 grid place-items-center"><span className="spin size-6 rounded-full border-2 border-white/20 border-t-white/80" /></div>}
       {failed && <div className="absolute inset-0 grid place-items-center text-white/70">图片加载失败</div>}
     </motion.div>
-  );
-}
-
-/** Hand-off links for players that take a URL, per platform. */
-function externalPlayers(url: string): { label: string; href: string }[] {
-  const ua = navigator.userAgent;
-  const encoded = encodeURIComponent(url);
-  if (/iPhone|iPad|iPod/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1)) {
-    return [
-      { label: "Infuse", href: `infuse://x-callback-url/play?url=${encoded}` },
-      { label: "nPlayer", href: `nplayer-${url}` },
-      { label: "VLC", href: `vlc-x-callback://x-callback-url/stream?url=${encoded}` },
-    ];
-  }
-  if (/Android/.test(ua)) {
-    return [
-      { label: "VLC", href: `intent:${url}#Intent;package=org.videolan.vlc;type=video/*;end` },
-      { label: "MX Player", href: `intent:${url}#Intent;package=com.mxtech.videoplayer.ad;type=video/*;end` },
-      { label: "其他播放器", href: `intent:${url}#Intent;type=video/*;end` },
-    ];
-  }
-  if (/Macintosh/.test(ua)) {
-    return [{ label: "IINA", href: `iina://weblink?url=${encoded}` }, { label: "VLC", href: `vlc://${url}` }];
-  }
-  return [{ label: "PotPlayer", href: `potplayer://${url}` }, { label: "VLC", href: `vlc://${url}` }];
-}
-
-type VideoPhase = "loading" | "playing" | "paused" | "blocked" | "failed" | "silent";
-
-function VideoView({ path, src, fallback, thumb, onAspect, onDownload, onCopy }: {
-  path: string;
-  src: string;
-  fallback: string;
-  thumb: string;
-  onAspect: (aspect: number) => void;
-  onDownload: () => void;
-  onCopy: () => void;
-}) {
-  const ref = useRef<HTMLVideoElement>(null);
-  const [url, setUrl] = useState(src);
-  const [phase, setPhase] = useState<VideoPhase>("loading");
-  const [slow, setSlow] = useState(false);
-  const [resumed, setResumed] = useState(0);
-  const saved = useRef(0);
-
-  // The 115 link is fetched on the first request and can take several seconds:
-  // say so instead of showing an empty frame.
-  useEffect(() => {
-    if (phase !== "loading") { setSlow(false); return; }
-    const timer = window.setTimeout(() => setSlow(true), 1800);
-    return () => clearTimeout(timer);
-  }, [phase]);
-
-  // Start inside the tap that opened the viewer, so iOS treats it as user initiated.
-  useEffect(() => {
-    const video = ref.current;
-    if (!video) return;
-    video.play().catch((error: unknown) => {
-      if (error instanceof DOMException && error.name === "NotAllowedError") setPhase(state => state === "failed" ? state : "blocked");
-    });
-  }, [url]);
-
-  useEffect(() => () => {
-    const video = ref.current;
-    if (video && video.currentTime > 0) saveProgress(path, video.currentTime, video.duration);
-  }, [path]);
-
-  useEffect(() => {
-    if (!resumed) return;
-    const timer = window.setTimeout(() => setResumed(0), 5200);
-    return () => clearTimeout(timer);
-  }, [resumed]);
-
-  const play = (): void => { void ref.current?.play().catch(() => setPhase("blocked")); };
-  const players = externalPlayers(absolute(src));
-  const showPoster = phase === "loading" || phase === "blocked" || phase === "failed";
-
-  return (
-    <div className="absolute inset-0 bg-[#060607]">
-      <video
-        ref={ref}
-        src={url}
-        controls={phase !== "failed"}
-        playsInline
-        preload="metadata"
-        className="absolute inset-0 size-full object-contain"
-        onLoadedMetadata={event => {
-          const v = event.currentTarget;
-          if (v.videoWidth) onAspect(v.videoWidth / v.videoHeight);
-          const at = resumeAt(path);
-          if (at && v.currentTime < 1) { v.currentTime = at; setResumed(at); }
-        }}
-        onPlaying={event => setPhase(event.currentTarget.videoWidth === 0 ? "silent" : "playing")}
-        onPause={event => { setPhase(state => state === "failed" ? state : "paused"); saveProgress(path, event.currentTarget.currentTime, event.currentTarget.duration); }}
-        onWaiting={() => setPhase(state => state === "playing" ? state : state === "failed" ? state : "loading")}
-        onTimeUpdate={event => {
-          const v = event.currentTarget;
-          if (Math.abs(v.currentTime - saved.current) < 4) return;
-          saved.current = v.currentTime;
-          saveProgress(path, v.currentTime, v.duration);
-        }}
-        onEnded={event => saveProgress(path, event.currentTarget.duration, event.currentTarget.duration)}
-        onError={() => {
-          if (url !== fallback) { setUrl(fallback); setPhase("loading"); }
-          else setPhase("failed");
-        }}
-      />
-
-      <AnimatePresence>
-        {showPoster && (
-          <motion.div key="cover" className="pointer-events-none absolute inset-0 overflow-hidden" initial={{ opacity: 1 }} exit={{ opacity: 0, transition: { duration: 0.5 } }}>
-            {thumb && <img src={thumb} alt="" referrerPolicy="no-referrer" className="absolute inset-0 size-full scale-110 object-cover opacity-50 blur-2xl" />}
-            <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,transparent_0%,rgb(6_6_7/0.75)_80%)]" />
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      <AnimatePresence mode="wait">
-        {phase === "loading" && (
-          <motion.div key="loading" className="pointer-events-none absolute inset-0 grid place-items-center text-white"
-            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0, scale: 1.08 }} transition={{ duration: 0.3 }}>
-            <div className="flex flex-col items-center gap-4">
-              <span className="relative grid size-14 place-items-center">
-                <span className="absolute inset-0 rounded-full border-2 border-white/15" />
-                <span className="spin absolute inset-0 rounded-full border-2 border-transparent border-t-accent" />
-                <PlayIcon size={18} weight="fill" className="translate-x-px text-white/80" />
-              </span>
-              <AnimatePresence>
-                {slow && (
-                  <motion.p className="text-[13px] text-white/70" initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
-                    正在向网盘获取播放地址…
-                  </motion.p>
-                )}
-              </AnimatePresence>
-            </div>
-          </motion.div>
-        )}
-        {phase === "blocked" && (
-          <motion.button key="blocked" className="absolute inset-0 grid place-items-center text-white" onClick={play} aria-label="播放"
-            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0, scale: 1.2 }} transition={spring.soft}>
-            <span className="relative grid size-20 place-items-center rounded-full bg-accent text-accent-ink">
-              <span className="absolute inset-0 animate-ping rounded-full bg-accent/40 [animation-duration:1.8s]" />
-              <PlayIcon size={30} weight="fill" className="relative translate-x-0.5" />
-            </span>
-          </motion.button>
-        )}
-        {(phase === "failed" || phase === "silent") && (
-          <motion.div key="failed" className={`absolute inset-x-0 ${phase === "silent" ? "top-0" : "inset-y-0"} grid place-items-center p-4 text-white`}
-            initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} transition={spring.soft}>
-            <div className="w-full max-w-sm rounded-[18px] bg-black/55 p-5 text-center backdrop-blur-xl" style={{ boxShadow: "inset 0 0 0 1px rgb(255 255 255 / 0.1)" }}>
-              <p className="font-semibold">{phase === "silent" ? "只有声音，没有画面" : "浏览器放不了这个视频"}</p>
-              <p className="mt-1.5 text-[13px] leading-relaxed text-white/65">可能是 H.265、MKV 这类浏览器不支持的格式，换个播放器打开就行。</p>
-              <div className="mt-4 flex flex-wrap justify-center gap-2">
-                {players.map(player => (
-                  <a key={player.label} href={player.href} className="rounded-full bg-white/12 px-3.5 py-1.5 text-[13px] font-medium transition-colors hover:bg-white/20">{player.label}</a>
-                ))}
-              </div>
-              <div className="mt-3 flex justify-center gap-1 text-[13px] text-white/75">
-                <button className="rounded-full px-3 py-1.5 hover:bg-white/10" onClick={onDownload}>下载</button>
-                <button className="rounded-full px-3 py-1.5 hover:bg-white/10" onClick={onCopy}>复制链接</button>
-                {phase === "failed" && <button className="rounded-full px-3 py-1.5 hover:bg-white/10" onClick={() => { setUrl(`${src}${src.includes("?") ? "&" : "?"}_=${Date.now()}`); setPhase("loading"); }}>重试</button>}
-              </div>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      <AnimatePresence>
-        {resumed > 0 && (
-          <motion.div key="resume" className="absolute left-1/2 top-4 flex -translate-x-1/2 items-center gap-1 rounded-full bg-black/60 py-1 pl-3.5 pr-1 text-[13px] text-white backdrop-blur-xl"
-            initial={{ opacity: 0, y: -12, scale: 0.9 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: -8 }} transition={spring.bouncy}>
-            <span className="tabular">从 {formatClock(resumed)} 继续</span>
-            <button className="rounded-full px-2.5 py-1 text-accent hover:bg-white/10" onClick={() => { if (ref.current) ref.current.currentTime = 0; setResumed(0); }}>从头播放</button>
-          </motion.div>
-        )}
-      </AnimatePresence>
-    </div>
   );
 }
 
@@ -404,7 +227,8 @@ function ViewerBody({ dir, name, origin }: { dir: string; name: string; origin: 
   const gallery = useMemo(() => files.filter(item => galleryKind(kindOf(item)) === "media"), [files]);
   const strip = media && gallery.length > 1 && gallery.some(item => item.thumb) && !mobile;
   const [aspects, setAspects] = useState<Record<string, number>>({});
-  const aspect = obj ? aspects[obj.name] ?? (origin ? origin.width / origin.height : 16 / 9) : 16 / 9;
+  // Videos start 16:9 (the tile they came from may be a square icon) until the metadata says otherwise.
+  const aspect = obj ? aspects[obj.name] ?? (origin && kind !== "video" ? origin.width / origin.height : 16 / 9) : 16 / 9;
   const box = media ? fit(aspect, vw, vh, mobile, strip) : panelBox(vw, vh, mobile);
 
   const x = useMotionValue(0);
@@ -642,7 +466,7 @@ function ViewerBody({ dir, name, origin }: { dir: string; name: string; origin: 
             onWheel={onWheel}
           >
             {kind === "image" && <ImageView key={obj.name} src={src} fallback={fallback} thumb={obj.thumb} zoom={zoom} panX={panX} panY={panY} onAspect={setAspect} />}
-            {kind === "video" && <VideoView key={obj.name} path={path} src={src} fallback={fallback} thumb={obj.thumb} onAspect={setAspect} onDownload={() => actions.download(dir, obj)} onCopy={() => void actions.copyLinks(dir, [obj])} />}
+            {kind === "video" && <VideoPlayer key={obj.name} path={path} src={src} fallback={fallback} thumb={obj.thumb} chrome={chrome} onAspect={setAspect} onDownload={() => actions.download(dir, obj)} onCopy={() => void actions.copyLinks(dir, [obj])} />}
             {kind === "audio" && <AudioView obj={obj} src={src} />}
             {(kind === "text" || kind === "code" || kind === "markdown") && <TextView obj={obj} url={fallback} kind={kind} />}
             {kind === "archive" && can(me, Perm.ReadArchives) && <ArchiveView dir={dir} obj={obj} />}
