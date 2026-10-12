@@ -180,7 +180,7 @@ func Static(r *gin.RouterGroup, noRoute func(handlers ...gin.HandlerFunc)) {
 	siteConfig := getSiteConfig()
 	initStatic()
 	initIndex(siteConfig)
-	folders := []string{"assets", "images", "streamer", "static"}
+	folders := staticFolders
 
 	if conf.Conf.Cdn == "" {
 		utils.Log.Debug("Setting up static file serving...")
@@ -215,24 +215,11 @@ func Static(r *gin.RouterGroup, noRoute func(handlers ...gin.HandlerFunc)) {
 			c.Status(405)
 			return
 		}
-		// Static files use content-hashed names and must never fall back to the SPA
-		// shell. Returning index.html for a stale chunk URL turns a missing asset
-		// into a misleading 200 response and can keep broken cached deployments
-		// alive in the browser.
-		for _, folder := range folders {
-			if strings.HasPrefix(c.Request.URL.Path, fmt.Sprintf("/%s/", folder)) {
-				c.Status(http.StatusNotFound)
-				return
-			}
+		if serveMissingAsset(c) {
+			return
 		}
-		// The HTML shell contains the hashed asset names for the current frontend
-		// build. Never let browsers heuristically cache it: otherwise an old shell
-		// can keep loading a months-long cached JS chunk even after the server has
-		// deployed a fixed bundle.
-		c.Header("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
-		c.Header("Pragma", "no-cache")
-		c.Header("Expires", "0")
 		c.Header("Content-Type", "text/html")
+		c.Header("Cache-Control", "no-cache")
 		c.Status(200)
 		if strings.HasPrefix(c.Request.URL.Path, "/@manage") {
 			_, _ = c.Writer.WriteString(conf.ManageHtml)

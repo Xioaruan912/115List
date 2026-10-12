@@ -2,21 +2,17 @@ package _115
 
 import (
 	"context"
-	"fmt"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/OpenListTeam/OpenList/v4/internal/driver"
-	"github.com/OpenListTeam/OpenList/v4/internal/errs"
 	"github.com/OpenListTeam/OpenList/v4/internal/model"
-	"github.com/OpenListTeam/OpenList/v4/internal/op"
 	streamPkg "github.com/OpenListTeam/OpenList/v4/internal/stream"
 	"github.com/OpenListTeam/OpenList/v4/pkg/http_range"
 	"github.com/OpenListTeam/OpenList/v4/pkg/utils"
 	driver115 "github.com/SheltonZhu/115driver/pkg/driver"
 	"github.com/pkg/errors"
-	log "github.com/sirupsen/logrus"
 	"golang.org/x/time/rate"
 )
 
@@ -26,39 +22,6 @@ type Pan115 struct {
 	client     *driver115.Pan115Client
 	limiter    *rate.Limiter
 	appVerOnce sync.Once
-}
-
-// multiRootID 多根模式下的虚拟根目录 ID
-const multiRootID = "__multi_root__"
-
-// GetRootId 单根返回真实根 ID；多根返回虚拟根 ID（挂载点显示各所选文件夹）
-func (d *Pan115) GetRootId() string {
-	ids := d.rootIDs()
-	if len(ids) > 1 {
-		return multiRootID
-	}
-	return ids[0]
-}
-
-// GetRoot 多根模式：返回虚拟根 obj，其下列出所有挂载的文件夹
-func (d *Pan115) GetRoot(ctx context.Context) (model.Obj, error) {
-	ids := d.rootIDs()
-	if len(ids) == 1 {
-		return &model.Object{
-			ID:       ids[0],
-			Name:     op.RootName,
-			Modified: d.GetStorage().Modified,
-			IsFolder: true,
-			Mask:     model.Locked,
-		}, nil
-	}
-	return &model.Object{
-		ID:       multiRootID,
-		Name:     op.RootName,
-		Modified: d.GetStorage().Modified,
-		IsFolder: true,
-		Mask:     model.Locked,
-	}, nil
 }
 
 func (d *Pan115) Config() driver.Config {
@@ -78,11 +41,10 @@ func (d *Pan115) Init(ctx context.Context) error {
 }
 
 func (d *Pan115) WaitLimit(ctx context.Context) error {
-	// 代理只改变网络出口，不改变账号级请求预算。
-	if d.limiter == nil {
-		return nil
+	if d.limiter != nil {
+		return d.limiter.Wait(ctx)
 	}
-	return d.limiter.Wait(ctx)
+	return nil
 }
 
 func (d *Pan115) Drop(ctx context.Context) error {
@@ -93,13 +55,8 @@ func (d *Pan115) List(ctx context.Context, dir model.Obj, args model.ListArgs) (
 	if err := d.WaitLimit(ctx); err != nil {
 		return nil, err
 	}
-	// 多根模式：虚拟根下列出所有挂载的文件夹
-	if dir.GetID() == multiRootID {
-		return d.listMultiRoots(ctx)
-	}
 	files, err := d.getFiles(dir.GetID())
 	if err != nil && !errors.Is(err, driver115.ErrNotExist) {
-		MarkStorageError(d.GetStorage().MountPath, err)
 		return nil, err
 	}
 	return utils.SliceConvert(files, func(src FileObj) (model.Obj, error) {
@@ -107,71 +64,21 @@ func (d *Pan115) List(ctx context.Context, dir model.Obj, args model.ListArgs) (
 	})
 }
 
-// 多根虚拟列表缓存（5 分钟），减少 115 API 调用避免触发风控
-var (
-	multiRootCacheMu sync.Mutex
-	multiRootCache   = map[string]multiRootEntry{}
-)
-
-type multiRootEntry struct {
-	objs []model.Obj
-	at   time.Time
-}
-
-const multiRootCacheTTL = 5 * time.Minute
-
-// listMultiRoots 列出所有挂载根文件夹（虚拟文件夹，名称取自 115 真实文件夹名）
-func (d *Pan115) listMultiRoots(ctx context.Context) ([]model.Obj, error) {
-	key := d.GetStorage().MountPath
-	multiRootCacheMu.Lock()
-	if e, ok := multiRootCache[key]; ok && time.Since(e.at) < multiRootCacheTTL {
-		multiRootCacheMu.Unlock()
-		return e.objs, nil
-	}
-	multiRootCacheMu.Unlock()
-
-	var objs []model.Obj
-	for _, id := range d.rootIDs() {
-		f, err := d.getNewFile(id)
-		if err != nil {
-			MarkStorageError(d.GetStorage().MountPath, err)
-			log.Warnf("115 get multi root [%s] failed: %v", id, err)
-			// 任一根获取失败：返回错误、不缓存残缺列表。
-			// 否则会缓存"少了某个根"的虚拟根 5 分钟，导致该根下目录
-			// Get 返回 not found，递归 mkdir 误去创建已存在的目录（115 报"名称已存在"）
-			return nil, errors.WithMessagef(err, "115 get multi root [%s] failed", id)
-		}
-		objs = append(objs, &model.Object{
-			ID:       f.GetID(),
-			Name:     f.GetName(),
-			Modified: f.ModTime(),
-			IsFolder: true,
-			Mask:     model.Locked,
-		})
-	}
-	multiRootCacheMu.Lock()
-	multiRootCache[key] = multiRootEntry{objs: objs, at: time.Now()}
-	multiRootCacheMu.Unlock()
-	return objs, nil
-}
-
 func (d *Pan115) Link(ctx context.Context, file model.Obj, args model.LinkArgs) (*model.Link, error) {
-	f, ok := file.(*FileObj)
-	if !ok {
-		// 多根虚拟文件夹等非文件对象不支持生成直链
-		return nil, errors.New("not a file object")
+	if err := d.WaitLimit(ctx); err != nil {
+		return nil, err
 	}
 	userAgent := args.Header.Get("User-Agent")
-	// 优先用 Android 下载接口（proapi.115.com/android），
-	// chrome 接口（app/chrome/downurl）易被 115 风控拦截导致播放/缩略图失败
-	downloadInfo, err := d.client.DownloadWithUAByAndroidAPI(f.PickCode, userAgent)
+	// The Android download API; the chrome downurl API is blocked (405) by the
+	// drive's WAF after a burst of link requests.
+	downloadInfo, err := d.client.DownloadWithUAByAndroidAPI(file.(*FileObj).PickCode, userAgent)
 	if err != nil {
-		MarkStorageError(d.GetStorage().MountPath, err)
 		return nil, err
 	}
 	link := &model.Link{
-		URL:    downloadInfo.Url.Url,
-		Header: downloadInfo.Header,
+		URL:        downloadInfo.Url.Url,
+		Header:     downloadInfo.Header,
+		Expiration: linkExpiration(downloadInfo.Url.Url, time.Now()),
 	}
 	return link, nil
 }
@@ -195,11 +102,6 @@ func (d *Pan115) MakeDir(ctx context.Context, parentDir model.Obj, dirName strin
 
 	err = driver115.CheckErr(err, &result, resp)
 	if err != nil {
-		// 目录已存在（errno 20004 "该目录名称已存在"）映射为标准 ObjectAlreadyExists，
-		// 使 fs 层幂等（如缩略图上传时 _thumbnails 已存在则直接继续）
-		if errors.Is(err, driver115.ErrExist) {
-			return nil, errs.ObjectAlreadyExists
-		}
 		return nil, err
 	}
 	f, err := d.getNewFile(result.FileID)
@@ -251,15 +153,23 @@ func (d *Pan115) Remove(ctx context.Context, obj model.Obj) error {
 	return d.client.Delete(obj.GetID())
 }
 
-func (d *Pan115) Put(ctx context.Context, dstDir model.Obj, stream model.FileStreamer, up driver.UpdateProgress) (obj model.Obj, err error) {
-	// 上传内部（流式读取/签名校验等）异常时兜底为可读错误，避免 panic 导致上传任务异常终止
-	defer func() {
-		if r := recover(); r != nil {
-			err = fmt.Errorf("upload internal error: %v", r)
-			MarkUploadError(d.GetStorage().MountPath, err)
-			RecordActivityWithPath(d.GetStorage().MountPath, ActivityError, ActivityUploadFail, stream.GetName(), "上传内部错误: "+err.Error())
-		}
-	}()
+// BatchRemove deletes several files or folders with one drive call.
+func (d *Pan115) BatchRemove(ctx context.Context, objs []model.Obj) error {
+	if err := d.WaitLimit(ctx); err != nil {
+		return err
+	}
+	ids := make([]string, 0, len(objs))
+	for _, obj := range objs {
+		ids = append(ids, obj.GetID())
+	}
+	return d.client.Delete(ids...)
+}
+
+func (d *Pan115) Put(ctx context.Context, dstDir model.Obj, stream model.FileStreamer, up driver.UpdateProgress) (model.Obj, error) {
+	if err := d.WaitLimit(ctx); err != nil {
+		return nil, err
+	}
+
 	var (
 		fastInfo *driver115.UploadInitResp
 		dirID    = dstDir.GetID()
@@ -302,8 +212,6 @@ func (d *Pan115) Put(ctx context.Context, dstDir model.Obj, stream model.FileStr
 	// note that 115 add timeout for rapid-upload,
 	// and "sig invalid" err is thrown even when the hash is correct after timeout.
 	if fastInfo, err = d.rapidUpload(stream.GetSize(), stream.GetName(), dirID, preHash, fullHash, stream); err != nil {
-		MarkUploadError(d.GetStorage().MountPath, err)
-		RecordActivityWithPath(d.GetStorage().MountPath, ActivityError, ActivityUploadFail, stream.GetName(), "上传失败(秒传): "+err.Error())
 		return nil, err
 	}
 	if matched, err := fastInfo.Ok(); err != nil {
@@ -313,25 +221,26 @@ func (d *Pan115) Put(ctx context.Context, dstDir model.Obj, stream model.FileStr
 		if err != nil {
 			return nil, nil
 		}
-		RecordActivityWithPath(d.GetStorage().MountPath, ActivitySuccess, ActivitySecUpload, stream.GetName(), "秒传成功 "+stream.GetName())
 		return f, nil
 	}
 
 	var uploadResult *UploadResult
-	// 统一使用分片上传：分片路径启用 x-oss-enable-sha1（InitiateMultipartUpload），
-	// 单文件 PutObject 无法开启服务端 SHA-1 计算，回调体 ${sha1} 无法插值 → 115 回调 990005。
-	// 小文件分片为单块（末片允许 <100KB），实测可成功。
-	if uploadResult, err = d.UploadByMultipart(ctx, &fastInfo.UploadOSSParams, stream.GetSize(), stream, dirID, up); err != nil {
-		MarkUploadError(d.GetStorage().MountPath, err)
-		RecordActivityWithPath(d.GetStorage().MountPath, ActivityError, ActivityUploadFail, stream.GetName(), "上传失败: "+err.Error())
-		return nil, err
+	// 闪传失败，上传
+	if stream.GetSize() <= 10*utils.MB { // 文件大小小于10MB，改用普通模式上传
+		if uploadResult, err = d.UploadByOSS(ctx, &fastInfo.UploadOSSParams, stream, dirID, up); err != nil {
+			return nil, err
+		}
+	} else {
+		// 分片上传
+		if uploadResult, err = d.UploadByMultipart(ctx, &fastInfo.UploadOSSParams, stream.GetSize(), stream, dirID, up); err != nil {
+			return nil, err
+		}
 	}
 
 	file, err := d.getNewFile(uploadResult.Data.FileID)
 	if err != nil {
 		return nil, nil
 	}
-	RecordActivityWithPath(d.GetStorage().MountPath, ActivitySuccess, ActivityUploadSuccess, stream.GetName(), "上传成功 "+stream.GetName())
 	return file, nil
 }
 

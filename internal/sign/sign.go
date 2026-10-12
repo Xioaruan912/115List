@@ -31,11 +31,6 @@ func NotExpired(data string) string {
 	return instance.Sign(data, 0)
 }
 
-// SignPath 为文件路径生成下载签名（与 NotExpired 等价，命名更语义化）
-func SignPath(path string) string {
-	return NotExpired(path)
-}
-
 func Verify(data string, sign string) error {
 	once.Do(Instance)
 	return instance.Verify(data, sign)

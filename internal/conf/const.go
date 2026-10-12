@@ -77,9 +77,6 @@ const (
 	// 115
 	Pan115TempDir = "115_temp_dir"
 
-	// 存储驱动显示白名单（"add storage" 下拉仅显示这些类型，逗号分隔；留空显示全部）
-	PanDriversShow = "pan_drivers_show"
-
 	// 123
 	Pan123TempDir = "123_temp_dir"
 
@@ -154,21 +151,6 @@ const (
 	FTPTLSPrivateKeyPath     = "ftp_tls_private_key_path"
 	FTPTLSPublicCertPath     = "ftp_tls_public_cert_path"
 	SFTPDisablePasswordLogin = "sftp_disable_password_login"
-
-	// thumbnails
-	ThumbVideoMaxSize = "thumb_video_max_size"
-	ThumbAudioMaxSize = "thumb_audio_max_size"
-	ThumbImageMaxSize = "thumb_image_max_size"
-	ThumbCacheTTL     = "thumb_cache_ttl"
-	ThumbCacheMaxSize = "thumb_cache_max_size"
-	ThumbCoverNames   = "thumb_cover_names"
-	ThumbDirCover     = "thumb_dir_cover"
-	ThumbPrewarm      = "thumb_prewarm"
-	ThumbAutoUpload   = "thumb_auto_upload"
-	ThumbConcurrency  = "thumb_concurrency"
-	ThumbChunkSize    = "thumb_chunk_size"
-	ThumbWidth        = "thumb_width"
-	ThumbFailTTL      = "thumb_fail_ttl"
 
 	// traffic
 	TaskOfflineDownloadThreadsNum         = "offline_download_task_threads_num"

@@ -36,7 +36,6 @@ func Init(e *gin.Engine) {
 	g.GET("/manifest.json", static.ManifestJSON)
 	g.GET("/i/:link_name", handles.Plist)
 	common.SecretKey = []byte(conf.Conf.JwtSecret)
-	go handles.StartThumbAuto()
 	g.Use(middlewares.StoragesLoaded)
 	if conf.Conf.MaxConnections > 0 {
 		g.Use(middlewares.MaxAllowed(conf.Conf.MaxConnections))
@@ -49,16 +48,8 @@ func Init(e *gin.Engine) {
 	signCheck := middlewares.Down(sign.Verify)
 	g.GET("/d/*path", middlewares.PathParse, signCheck, downloadLimiter, handles.Down)
 	g.GET("/p/*path", middlewares.PathParse, signCheck, downloadLimiter, handles.Proxy)
-	g.GET("/vt/*path", middlewares.PathParse, signCheck, downloadLimiter, handles.VideoThumb)
-	g.GET("/at/*path", middlewares.PathParse, signCheck, downloadLimiter, handles.AudioThumb)
-	g.GET("/it/*path", middlewares.PathParse, signCheck, downloadLimiter, handles.ImageThumb)
-	g.GET("/ct/*path", middlewares.PathParse, signCheck, downloadLimiter, handles.CoverThumb)
 	g.HEAD("/d/*path", middlewares.PathParse, signCheck, handles.Down)
 	g.HEAD("/p/*path", middlewares.PathParse, signCheck, handles.Proxy)
-	g.HEAD("/vt/*path", middlewares.PathParse, signCheck, handles.VideoThumb)
-	g.HEAD("/at/*path", middlewares.PathParse, signCheck, handles.AudioThumb)
-	g.HEAD("/it/*path", middlewares.PathParse, signCheck, handles.ImageThumb)
-	g.HEAD("/ct/*path", middlewares.PathParse, signCheck, handles.CoverThumb)
 	archiveSignCheck := middlewares.Down(sign.VerifyArchive)
 	g.GET("/ad/*path", middlewares.PathParse, archiveSignCheck, downloadLimiter, handles.ArchiveDown)
 	g.GET("/ap/*path", middlewares.PathParse, archiveSignCheck, downloadLimiter, handles.ArchiveProxy)
@@ -76,7 +67,7 @@ func Init(e *gin.Engine) {
 	g.HEAD("/sad/:sid", middlewares.EmptyPathParse, middlewares.SharingIdParse, handles.SharingArchiveExtract)
 	g.HEAD("/sad/:sid/*path", middlewares.PathParse, middlewares.SharingIdParse, handles.SharingArchiveExtract)
 
-	api := g.Group("/api")
+	api := g.Group("/api", static.NoStore)
 	auth := api.Group("", middlewares.Auth(false))
 	webauthn := api.Group("/authn", middlewares.Authn)
 
@@ -91,16 +82,6 @@ func Init(e *gin.Engine) {
 	auth.POST("/auth/2fa/generate", handles.Generate2FA)
 	auth.POST("/auth/2fa/verify", handles.Verify2FA)
 	auth.GET("/auth/logout", handles.LogOut)
-
-	// 115 driver qrcode login
-	auth.GET("/115/qrcode", handles.Driver115QRCode)
-	auth.GET("/115/qrcode/status", handles.Driver115QRCodeStatus)
-	auth.POST("/115/qrcode/login", handles.Driver115QRCodeLogin)
-	auth.POST("/115/root_folders", handles.Driver115RootFolders)
-	auth.POST("/115/list_folders", handles.Driver115ListFolders)
-	auth.POST("/115/check_cookie", handles.Driver115CheckCookie)
-	auth.POST("/115/check_storage", handles.Driver115CheckStorage)
-	auth.GET("/115/storage_health", handles.Driver115StorageHealth)
 
 	// auth
 	api.GET("/auth/sso", handles.SSOLoginRedirect)
@@ -127,6 +108,8 @@ func Init(e *gin.Engine) {
 	_task(auth.Group("/task", middlewares.AuthNotGuest))
 	_sharing(auth.Group("/share", middlewares.AuthNotGuest))
 	admin(auth.Group("/admin", middlewares.AuthAdmin))
+	// TGVIO: process counters and drive quota for monitoring; recycle bin for admins.
+	auth.GET("/tgvio/stats", middlewares.AuthNotGuest, handles.TgvioStats)
 	if flags.Debug || flags.Dev {
 		debug(g.Group("/debug"))
 	}
@@ -136,6 +119,10 @@ func Init(e *gin.Engine) {
 }
 
 func admin(g *gin.RouterGroup) {
+	tgvioAdmin := g.Group("/tgvio")
+	tgvioAdmin.GET("/recycle", handles.TgvioRecycleList)
+	tgvioAdmin.POST("/recycle/clean", handles.TgvioRecycleClean)
+
 	meta := g.Group("/meta")
 	meta.GET("/list", handles.ListMetas)
 	meta.GET("/get", handles.GetMeta)
@@ -163,41 +150,6 @@ func admin(g *gin.RouterGroup) {
 	storage.POST("/enable", handles.EnableStorage)
 	storage.POST("/disable", handles.DisableStorage)
 	storage.POST("/load_all", handles.LoadAllStorages)
-	storage.POST("/check_blocked", handles.CheckStorageBlocked)
-	storage.GET("/logs", handles.GetStorageLogs)
-
-	thumb := g.Group("/thumb")
-	thumb.POST("/generate", handles.ThumbGenerate)
-	thumb.GET("/status", handles.ThumbStatus)
-	thumb.GET("/runtime", handles.ThumbRuntime)
-	thumb.GET("/dirs", handles.ThumbDirs)
-	thumb.GET("/tree", handles.ThumbTree)
-	thumb.GET("/dir", handles.ThumbDir)
-	thumb.GET("/view", handles.ThumbView)
-	thumb.POST("/retry_fails", handles.ThumbRetryFails)
-	thumb.POST("/clear", handles.ThumbClear)
-	thumb.POST("/clear_all", handles.ThumbClearAll)
-	thumb.POST("/clear_fails", handles.ThumbClearFails)
-	thumb.POST("/exclude", handles.ThumbExclude)
-	thumb.POST("/migrate", handles.ThumbMigrate)
-	thumb.POST("/auto", handles.ThumbSetAuto)
-	thumb.POST("/candidates", handles.ThumbCandidates)
-	thumb.GET("/candidates/jobs", handles.ThumbCandidateJobs)
-	thumb.GET("/candidates/status", handles.ThumbCandidateStatus)
-	thumb.POST("/candidates/cancel", handles.ThumbCandidateCancel)
-	thumb.POST("/apply_candidate", handles.ThumbApplyCandidate)
-	thumb.POST("/upload", handles.ThumbUpload)
-	thumb.POST("/upload_all", handles.ThumbUploadAll)
-	thumb.POST("/upload_retry", handles.ThumbUploadRetry)
-	thumb.POST("/upload/pause", handles.ThumbUploadPause)
-	thumb.POST("/upload/resume", handles.ThumbUploadResume)
-	thumb.POST("/upload/clear", handles.ThumbUploadClear)
-	thumb.GET("/upload_status", handles.ThumbUploadStatus)
-	thumb.POST("/delete_folder", handles.ThumbDeleteFolder)
-	thumb.POST("/delete_paths", handles.ThumbDeletePaths)
-	thumb.POST("/queue/pause", handles.ThumbQueuePause)
-	thumb.POST("/queue/resume", handles.ThumbQueueResume)
-	thumb.POST("/queue/clear", handles.ThumbQueueClear)
 
 	driver := g.Group("/driver")
 	driver.GET("/list", handles.ListDriverInfo)
@@ -287,7 +239,7 @@ func _fs(g *gin.RouterGroup) {
 	g.POST("/torrent/rapid_upload", handles.TorrentRapidUpload)
 	g.POST("/torrent/generate", handles.GenerateTorrentForPath)
 	// Direct upload (client-side upload to storage)
-	g.POST("/get_direct_upload_info", middlewares.FsUp, handles.FsGetDirectUploadInfo)
+	g.POST("/get_direct_upload_info", handles.FsGetDirectUploadInfo)
 }
 
 func _task(g *gin.RouterGroup) {

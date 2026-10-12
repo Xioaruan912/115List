@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"regexp"
 	"slices"
-	"time"
 
 	"github.com/OpenListTeam/OpenList/v4/internal/conf"
 	"github.com/OpenListTeam/OpenList/v4/internal/errs"
@@ -185,12 +184,6 @@ func FsBatchRename(c *gin.Context) {
 		return
 	}
 	common.GinAppendValues(c, conf.MetaKey, meta)
-	// 风控防呆：115 风控中禁止批量重命名
-	if blocked, _ := isStorageBlocked(reqPath); blocked {
-		common.ErrorStrResp(c, "115 网盘正在风控保护中，请稍后再试（通常 30-60 分钟）", 429)
-		return
-	}
-	// 限速执行：每文件 2s，防止批量重命名高频调用触发网盘风控
 	for _, renameObject := range req.RenameObjects {
 		if renameObject.SrcName == "" || renameObject.NewName == "" {
 			continue
@@ -209,12 +202,6 @@ func FsBatchRename(c *gin.Context) {
 		if err := fs.Rename(c.Request.Context(), filePath, renameObject.NewName); err != nil {
 			common.ErrorResp(c, err, 500)
 			return
-		}
-		select {
-		case <-c.Request.Context().Done():
-			common.ErrorResp(c, c.Request.Context().Err(), 500)
-			return
-		case <-time.After(2 * time.Second):
 		}
 	}
 	common.SuccessResp(c)
@@ -255,11 +242,6 @@ func FsRegexRename(c *gin.Context) {
 		return
 	}
 	common.GinAppendValues(c, conf.MetaKey, meta)
-	// 风控防呆
-	if blocked, _ := isStorageBlocked(reqPath); blocked {
-		common.ErrorStrResp(c, "115 网盘正在风控保护中，请稍后再试（通常 30-60 分钟）", 429)
-		return
-	}
 
 	srcRegexp, err := regexp.Compile(req.SrcNameRegex)
 	if err != nil {

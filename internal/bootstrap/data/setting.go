@@ -163,7 +163,6 @@ func InitialSettings() []model.SettingItem {
 		{Key: conf.FilterReadMeScripts, Value: "true", Type: conf.TypeBool, Group: model.PREVIEW}, // frontend
 		{Key: conf.NonEFSZipEncoding, Value: "IBM437", Type: conf.TypeString, Group: model.PREVIEW},
 		// global settings
-		{Key: conf.PanDriversShow, Value: "115 网盘,OneDrive,百度网盘,夸克", Type: conf.TypeText, Group: model.GLOBAL, Flag: model.PRIVATE, Help: `仅显示这些存储驱动类型（"添加存储"下拉框），请使用中文驱动名（见 管理-存储 页面的筛选框），逗号分隔；留空则显示全部`},
 		{Key: conf.HideFiles, Value: "/\\/README.md/i", Type: conf.TypeText, Group: model.GLOBAL},
 		{Key: "package_download", Value: "true", Type: conf.TypeBool, Group: model.GLOBAL},
 		{Key: conf.CustomizeHead, MigrationValue: `<script src="https://cdnjs.cloudflare.com/polyfill/v3/polyfill.min.js?features=String.prototype.replaceAll"></script>`, Type: conf.TypeText, Group: model.GLOBAL, Flag: model.PRIVATE},
@@ -189,19 +188,6 @@ func InitialSettings() []model.SettingItem {
 		{Key: conf.HandleHookRateLimit, Value: "0", Type: conf.TypeNumber, Group: model.GLOBAL, Flag: model.PRIVATE},
 		{Key: conf.IgnoreSystemFiles, Value: "false", Type: conf.TypeBool, Group: model.GLOBAL, Flag: model.PRIVATE, Help: `When enabled, ignores common system files during upload (.DS_Store, desktop.ini, Thumbs.db, and files starting with ._)`},
 
-		// thumbnail settings
-		{Key: conf.ThumbVideoMaxSize, Value: "0", Type: conf.TypeNumber, Group: model.PREVIEW, Flag: model.PRIVATE, Help: `max video file size (bytes) to generate thumbnail; 0 = unlimited (thumbnail only downloads 3MB chunks or remote frames, safe for large files)`},
-		{Key: conf.ThumbAudioMaxSize, Value: "52428800", Type: conf.TypeNumber, Group: model.PREVIEW, Flag: model.PRIVATE, Help: `max audio file size (bytes) to extract cover art, default 50MB`},
-		{Key: conf.ThumbImageMaxSize, Value: "20971520", Type: conf.TypeNumber, Group: model.PREVIEW, Flag: model.PRIVATE, Help: `max image file size (bytes) to generate thumbnail, default 20MB`},
-		{Key: conf.ThumbCacheTTL, Value: "30", Type: conf.TypeNumber, Group: model.PREVIEW, Flag: model.PRIVATE, Help: `thumbnail cache expire days, default 30`},
-		{Key: conf.ThumbCacheMaxSize, Value: "2147483648", Type: conf.TypeNumber, Group: model.PREVIEW, Flag: model.PRIVATE, Help: `max thumbnail cache total size (bytes), default 2GB`},
-		{Key: conf.ThumbCoverNames, Value: "folder.jpg,cover.jpg,thumb.jpg,folder.png,cover.png,thumb.png", Type: conf.TypeString, Group: model.PREVIEW, Flag: model.PRIVATE, Help: `cover file names searched in a directory, comma separated`},
-		{Key: conf.ThumbDirCover, Value: "true", Type: conf.TypeBool, Group: model.PREVIEW, Flag: model.PRIVATE, Help: `show directory cover images in grid view`},
-		{Key: conf.ThumbPrewarm, Value: "true", Type: conf.TypeBool, Group: model.PREVIEW, Flag: model.PRIVATE, Help: `pre-generate video thumbnails in background when a directory is browsed`},
-		{Key: conf.ThumbConcurrency, Value: "8", Type: conf.TypeNumber, Group: model.PREVIEW, Flag: model.PRIVATE, Help: `thumbnail generation concurrency`},
-		{Key: conf.ThumbChunkSize, Value: "3145728", Type: conf.TypeNumber, Group: model.PREVIEW, Flag: model.PRIVATE, Help: `video segment size (bytes) downloaded for thumbnail extraction, default 3MB`},
-		{Key: conf.ThumbWidth, Value: "288", Type: conf.TypeNumber, Group: model.PREVIEW, Flag: model.PRIVATE, Help: `thumbnail width in pixels, default 288`},
-		{Key: conf.ThumbFailTTL, Value: "604800", Type: conf.TypeNumber, Group: model.PREVIEW, Flag: model.PRIVATE, Help: `negative cache duration in seconds for failed cover/folder detection, default 7 days`},
 		// single settings
 		{Key: conf.Token, Value: token, Type: conf.TypeString, Group: model.SINGLE, Flag: model.PRIVATE},
 		{Key: conf.SearchIndex, Value: "none", Type: conf.TypeSelect, Options: "database,database_non_full_text,bleve,meilisearch,none", Group: model.INDEX},

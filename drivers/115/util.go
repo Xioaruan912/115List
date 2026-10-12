@@ -20,14 +20,13 @@ import (
 	"github.com/OpenListTeam/OpenList/v4/internal/driver"
 	"github.com/OpenListTeam/OpenList/v4/internal/model"
 	netutil "github.com/OpenListTeam/OpenList/v4/internal/net"
+	"github.com/OpenListTeam/OpenList/v4/internal/tgvio"
 	"github.com/OpenListTeam/OpenList/v4/pkg/http_range"
 	"github.com/OpenListTeam/OpenList/v4/pkg/utils"
 	cipher "github.com/SheltonZhu/115driver/pkg/crypto/ec115"
 	driver115 "github.com/SheltonZhu/115driver/pkg/driver"
 	"github.com/aliyun/aliyun-oss-go-sdk/oss"
-	"github.com/go-resty/resty/v2"
 	"github.com/pkg/errors"
-	log "github.com/sirupsen/logrus"
 )
 
 // var UserAgent = driver115.UA115Browser
@@ -39,16 +38,21 @@ func (d *Pan115) login() error {
 			c.Client.SetTLSClientConfig(&tls.Config{InsecureSkipVerify: conf.Conf.TlsInsecureSkipVerify})
 		},
 	}
-	if px := d.GetProxy(); px != "" {
-		opts = append(opts, driver115.WithProxy(px))
-	}
 	d.client = driver115.New(opts...)
-	// 115 请求必须设超时：网盘风控黑洞连接时 resty 默认永久挂起，
-	// 会导致缩略图预热等后台任务无限卡死
+	// A request the drive's WAF black-holes would otherwise hang forever.
 	d.client.Client.SetTimeout(30 * time.Second)
-	d.registerLixianHook()
+	guard.install(d.client.Client)
 	cr := &driver115.Credential{}
-	if d.Cookie != "" {
+	if d.QRCodeToken != "" {
+		s := &driver115.QRCodeSession{
+			UID: d.QRCodeToken,
+		}
+		if cr, err = d.client.QRCodeLoginWithApp(s, driver115.LoginApp(d.QRCodeSource)); err != nil {
+			return errors.Wrap(err, "failed to login by qrcode")
+		}
+		d.Cookie = fmt.Sprintf("UID=%s;CID=%s;SEID=%s;KID=%s", cr.UID, cr.CID, cr.SEID, cr.KID)
+		d.QRCodeToken = ""
+	} else if d.Cookie != "" {
 		if err = cr.FromCookie(d.Cookie); err != nil {
 			return errors.Wrap(err, "failed to login by cookies")
 		}
@@ -57,33 +61,6 @@ func (d *Pan115) login() error {
 		return errors.New("missing cookie or qrcode account")
 	}
 	return d.client.LoginCheck()
-}
-
-// lixian 加密接口（离线云下载 add_task_urls 等）要求使用 115Browser UA 才能解码 data 参数；
-// 而驱动默认 getUA() 为 Chrome UA（用于规避直链下载风控），二者冲突会导致 115 返回 "decode fail!"。
-// 这里在 resty 层对 lixian.115.com 的请求强制改写为 115Browser UA，并记录请求/原始响应以便排查。
-func (d *Pan115) registerLixianHook() {
-	d.client.Client.OnBeforeRequest(func(_ *resty.Client, r *resty.Request) error {
-		if strings.Contains(r.URL, "lixian.115.com") {
-			r.SetHeader("User-Agent", "Mozilla/5.0 115Browser/"+appVer)
-			log.Infof("[115-lixian] REQ %s %s UA=%s", r.Method, r.URL, r.Header.Get("User-Agent"))
-		}
-		return nil
-	})
-	d.client.Client.OnAfterResponse(func(_ *resty.Client, resp *resty.Response) error {
-		if resp == nil || resp.Request == nil || !strings.Contains(resp.Request.URL, "lixian.115.com") {
-			return nil
-		}
-		body := ""
-		if b := resp.Body(); b != nil {
-			body = string(b)
-		}
-		if len(body) > 600 {
-			body = body[:600]
-		}
-		log.Infof("[115-lixian] RESP %s status=%d body=%s", resp.Request.URL, resp.StatusCode(), body)
-		return nil
-	})
 }
 
 func (d *Pan115) getFiles(fileId string) ([]FileObj, error) {
@@ -129,14 +106,38 @@ func (d *Pan115) getNewFileByPickCode(pickCode string) (*FileObj, error) {
 	return f, nil
 }
 
+// linkExpiration lets OpenList keep a download link until shortly before the
+// expiry stamped in it (the "t" query parameter, Unix seconds). Without it a
+// link lives only while one response is open, so every read, such as each
+// Range request of a player, asks the drive for a new link and spends its
+// rate budget. The ceiling bounds how long a link the drive revoked early can
+// be served from the cache. A link without a stamp is not cached.
+func linkExpiration(raw string, now time.Time) *time.Duration {
+	const margin = 2 * time.Minute
+	const ceiling = 15 * time.Minute
+	u, err := url.Parse(raw)
+	if err != nil {
+		return nil
+	}
+	stamp, err := strconv.ParseInt(u.Query().Get("t"), 10, 64)
+	if err != nil {
+		return nil
+	}
+	ttl := min(time.Unix(stamp, 0).Sub(now)-margin, ceiling)
+	if ttl <= 0 {
+		return nil
+	}
+	return &ttl
+}
+
+// getUA is the default for API calls. The drive's WAF answers bursts of calls
+// carrying the 115Browser UA with 405, so a plain browser UA is used instead.
 func (d *Pan115) getUA() string {
-	// 使用普通浏览器 UA：115 的 WAF 对 115Browser UA 特征的 API 请求风控严格，
-	// 换成 Chrome UA 可绕过下载接口的拦截（实测 Chrome UA 的直链下载一直正常）
 	return "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
 }
 
-// getUploadUA 上传初始化（files/init, v4.0）必须使用 115Browser UA，
-// 否则返回 403 "请升级到最新版本"；其余 API 仍用 Chrome UA 规避下载风控。
+// getUploadUA is required by the upload init API (v4.0 files/init), which
+// rejects any other UA with 403 "please upgrade".
 func (d *Pan115) getUploadUA() string {
 	return fmt.Sprintf("Mozilla/5.0 115Browser/%s", appVer)
 }
@@ -253,12 +254,53 @@ func UploadDigestRange(stream model.FileStreamer, rangeSpec string) (result stri
 	return
 }
 
+// UploadByOSS use aliyun sdk to upload
+func (c *Pan115) UploadByOSS(ctx context.Context, params *driver115.UploadOSSParams, s model.FileStreamer, dirID string, up driver.UpdateProgress) (*UploadResult, error) {
+	ossToken, err := c.client.GetOSSToken()
+	if err != nil {
+		return nil, err
+	}
+	ossClient, err := netutil.NewOSSClient(driver115.OSSEndpoint, ossToken.AccessKeyID, ossToken.AccessKeySecret)
+	if err != nil {
+		return nil, err
+	}
+	bucket, err := ossClient.Bucket(params.Bucket)
+	if err != nil {
+		return nil, err
+	}
+
+	var bodyBytes []byte
+	r := driver.NewLimitedUploadStream(ctx, &driver.ReaderUpdatingProgress{
+		Reader:         s,
+		UpdateProgress: up,
+	})
+	if err = bucket.PutObject(params.Object, r, append(
+		driver115.OssOption(params, ossToken),
+		oss.CallbackResult(&bodyBytes),
+	)...); err != nil {
+		return nil, err
+	}
+
+	var uploadResult UploadResult
+	if err = json.Unmarshal(bodyBytes, &uploadResult); err != nil {
+		return nil, err
+	}
+	return &uploadResult, uploadResult.Err(string(bodyBytes))
+}
+
+// UploadByMultipart upload by mutipart blocks
 func (d *Pan115) UploadByMultipart(ctx context.Context, params *driver115.UploadOSSParams, fileSize int64, s model.FileStreamer,
 	dirID string, up driver.UpdateProgress, opts ...driver115.UploadMultipartOption,
 ) (*UploadResult, error) {
-	// body 已全量缓存到临时文件，分片上传不受客户端断开影响；
-	// 否则 WebDAV/大文件上传期间请求 ctx 取消会使 RateLimitReader 返回 0 字节 → OSS UploadPart body 空 → 连接中断
-	ctx = context.WithoutCancel(ctx)
+	return d.uploadMultipart(ctx, params, fileSize, s, dirID, up, true, opts...)
+}
+
+// uploadMultipart may resume an earlier upload of the same file (see
+// tgvio_resume.go) when allowResume is set; params are always this call's fresh
+// init parameters, used whenever there is nothing to resume.
+func (d *Pan115) uploadMultipart(ctx context.Context, params *driver115.UploadOSSParams, fileSize int64, s model.FileStreamer,
+	dirID string, up driver.UpdateProgress, allowResume bool, opts ...driver115.UploadMultipartOption,
+) (*UploadResult, error) {
 	var (
 		chunks    []oss.FileChunk
 		parts     []oss.UploadPart
@@ -306,16 +348,57 @@ func (d *Pan115) UploadByMultipart(ctx context.Context, params *driver115.Upload
 		return nil, err
 	}
 
-	if imur, err = bucket.InitiateMultipartUpload(params.Object,
-		oss.SetHeader(driver115.OssSecurityTokenHeaderName, ossToken.SecurityToken),
-		oss.UserAgentHeader(driver115.OSSUserAgent),
-		oss.EnableSha1(), oss.Sequential(),
-	); err != nil {
-		return nil, err
+	fresh := params
+	key := ""
+	if params.SHA1 != "" {
+		key = resumeKey(params.SHA1, fileSize, dirID, s.GetName())
 	}
+	resumed := false
+	var done []oss.UploadPart
+	remaining := chunks
+	if session, ok := loadUploadSession(key); ok && allowResume && key != "" && session.params.Bucket == params.Bucket {
+		held, listErr := uploadedParts(bucket, session.imur,
+			oss.SetHeader(driver115.OssSecurityTokenHeaderName, ossToken.SecurityToken),
+			oss.UserAgentHeader(driver115.OSSUserAgent))
+		if listErr == nil {
+			params, imur, resumed = &session.params, session.imur, true
+			done, remaining = splitDone(chunks, held)
+			countResume("started")
+			tgvio.Add("115_upload_resume_parts_skipped", int64(len(done)))
+		} else {
+			dropUploadSession(key)
+			countResume("lost")
+		}
+	}
+	if !resumed {
+		if imur, err = bucket.InitiateMultipartUpload(params.Object,
+			oss.SetHeader(driver115.OssSecurityTokenHeaderName, ossToken.SecurityToken),
+			oss.UserAgentHeader(driver115.OSSUserAgent),
+			oss.EnableSha1(), oss.Sequential(),
+		); err != nil {
+			return nil, err
+		}
+	}
+	if key != "" {
+		// Kept until the upload completes, so a failed or cancelled attempt can resume.
+		saveUploadSession(key, uploadSession{params: *params, imur: imur})
+	}
+	parts = append(parts, done...)
+
+	// Every reader of tmpF must have stopped before this function returns: the
+	// caller then frees the stream's cache, and a late ReadAt on that memory
+	// crashes the whole process (SIGSEGV in HybridCache.ReadAt). On any early
+	// return the upload is cancelled and the consumers are waited for; every
+	// channel send also gives up once the upload is cancelled, so none blocks.
+	uploadCtx, cancelUpload := context.WithCancel(ctx)
+	consumers := sync.WaitGroup{}
+	defer func() {
+		cancelUpload()
+		consumers.Wait()
+	}()
 
 	wg := sync.WaitGroup{}
-	wg.Add(len(chunks))
+	wg.Add(len(remaining))
 
 	chunksCh := make(chan oss.FileChunk)
 	errCh := make(chan error)
@@ -323,30 +406,61 @@ func (d *Pan115) UploadByMultipart(ctx context.Context, params *driver115.Upload
 	quit := make(chan struct{})
 
 	// producer
-	go chunksProducer(chunksCh, chunks)
+	go func() {
+		defer close(chunksCh)
+		for _, chunk := range remaining {
+			select {
+			case chunksCh <- chunk:
+			case <-uploadCtx.Done():
+				return
+			}
+		}
+	}()
 	go func() {
 		wg.Wait()
-		quit <- struct{}{}
+		select {
+		case quit <- struct{}{}:
+		case <-uploadCtx.Done():
+		}
 	}()
+	report := func(err error) {
+		select {
+		case errCh <- err:
+		case <-uploadCtx.Done():
+		}
+	}
 
 	completedNum := atomic.Int32{}
+	completedNum.Store(int32(len(done)))
 	// consumers
 	for i := 0; i < options.ThreadsNum; i++ {
+		consumers.Add(1)
 		go func(threadId int) {
+			defer consumers.Done()
 			defer func() {
 				if r := recover(); r != nil {
-					errCh <- fmt.Errorf("recovered in %v", r)
+					report(fmt.Errorf("recovered in %v", r))
 				}
 			}()
 			for chunk := range chunksCh {
-				var part oss.UploadPart // 出现错误就继续尝试，共尝试3次
-				for retry := 0; retry < 3; retry++ {
-					select {
-					case <-ctx.Done():
+				var part oss.UploadPart // 出现错误就继续尝试，共尝试5次，间隔 1/2/4/8 秒
+				var err error
+				for retry := 0; retry < 5; retry++ {
+					if retry > 0 {
+						tgvio.Inc("115_upload_part_retries")
+						if !partRetryWait(uploadCtx, retry) {
+							err = uploadCtx.Err()
+							break
+						}
+					}
+					if utils.IsCanceled(uploadCtx) {
+						err = uploadCtx.Err()
 						break
+					}
+					select {
 					case <-ticker.C:
 						if ossToken, err = d.client.GetOSSToken(); err != nil { // 到时重新获取ossToken
-							errCh <- errors.Wrap(err, "刷新token时出现错误")
+							report(errors.Wrap(err, "刷新token时出现错误"))
 						}
 					default:
 					}
@@ -354,26 +468,35 @@ func (d *Pan115) UploadByMultipart(ctx context.Context, params *driver115.Upload
 					if _, err = tmpF.ReadAt(buf, chunk.Offset); err != nil && !errors.Is(err, io.EOF) {
 						continue
 					}
-					if part, err = bucket.UploadPart(imur, driver.NewLimitedUploadStream(ctx, bytes.NewReader(buf)),
+					if part, err = bucket.UploadPart(imur, driver.NewLimitedUploadStream(uploadCtx, bytes.NewReader(buf)),
 						chunk.Size, chunk.Number, driver115.OssOption(params, ossToken)...); err == nil {
 						break
 					}
 				}
 				if err != nil {
-					errCh <- errors.Wrap(err, fmt.Sprintf("上传 %s 的第%d个分片时出现错误：%v", s.GetName(), chunk.Number, err))
-				} else {
-					num := completedNum.Add(1)
-					up(float64(num) * 100.0 / float64(len(chunks)))
+					report(errors.Wrap(err, fmt.Sprintf("上传 %s 的第%d个分片时出现错误：%v", s.GetName(), chunk.Number, err)))
+					return
 				}
-				UploadedPartsCh <- part
+				num := completedNum.Add(1)
+				up(float64(num) * 100.0 / float64(len(chunks)))
+				select {
+				case UploadedPartsCh <- part:
+				case <-uploadCtx.Done():
+					return
+				}
 			}
 		}(i)
 	}
 
 	go func() {
-		for part := range UploadedPartsCh {
-			parts = append(parts, part)
-			wg.Done()
+		for {
+			select {
+			case part := <-UploadedPartsCh:
+				parts = append(parts, part)
+				wg.Done()
+			case <-uploadCtx.Done():
+				return
+			}
 		}
 	}()
 LOOP:
@@ -386,21 +509,34 @@ LOOP:
 			}
 		case <-quit:
 			break LOOP
-		case <-errCh:
+		case err := <-errCh:
 			return nil, err
 		case <-timeout.C:
 			return nil, fmt.Errorf("time out")
 		}
 	}
 
-	// OSS 回调不会插值 ${sha1}（分片与单文件都不计算），需用文件实际 SHA1 替换，
-	// 否则 115 completeupload.php 收到字面量 ${sha1} → 校验失败 990005 非法参数错误
-	params.Callback.Callback = strings.ReplaceAll(params.Callback.Callback, "${sha1}", params.SHA1)
+	// 不知道啥原因，oss那边分片上传不计算sha1，导致115服务器校验错误
+	// params.Callback.Callback = strings.ReplaceAll(params.Callback.Callback, "${sha1}", params.SHA1)
+	sortParts(parts)
 	if _, err := bucket.CompleteMultipartUpload(imur, parts, append(
 		driver115.OssOption(params, ossToken),
 		oss.CallbackResult(&bodyBytes),
 	)...); err != nil {
+		if resumed {
+			// The earlier upload could not be completed (e.g. its callback expired):
+			// forget it and upload the file in full with this call's parameters.
+			dropUploadSession(key)
+			countResume("refused")
+			cancelUpload()
+			consumers.Wait()
+			return d.uploadMultipart(ctx, fresh, fileSize, s, dirID, up, false, opts...)
+		}
 		return nil, err
+	}
+	dropUploadSession(key)
+	if resumed {
+		countResume("completed")
 	}
 
 	var uploadResult UploadResult
@@ -410,18 +546,7 @@ LOOP:
 	return &uploadResult, uploadResult.Err(string(bodyBytes))
 }
 
-func chunksProducer(ch chan oss.FileChunk, chunks []oss.FileChunk) {
-	for _, chunk := range chunks {
-		ch <- chunk
-	}
-}
-
 func SplitFile(fileSize int64) (chunks []oss.FileChunk, err error) {
-	// <1000B 文件：SplitFileByPartNum(fileSize,1000) 会因 chunkNum>fileSize 报"oss: chunkNum invalid"，
-	// 直接按大小分片（产出单块，作为末片允许 <100KB）
-	if fileSize < 1000 {
-		return SplitFileByPartSize(fileSize, 100*utils.KB)
-	}
 	for i := int64(1); i < 10; i++ {
 		if fileSize < i*utils.GB { // 文件大小小于iGB时分为i*1000片
 			if chunks, err = SplitFileByPartNum(fileSize, int(i*1000)); err != nil {

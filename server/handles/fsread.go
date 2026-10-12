@@ -43,7 +43,6 @@ type ObjResp struct {
 	Type         int                        `json:"type"`
 	HashInfoStr  string                     `json:"hashinfo"`
 	HashInfo     map[*utils.HashType]string `json:"hash_info"`
-	Duration     float64                    `json:"duration,omitempty"`
 	MountDetails *model.StorageDetails      `json:"mount_details,omitempty"`
 }
 
@@ -107,11 +106,6 @@ func FsList(c *gin.Context, req *ListReq, user *model.User) {
 		common.ErrorResp(c, err, 500)
 		return
 	}
-	// 自动生成缩略图：浏览目录时把其中视频入队（受 thumb_prewarm 设置控制），
-	// 游客浏览不触发，避免无谓的 115 请求
-	if !user.IsGuest() {
-		prewarmDir(c, reqPath, objs)
-	}
 	total, objs := pagination(objs, &req.PageReq)
 	provider := "unknown"
 	var directUploadTools []string
@@ -121,7 +115,7 @@ func FsList(c *gin.Context, req *ListReq, user *model.User) {
 		}
 	}
 	common.SuccessResp(c, FsListResp{
-		Content:            toObjsResp(c, objs, reqPath, isEncrypt(meta, reqPath)),
+		Content:            toObjsResp(objs, reqPath, isEncrypt(meta, reqPath)),
 		Total:              int64(total),
 		Readme:             getReadme(meta, reqPath),
 		Header:             getHeader(meta, reqPath),
@@ -231,24 +225,12 @@ func pagination(objs []model.Obj, req *model.PageReq) (int, []model.Obj) {
 	return total, objs[start:end]
 }
 
-func toObjsResp(c *gin.Context, objs []model.Obj, parent string, encrypt bool) []ObjResp {
+func toObjsResp(objs []model.Obj, parent string, encrypt bool) []ObjResp {
 	var resp []ObjResp
 	for _, obj := range objs {
 		thumb, _ := model.GetThumb(obj)
-		if obj.IsDir() {
-			thumb = fillCoverThumb(c, parent, obj)
-		} else {
-			switch utils.GetFileType(obj.GetName()) {
-			case conf.VIDEO:
-				thumb = fillVideoThumb(c, parent, obj, thumb)
-			case conf.AUDIO:
-				thumb = fillAudioThumb(c, parent, obj, thumb)
-			case conf.IMAGE:
-				thumb = fillImageThumb(c, parent, obj, thumb)
-			}
-		}
 		mountDetails, _ := model.GetStorageDetails(obj)
-		objResp := ObjResp{
+		resp = append(resp, ObjResp{
 			Name:         obj.GetName(),
 			Size:         obj.GetSize(),
 			IsDir:        obj.IsDir(),
@@ -260,12 +242,7 @@ func toObjsResp(c *gin.Context, objs []model.Obj, parent string, encrypt bool) [
 			Thumb:        thumb,
 			Type:         utils.GetObjType(obj.GetName(), obj.IsDir()),
 			MountDetails: mountDetails,
-		}
-		if !obj.IsDir() && utils.GetFileType(obj.GetName()) == conf.VIDEO {
-			fullPath := parent + "/" + obj.GetName()
-			objResp.Duration = videoDuration(c.Request.Context(), fullPath)
-		}
-		resp = append(resp, objResp)
+		})
 	}
 	return resp
 }
@@ -378,23 +355,6 @@ func FsGet(c *gin.Context, req *FsGetReq, user *model.User) {
 	}
 	parentMeta, _ := op.GetNearestMeta(parentPath)
 	thumb, _ := model.GetThumb(obj)
-	var duration float64
-	if !obj.IsDir() && utils.GetFileType(obj.GetName()) == conf.VIDEO {
-		thumbRememberObject(thumbKindVideo, reqPath, obj)
-		duration = videoDuration(c.Request.Context(), reqPath)
-	}
-	if obj.IsDir() {
-		thumb = fillCoverThumb(c, parentPath, obj)
-	} else {
-		switch utils.GetFileType(obj.GetName()) {
-		case conf.VIDEO:
-			thumb = fillVideoThumb(c, parentPath, obj, thumb)
-		case conf.AUDIO:
-			thumb = fillAudioThumb(c, parentPath, obj, thumb)
-		case conf.IMAGE:
-			thumb = fillImageThumb(c, parentPath, obj, thumb)
-		}
-	}
 	mountDetails, _ := model.GetStorageDetails(obj)
 	common.SuccessResp(c, FsGetResp{
 		ObjResp: ObjResp{
@@ -408,14 +368,13 @@ func FsGet(c *gin.Context, req *FsGetReq, user *model.User) {
 			Sign:         common.Sign(obj, parentPath, isEncrypt(meta, reqPath)),
 			Type:         utils.GetFileType(obj.GetName()),
 			Thumb:        thumb,
-			Duration:     duration,
 			MountDetails: mountDetails,
 		},
 		RawURL:   rawURL,
 		Readme:   getReadme(meta, reqPath),
 		Header:   getHeader(meta, reqPath),
 		Provider: provider,
-		Related:  toObjsResp(c, related, parentPath, isEncrypt(parentMeta, parentPath)),
+		Related:  toObjsResp(related, parentPath, isEncrypt(parentMeta, parentPath)),
 	})
 }
 

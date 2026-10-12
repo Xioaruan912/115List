@@ -18,10 +18,7 @@ type UserClaims struct {
 	jwt.RegisteredClaims
 }
 
-// invalidTokenCache 黑名单：仅记录主动失效（登出/改密）的 token，
-// 不在黑名单的 token 只要 JWT 签名与有效期校验通过即有效，
-// 因此服务重启后浏览器已登录状态保持，无需重新登录
-var invalidTokenCache = cache.NewMemCache[bool]()
+var validTokenCache = cache.NewMemCache[bool]()
 
 func GenerateToken(user *model.User) (tokenString string, err error) {
 	claim := UserClaims{
@@ -37,6 +34,7 @@ func GenerateToken(user *model.User) (tokenString string, err error) {
 	if err != nil {
 		return "", err
 	}
+	validTokenCache.Set(tokenString, true)
 	return tokenString, err
 }
 
@@ -70,12 +68,11 @@ func InvalidateToken(tokenString string) error {
 	if tokenString == "" {
 		return nil // don't invalidate empty guest token
 	}
-	// 黑名单条目带 TTL（token 最大有效期），自动清理避免累积
-	invalidTokenCache.Set(tokenString, true, cache.WithEx[bool](48*time.Hour))
+	validTokenCache.Del(tokenString)
 	return nil
 }
 
 func IsTokenInvalidated(tokenString string) bool {
-	_, ok := invalidTokenCache.Get(tokenString)
-	return ok
+	_, ok := validTokenCache.Get(tokenString)
+	return !ok
 }
