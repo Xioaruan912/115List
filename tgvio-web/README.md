@@ -30,6 +30,7 @@ npm run check      # tsc + vitest + vite build
 | `src/components/Dock.tsx` | 底部 Dock（桌面放大效果），有选择时变形为选择操作栏 |
 | `src/components/Palette.tsx` | 搜索/命令面板（从顶栏搜索框 layoutId 变形） |
 | `src/components/{Dialogs,Sheet,Menu,ContextMenu,Transfers,DropZone,Toaster}.tsx` | 对话框、底部/居中面板、菜单、传输面板、拖入上传、通知 |
+| `src/components/PosterWall.tsx` | 登录页海报墙（生成的海报、CSS 无缝循环、指针倾斜、帧率不足时静止） |
 | `src/pages/manage/` | 管理页；`Form.tsx` 按驱动/设置项类型渲染字段 |
 | `src/styles/index.css` | 设计令牌（深/浅）、按钮/输入、关键帧、颗粒层、封面模糊 |
 
@@ -37,6 +38,8 @@ npm run check      # tsc + vitest + vite build
 
 - 动画只动 transform/opacity（少量一次性 width/height 除外）；连续值用 Motion 的 motion value，不进 React state。
 - 虚拟滚动 `useFlushSync: false`，否则滚动掉帧。
+- 手机：`Menu` 在窄屏自动变成底部操作表；长按只在单指且手指仍按着时生效（`Tile.tsx` 的 `fingers`），避免捏合误选。
+- `.theme-dark` 局部深色区（登录页）要重新声明 Tailwind 的 `--color-*` 别名，已在 `index.css` 里做好。
 - 一个强调色（`--accent`）；圆角：控件 10、卡片 14、面板 22。
 - `MotionConfig reducedMotion="user"` + CSS 媒体查询，减少动态效果时全部关闭。
 - 不写 em dash；界面文字中文。

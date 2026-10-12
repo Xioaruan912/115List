@@ -1,5 +1,5 @@
 import {
-  ArrowClockwiseIcon, ArrowsLeftRightIcon, CheckSquareIcon, ChecksIcon, CloudArrowDownIcon, CopyIcon, DownloadSimpleIcon, FolderPlusIcon,
+  ArrowClockwiseIcon, ArrowsLeftRightIcon, CheckSquareIcon, ChecksIcon, CloudArrowDownIcon, DotsThreeIcon, CopyIcon, DownloadSimpleIcon, FolderPlusIcon,
   GearIcon, LinkIcon, ListChecksIcon, MagnifyingGlassIcon, PencilSimpleIcon, TrashIcon, UploadSimpleIcon, XIcon, FolderSimpleIcon,
 } from "@phosphor-icons/react";
 import { AnimatePresence, motion, useMotionValue, useSpring, useTransform, type MotionValue } from "motion/react";
@@ -159,11 +159,16 @@ export function Dock({ path }: { path: string }) {
         <button className="icon-btn size-10" aria-label="重命名" title="重命名" onClick={() => openDialog({ kind: "rename", dir: path, obj: single })}><PencilSimpleIcon size={19} /></button>
       )}
       {can(me, Perm.Move) && (
-        <button className="icon-btn size-10" aria-label="移动" title="移动到" onClick={() => openDialog({ kind: "transfer", mode: "move", dir: path, names: [...(selected ?? [])] })}><ArrowsLeftRightIcon size={19} /></button>
+        <button className="icon-btn size-10 max-sm:hidden" aria-label="移动" title="移动到" onClick={() => openDialog({ kind: "transfer", mode: "move", dir: path, names: [...(selected ?? [])] })}><ArrowsLeftRightIcon size={19} /></button>
       )}
       {can(me, Perm.Copy) && (
-        <button className="icon-btn size-10" aria-label="复制" title="复制到" onClick={() => openDialog({ kind: "transfer", mode: "copy", dir: path, names: [...(selected ?? [])] })}><CopyIcon size={19} /></button>
+        <button className="icon-btn size-10 max-sm:hidden" aria-label="复制" title="复制到" onClick={() => openDialog({ kind: "transfer", mode: "copy", dir: path, names: [...(selected ?? [])] })}><CopyIcon size={19} /></button>
       )}
+      <button className="icon-btn size-10 sm:hidden" aria-label="更多" onClick={event => {
+        const r = event.currentTarget.getBoundingClientRect();
+        const target = chosen[0];
+        if (target) useUi.getState().openMenu({ x: r.left, y: r.top, dir: path, obj: target });
+      }}><DotsThreeIcon size={20} weight="bold" /></button>
       {can(me, Perm.Remove) && (
         <button className="icon-btn size-10 text-danger hover:text-danger" aria-label="删除" title="删除" onClick={() => openDialog({ kind: "delete", dir: path, names: [...(selected ?? [])] })}><TrashIcon size={19} /></button>
       )}

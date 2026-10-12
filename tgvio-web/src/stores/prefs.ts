@@ -11,6 +11,8 @@ interface Prefs {
   sortDesc: boolean;
   blur: boolean;
   theme: Theme;
+  phoneCols: 2 | 3 | 4;
+  setPhoneCols: (cols: 2 | 3 | 4) => void;
   setView: (view: ViewMode) => void;
   setSort: (key: SortKey) => void;
   setBlur: (blur: boolean) => void;
@@ -23,6 +25,8 @@ export const usePrefs = create<Prefs>()(persist(set => ({
   sortDesc: false,
   blur: true,
   theme: "system",
+  phoneCols: 3,
+  setPhoneCols: phoneCols => set({ phoneCols }),
   setView: view => set({ view }),
   setSort: key => set(state => state.sortKey === key ? { sortDesc: !state.sortDesc } : { sortKey: key, sortDesc: key !== "name" }),
   setBlur: blur => set({ blur }),
@@ -30,7 +34,7 @@ export const usePrefs = create<Prefs>()(persist(set => ({
     try { localStorage.setItem("tgvio-web:theme", theme); } catch { /* ignore */ }
     set({ theme });
   },
-}), { name: "tgvio-web:prefs", partialize: ({ view, sortKey, sortDesc, blur, theme }) => ({ view, sortKey, sortDesc, blur, theme }) }));
+}), { name: "tgvio-web:prefs", partialize: ({ view, sortKey, sortDesc, blur, theme, phoneCols }) => ({ view, sortKey, sortDesc, blur, theme, phoneCols }) }));
 
 export function resolvedTheme(theme: Theme): "dark" | "light" {
   if (theme !== "system") return theme;

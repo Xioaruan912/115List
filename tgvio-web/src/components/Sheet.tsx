@@ -39,7 +39,7 @@ export function Sheet({ open, onClose, title, children, footer, width = 460 }: {
   return createPortal(
     <AnimatePresence propagate>
       {open && (
-        <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center sm:p-6" role="dialog" aria-modal="true">
+        <div className="fixed inset-0 z-[65] flex items-end justify-center sm:items-center sm:p-6" role="dialog" aria-modal="true">
           <motion.div
             className="absolute inset-0 bg-scrim"
             initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}

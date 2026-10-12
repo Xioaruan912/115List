@@ -34,8 +34,14 @@ export function play(): void {
     }
     const dx = old.left - now.left;
     const dy = old.top - now.top;
-    if (Math.abs(dx) < 1 && Math.abs(dy) < 1) continue;
-    element.animate([{ transform: `translate(${dx}px, ${dy}px)` }, { transform: "none" }], {
+    const sx = now.width ? old.width / now.width : 1;
+    const sy = now.height ? old.height / now.height : 1;
+    const scaled = Math.abs(sx - 1) > 0.01 || Math.abs(sy - 1) > 0.01;
+    if (Math.abs(dx) < 1 && Math.abs(dy) < 1 && !scaled) continue;
+    element.animate([
+      { transformOrigin: "0 0", transform: `translate(${dx}px, ${dy}px)${scaled ? ` scale(${sx}, ${sy})` : ""}` },
+      { transformOrigin: "0 0", transform: "none" },
+    ], {
       duration: 560 + Math.min(240, Math.hypot(dx, dy) / 4),
       easing: EASE,
     });

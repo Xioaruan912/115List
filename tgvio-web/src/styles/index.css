@@ -32,7 +32,7 @@
   --radius-sheet: 22px;
 }
 
-:root[data-theme="dark"] {
+:root[data-theme="dark"], .theme-dark {
   color-scheme: dark;
   --bg: #0c0c0d;
   --surface: #131315;
@@ -231,3 +231,23 @@
 @media (prefers-reduced-motion: reduce) { .enter-soft { animation: none !important; } }
 
 @keyframes eq { from { transform: scaleY(0.2); } to { transform: scaleY(1); } }
+
+/* Poster wall: each column holds its posters twice; moving by half loops seamlessly. */
+@keyframes wall-up { from { transform: translate3d(0, 0, 0); } to { transform: translate3d(0, -50%, 0); } }
+@keyframes wall-down { from { transform: translate3d(0, -50%, 0); } to { transform: translate3d(0, 0, 0); } }
+
+/* Phones: 16px inputs stop iOS from zooming the page on focus; no double-tap zoom delay on controls. */
+@media (max-width: 639px) {
+  .field, input, textarea, select { font-size: 16px; }
+}
+button, a, [role="button"] { touch-action: manipulation; }
+
+/* Tailwind's colour aliases resolve where they are declared (:root), so a scoped
+   dark area has to declare them again to pick up its own tokens. */
+.theme-dark {
+  --color-bg: var(--bg); --color-surface: var(--surface); --color-raised: var(--raised); --color-line: var(--line);
+  --color-line-strong: var(--line-strong); --color-ink: var(--ink); --color-muted: var(--muted); --color-faint: var(--faint);
+  --color-accent: var(--accent); --color-accent-ink: var(--accent-ink); --color-accent-text: var(--accent-text);
+  --color-danger: var(--danger); --color-scrim: var(--scrim);
+  color-scheme: dark;
+}

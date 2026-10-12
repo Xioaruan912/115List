@@ -7,7 +7,7 @@ import * as actions from "../lib/actions";
 import { spring } from "../lib/motion";
 import { encodePath, parent, segments } from "../lib/path";
 import { isAdmin, isGuest } from "../lib/perm";
-import { usePrefs, type Theme } from "../stores/prefs";
+import { resolvedTheme, usePrefs, type Theme } from "../stores/prefs";
 import { useSession } from "../stores/session";
 import { useUi } from "../stores/ui";
 import { Menu } from "./Menu";
@@ -109,6 +109,9 @@ function Account() {
   const signOut = useSession(state => state.signOut);
   const [, navigate] = useLocation();
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
+  const mobile = useIsMobile();
+  const view = usePrefs(state => state.view);
+  const theme = usePrefs(state => resolvedTheme(state.theme));
   if (!me) return null;
   const guest = isGuest(me);
   const initial = (guest ? "访" : me.username.slice(0, 1)).toUpperCase();
@@ -130,6 +133,11 @@ function Account() {
           { heading: guest ? "访客" : me.username },
           ...(isAdmin(me) ? [{ label: "管理", icon: <GearIcon size={15} />, run: () => navigate("/@manage") }] : []),
           ...(!guest ? [{ label: "账户资料", icon: <UserIcon size={15} />, run: () => useUi.getState().openDialog({ kind: "account" }) }] : []),
+          ...(mobile ? [
+            "divider" as const,
+            { label: view === "grid" ? "列表视图" : "网格视图", icon: view === "grid" ? <ListBulletsIcon size={15} /> : <SquaresFourIcon size={15} />, run: () => usePrefs.getState().setView(view === "grid" ? "list" : "grid") },
+            { label: theme === "light" ? "深色主题" : "浅色主题", icon: theme === "light" ? <MoonIcon size={15} /> : <SunIcon size={15} />, run: () => switchTheme(theme === "light" ? "dark" : "light", innerWidth - 30, 30) },
+          ] : []),
           "divider",
           guest
             ? { label: "登录", icon: <SignOutIcon size={15} />, run: () => navigate("/@login") }
@@ -180,7 +188,7 @@ export function TopBar({ path }: { path: string }) {
         )}
         {palette && <span className="h-9 sm:w-60" />}
         <div className="hidden sm:block"><ViewToggle /></div>
-        <ThemeButton />
+        <div className="max-sm:hidden"><ThemeButton /></div>
         <Account />
       </div>
     </header>

@@ -1,7 +1,7 @@
 import { ArrowClockwiseIcon, FolderPlusIcon, LockIcon, UploadSimpleIcon, WarningCircleIcon } from "@phosphor-icons/react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { motion, useIsPresent, useScroll, useTransform } from "motion/react";
+import { animate, motion, useIsPresent, useMotionValue, useScroll, useTransform } from "motion/react";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type DragEvent, type FormEvent, type MouseEvent, type PointerEvent } from "react";
 import { useLocation } from "wouter";
 import { dirKey, needsPassword, prefetchDir, rememberPassword, useDir } from "../hooks/useDir";
@@ -23,6 +23,7 @@ import { SplitText } from "./SplitText";
 import { FolderCard, GridTile, ListRow, type TileHandlers } from "./Tile";
 
 const EMPTY = new Set<string>();
+const PULL = 72;
 const scrollPositions = new Map<string, number>();
 
 /** Where the last folder was opened from, so the next view can zoom out of that point. */
@@ -126,6 +127,7 @@ export function DirectoryView({ path }: { path: string }) {
   const client = useQueryClient();
   const [, navigate] = useLocation();
   const view = usePrefs(state => state.view);
+  const phoneCols = usePrefs(state => state.phoneCols);
   const sortKey = usePrefs(state => state.sortKey);
   const sortDesc = usePrefs(state => state.sortDesc);
   const me = useSession(state => state.me);
@@ -149,13 +151,15 @@ export function DirectoryView({ path }: { path: string }) {
     return () => clearTimeout(timer);
   }, [view]);
 
-  const gap = mobile ? 6 : 10;
+  const gap = mobile ? (phoneCols === 4 ? 2 : 4) : 10;
   const minTile = mobile ? 150 : 190;
+  const density = (mobile ? phoneCols - 2 : 0) as 0 | 1 | 2;
   const minFolder = mobile ? 160 : 230;
-  const cols = view === "grid" ? Math.max(2, Math.floor((width + gap) / (minTile + gap))) : 1;
+  const cols = view !== "grid" ? 1 : mobile ? phoneCols : Math.max(2, Math.floor((width + gap) / (minTile + gap)));
   const folderCols = view === "grid" ? Math.max(2, Math.floor((width + gap) / (minFolder + gap))) : 1;
   const tileWidth = width ? (width - gap * (cols - 1)) / cols : minTile;
-  const tileHeight = view === "grid" ? Math.round((tileWidth - 12) * 0.75 + 12 + 60) : 52;
+  const pad = density ? 8 : 12;
+  const tileHeight = view === "grid" ? Math.round((tileWidth - pad) * 0.75 + pad + [60, 40, 22][density]) : 52;
   const folderHeight = view === "grid" ? 60 : 52;
 
   // Grid view: folders first as compact cards, then files as thumbnails. List view: one row per item.
@@ -204,7 +208,69 @@ export function DirectoryView({ path }: { path: string }) {
     if (saved) scrollRef.current.scrollTop = saved;
   }, [query.data, path]);
 
-  useLayoutEffect(() => { flip.play(); }, [items]);
+  useLayoutEffect(() => { flip.play(); }, [items, cols]);
+
+  // Phones: pinch the grid to change the column count (2 to 4), like a photo library.
+  const pinch = useRef<{ distance: number } | null>(null);
+  const onTouchStart = (event: React.TouchEvent): void => {
+    if (event.touches.length === 2 && view === "grid" && mobile) {
+      const [a, b] = [event.touches[0], event.touches[1]];
+      pinch.current = { distance: Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY) };
+    } else if (event.touches.length === 1 && (scrollRef.current?.scrollTop ?? 1) <= 0) {
+      pullStart.current = event.touches[0].clientY;
+    }
+  };
+  const onTouchMove = (event: React.TouchEvent): void => {
+    if (pinch.current && event.touches.length === 2) {
+      const [a, b] = [event.touches[0], event.touches[1]];
+      const ratio = Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY) / pinch.current.distance;
+      const current = usePrefs.getState().phoneCols;
+      const next = ratio > 1.35 && current > 2 ? current - 1 : ratio < 0.74 && current < 4 ? current + 1 : current;
+      if (next !== current) {
+        flip.capture();
+        usePrefs.getState().setPhoneCols(next as 2 | 3 | 4);
+        navigator.vibrate?.(6);
+        pinch.current = { distance: Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY) };
+      }
+      return;
+    }
+    if (pullStart.current !== null && event.touches.length === 1) {
+      const dy = event.touches[0].clientY - pullStart.current;
+      if ((scrollRef.current?.scrollTop ?? 1) > 0 || dy < 0) { pull.set(0); return; }
+      const value = Math.min(140, dy * 0.55);
+      if (value >= PULL && pull.get() < PULL) navigator.vibrate?.(8);
+      pull.set(value);
+    }
+  };
+  const onTouchEnd = (): void => {
+    pinch.current = null;
+    if (pullStart.current === null) return;
+    pullStart.current = null;
+    if (pull.get() >= PULL) {
+      setRefreshing(true);
+      animate(pull, PULL, spring.snappy);
+      void actions.reload(path).finally(() => { setRefreshing(false); animate(pull, 0, spring.soft); });
+    } else animate(pull, 0, spring.soft);
+  };
+
+  const pull = useMotionValue(0);
+  const pullStart = useRef<number | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
+  const pullOpacity = useTransform(pull, [0, PULL], [0, 1]);
+  const pullRotate = useTransform(pull, [0, 140], [0, 300]);
+  const pullScale = useTransform(pull, [0, PULL], [0.5, 1]);
+  const pullColor = useTransform(pull, v => v >= PULL ? "var(--accent)" : "var(--muted)");
+  const pullY = useTransform(pull, [0, 140], [0, 40]);
+
+  // iOS fires its own page-zoom gesture events; the grid pinch replaces that here.
+  useEffect(() => {
+    const element = scrollRef.current;
+    if (!element || !mobile) return;
+    const stop = (event: Event): void => event.preventDefault();
+    element.addEventListener("gesturestart", stop);
+    element.addEventListener("gesturechange", stop);
+    return () => { element.removeEventListener("gesturestart", stop); element.removeEventListener("gesturechange", stop); };
+  }, [mobile]);
 
   const { scrollY } = useScroll({ container: scrollRef });
   const titleScale = useTransform(scrollY, [0, 140], [1, 0.9]);
@@ -253,6 +319,12 @@ export function DirectoryView({ path }: { path: string }) {
       },
       onMenu(obj: Obj, x: number, y: number) {
         ui().openMenu({ x, y, dir: path, obj });
+      },
+      onLongPress(obj: Obj, x: number, y: number) {
+        // Touch: a long press starts selecting (like a photo library); once selecting, it opens the menu.
+        const current = ui().selectionDir === path ? ui().selected : EMPTY;
+        if (current.size === 0) { anchor.current = indexOf(obj); ui().toggle(path, obj.name); }
+        else ui().openMenu({ x, y, dir: path, obj });
       },
       onHoverFolder(obj: Obj) {
         if (mobile) return;
@@ -382,6 +454,7 @@ export function DirectoryView({ path }: { path: string }) {
               {row.items.map((obj, offset) => (
                 <Item
                   key={obj.name}
+                  density={density}
                   obj={obj}
                   index={virtual.index * Math.min(per, 4) + offset}
                   selected={selected.has(obj.name)}
@@ -402,13 +475,27 @@ export function DirectoryView({ path }: { path: string }) {
       ref={scrollRef}
       data-view={present ? "active" : "leaving"}
       className="absolute inset-0 overflow-y-auto overflow-x-hidden overscroll-contain"
-      style={{ pointerEvents: present ? undefined : "none" }}
+      onTouchStart={onTouchStart}
+      onTouchMove={onTouchMove}
+      onTouchEnd={onTouchEnd}
+      onTouchCancel={onTouchEnd}
+      style={{ pointerEvents: present ? undefined : "none", touchAction: mobile ? "pan-x pan-y" : undefined }}
       onScroll={event => scrollPositions.set(path, event.currentTarget.scrollTop)}
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
     >
-      <div className="mx-auto w-full max-w-[1400px] px-3 pt-[calc(env(safe-area-inset-top)+76px)] sm:px-8 sm:pt-[96px]">
+      {mobile && (
+        <div className="pointer-events-none sticky top-0 z-10 h-0">
+          <motion.div className="absolute left-1/2 top-[calc(env(safe-area-inset-top)+64px)] -ml-4 grid size-8 place-items-center rounded-full bg-raised hairline"
+            style={{ opacity: pullOpacity, scale: pullScale, y: pullY, boxShadow: "var(--shadow-lift)" }}>
+            <motion.span className={refreshing ? "spin block" : "block"} style={{ rotate: refreshing ? undefined : pullRotate, color: pullColor }}>
+              <ArrowClockwiseIcon size={16} weight="bold" />
+            </motion.span>
+          </motion.div>
+        </div>
+      )}
+      <div className="mx-auto w-full max-w-[1400px] px-3 pt-[calc(env(safe-area-inset-top)+68px)] sm:px-8 sm:pt-[96px]">
         <motion.header style={{ scale: titleScale, opacity: titleOpacity, y: titleY, transformOrigin: "0% 100%" }} className="px-2 pb-5 sm:px-0">
           <h1 className="text-[clamp(30px,5.4vw,56px)] font-semibold leading-[1.06] tracking-[-0.04em] break-words">
             <SplitText key={title} text={title} />

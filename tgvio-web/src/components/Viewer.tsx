@@ -1,5 +1,5 @@
 import {
-  ArrowSquareOutIcon, CaretLeftIcon, CaretRightIcon, DownloadSimpleIcon, InfoIcon, LinkIcon, MagnifyingGlassMinusIcon,
+  ArrowSquareOutIcon, CaretLeftIcon, DotsThreeIcon, CaretRightIcon, DownloadSimpleIcon, InfoIcon, LinkIcon, MagnifyingGlassMinusIcon,
   MagnifyingGlassPlusIcon, TrashIcon, XIcon,
 } from "@phosphor-icons/react";
 import { useQuery } from "@tanstack/react-query";
@@ -21,6 +21,7 @@ import { usePrefs } from "../stores/prefs";
 import { useSession } from "../stores/session";
 import { rectOf, useUi, type Rect } from "../stores/ui";
 import { KindIcon } from "./KindIcon";
+import { Menu } from "./Menu";
 
 const Markdown = lazy(() => import("./Markdown"));
 
@@ -227,6 +228,11 @@ function ViewerBody({ dir, name, origin }: { dir: string; name: string; origin: 
   const files = useMemo(() => sortObjs((list.data?.content ?? []).filter(item => !item.is_dir), sortKey, sortDesc), [list.data, sortKey, sortDesc]);
   const [current, setCurrent] = useState(() => Math.max(0, files.findIndex(item => item.name === name)));
   const [direction, setDirection] = useState(0);
+  useEffect(() => {
+    if (!list.data) return;
+    if (!files.length) { closeViewer(); return; }
+    if (current >= files.length) setCurrent(files.length - 1);
+  }, [files, current, list.data, closeViewer]);
   const obj = files[current] as Obj | undefined;
   const kind = obj ? kindOf(obj) : "file";
   const media = kind === "image" || kind === "video";
@@ -247,6 +253,7 @@ function ViewerBody({ dir, name, origin }: { dir: string; name: string; origin: 
   const [zoomed, setZoomed] = useState(false);
   const [chrome, setChrome] = useState(true);
   const [closing, setClosing] = useState(false);
+  const [more, setMore] = useState(false);
 
   // Opening: grow out of the tile that was tapped.
   const opened = useRef(false);
@@ -488,6 +495,8 @@ function ViewerBody({ dir, name, origin }: { dir: string; name: string; origin: 
         <button className="grid size-9 place-items-center rounded-full hover:bg-white/15" onClick={() => actions.download(dir, obj)} aria-label="下载"><DownloadSimpleIcon size={18} /></button>
         <button className="grid size-9 place-items-center rounded-full hover:bg-white/15" onClick={() => void actions.copyLinks(dir, [obj])} aria-label="复制链接"><LinkIcon size={18} /></button>
         <button className="grid size-9 place-items-center rounded-full hover:bg-white/15 max-sm:hidden" onClick={() => openDialog({ kind: "info", dir, obj })} aria-label="属性"><InfoIcon size={18} /></button>
+        <button className="grid size-9 place-items-center rounded-full hover:bg-white/15 sm:hidden" aria-label="更多"
+          onClick={() => setMore(true)}><DotsThreeIcon size={20} weight="bold" /></button>
         {can(me, Perm.Remove) && (
           <button className="grid size-9 place-items-center rounded-full text-[#ff8a7e] hover:bg-white/15 max-sm:hidden" aria-label="删除"
             onClick={() => openDialog({ kind: "delete", dir, names: [obj.name] })}><TrashIcon size={18} /></button>
@@ -507,6 +516,13 @@ function ViewerBody({ dir, name, origin }: { dir: string; name: string; origin: 
           ))}
         </>
       )}
+
+      <Menu open={more} x={0} y={0} onClose={() => setMore(false)} entries={[
+        { heading: obj.name },
+        { label: "属性", icon: <InfoIcon size={15} />, run: () => openDialog({ kind: "info", dir, obj }) },
+        { label: "在新标签页打开", icon: <ArrowSquareOutIcon size={15} />, run: () => { window.open(src, "_blank", "noopener"); } },
+        ...(can(me, Perm.Remove) ? ["divider" as const, { label: "删除", icon: <TrashIcon size={15} />, danger: true, run: () => openDialog({ kind: "delete", dir, names: [obj.name] }) }] : []),
+      ]} />
 
       {strip && (
         <motion.footer className="absolute inset-x-0 bottom-0 z-[2] flex justify-center bg-gradient-to-t from-black/60 to-transparent pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-6"

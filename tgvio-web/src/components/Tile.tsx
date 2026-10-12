@@ -9,6 +9,7 @@ export interface TileHandlers {
   onActivate: (obj: Obj, event: MouseEvent<HTMLElement>, element: HTMLElement) => void;
   onToggle: (obj: Obj, event: MouseEvent<HTMLElement>) => void;
   onMenu: (obj: Obj, x: number, y: number) => void;
+  onLongPress: (obj: Obj, x: number, y: number) => void;
   onHoverFolder: (obj: Obj) => void;
   onDragStart: (obj: Obj, event: DragEvent<HTMLElement>) => void;
   onDropInto: (obj: Obj, event: DragEvent<HTMLElement>) => void;
@@ -16,6 +17,7 @@ export interface TileHandlers {
 }
 
 interface TileProps {
+  density?: 0 | 1 | 2; // phones: 0 two columns, 1 three, 2 four
   obj: Obj;
   index: number;
   selected: boolean;
@@ -25,6 +27,16 @@ interface TileProps {
 }
 
 const LONG_PRESS = 420;
+
+// Fingers currently down anywhere. A long press only counts for a single finger
+// that is still down: a pinch, or a tile sliding away under a lifted finger, must not select.
+let fingers = 0;
+if (typeof window !== "undefined") {
+  const track = (event: TouchEvent): void => { fingers = event.touches.length; };
+  window.addEventListener("touchstart", track, { passive: true, capture: true });
+  window.addEventListener("touchend", track, { passive: true, capture: true });
+  window.addEventListener("touchcancel", track, { passive: true, capture: true });
+}
 
 /** Pointer-follow spotlight without React state: write the position straight into CSS vars. */
 function spotlight(event: PointerEvent<HTMLElement>): void {
@@ -41,11 +53,12 @@ function useLongPress(onLong: (x: number, y: number) => void) {
   return {
     onPointerDown(event: PointerEvent<HTMLElement>) {
       s.fired = false;
-      if (event.pointerType === "mouse") return;
+      if (event.pointerType === "mouse" || !event.isPrimary) { clearTimeout(s.timer); s.start = null; return; }
       const start = { x: event.clientX, y: event.clientY };
       s.start = start;
       event.currentTarget.classList.add("reveal");
       s.timer = window.setTimeout(() => {
+        if (fingers !== 1 || !s.start) return;
         s.fired = true;
         navigator.vibrate?.(8);
         onLong(start.x, start.y);
@@ -75,11 +88,11 @@ function Check({ on, visible }: { on: boolean; visible: boolean }) {
   );
 }
 
-export const GridTile = memo(function GridTile({ obj, index, selected, selecting, entering, handlers }: TileProps) {
+export const GridTile = memo(function GridTile({ obj, index, selected, selecting, entering, handlers, density = 0 }: TileProps) {
   const kind = kindOf(obj);
   const [broken, setBroken] = useState(false);
   const [dropping, setDropping] = useState(false);
-  const press = useLongPress((x, y) => handlers.onMenu(obj, x, y));
+  const press = useLongPress((x, y) => handlers.onLongPress(obj, x, y));
   const thumb = obj.thumb && !broken;
   const meta = obj.is_dir ? formatDate(obj.modified) : `${formatBytes(obj.size)}`;
 
@@ -87,7 +100,7 @@ export const GridTile = memo(function GridTile({ obj, index, selected, selecting
     <div
       data-flip={obj.name}
       data-name={obj.name}
-      className={`tile spot group/tile relative rounded-[var(--radius-tile)] p-1.5 outline-none transition-[background-color,box-shadow] duration-300 ${entering ? "enter" : "enter-soft"} ${selected ? "bg-accent-soft" : "hover:bg-[var(--hover)]"} ${dropping ? "ring-2 ring-accent" : ""}`}
+      className={`tile spot group/tile relative rounded-[var(--radius-tile)] ${density ? "p-1" : "p-1.5"} outline-none transition-[background-color,box-shadow] duration-300 ${entering ? "enter" : "enter-soft"} ${selected ? "bg-accent-soft" : "hover:bg-[var(--hover)]"} ${dropping ? "ring-2 ring-accent" : ""}`}
       style={{ "--i": index } as CSSProperties}
       tabIndex={0}
       role="button"
@@ -142,17 +155,24 @@ export const GridTile = memo(function GridTile({ obj, index, selected, selecting
         </button>
         <button
           type="button"
-          className="absolute right-1.5 top-1.5 grid size-7 place-items-center rounded-full bg-black/40 text-white opacity-0 backdrop-blur-md transition-opacity duration-200 group-hover/tile:opacity-100 focus:opacity-100"
+          className="absolute right-1.5 top-1.5 grid size-7 place-items-center rounded-full bg-black/40 text-white opacity-0 backdrop-blur-md transition-opacity duration-200 group-hover/tile:opacity-100 focus:opacity-100 [@media(hover:none)]:hidden"
           aria-label="更多"
           onClick={event => { event.stopPropagation(); const r = event.currentTarget.getBoundingClientRect(); handlers.onMenu(obj, r.right, r.bottom); }}
         >
           <DotsThreeIcon size={16} weight="bold" />
         </button>
       </div>
-      <div className="px-1 pt-2 pb-0.5">
-        <p className="line-clamp-2 break-all text-[13.5px] font-medium leading-snug" title={obj.name}>{obj.name}</p>
-        <p className="mt-0.5 truncate text-[12px] text-muted tabular">{meta}</p>
-      </div>
+      {density === 0 ? (
+        <div className="px-1 pt-2 pb-0.5">
+          <p className="line-clamp-2 break-all text-[13.5px] font-medium leading-snug" title={obj.name}>{obj.name}</p>
+          <p className="mt-0.5 truncate text-[12px] text-muted tabular">{meta}</p>
+        </div>
+      ) : (
+        <div className="px-0.5 pt-1.5">
+          <p className={`truncate font-medium leading-snug ${density === 2 ? "text-[11px]" : "text-[12px]"}`} title={obj.name}>{obj.name}</p>
+          {density === 1 && <p className="truncate text-[11px] text-muted tabular">{meta}</p>}
+        </div>
+      )}
     </div>
   );
 });
@@ -160,7 +180,7 @@ export const GridTile = memo(function GridTile({ obj, index, selected, selecting
 export const ListRow = memo(function ListRow({ obj, index, selected, selecting, entering, handlers }: TileProps) {
   const kind = kindOf(obj);
   const [dropping, setDropping] = useState(false);
-  const press = useLongPress((x, y) => handlers.onMenu(obj, x, y));
+  const press = useLongPress((x, y) => handlers.onLongPress(obj, x, y));
   return (
     <div
       data-flip={obj.name}
@@ -204,7 +224,7 @@ export const ListRow = memo(function ListRow({ obj, index, selected, selecting, 
 /** Folders in grid view: a compact card. Thumbnail space is for files that have something to show. */
 export const FolderCard = memo(function FolderCard({ obj, index, selected, selecting, entering, handlers }: TileProps) {
   const [dropping, setDropping] = useState(false);
-  const press = useLongPress((x, y) => handlers.onMenu(obj, x, y));
+  const press = useLongPress((x, y) => handlers.onLongPress(obj, x, y));
   return (
     <div
       data-flip={obj.name}
@@ -241,7 +261,7 @@ export const FolderCard = memo(function FolderCard({ obj, index, selected, selec
         <p className="truncate text-[13.5px] font-medium leading-snug" title={obj.name}>{obj.name}</p>
         <p className="truncate text-[12px] text-muted tabular">{formatDate(obj.modified)}</p>
       </div>
-      <button type="button" className="grid size-7 shrink-0 place-items-center rounded-full text-muted opacity-0 transition-opacity hover:bg-[var(--hover)] hover:text-ink group-hover/tile:opacity-100 focus:opacity-100"
+      <button type="button" className="grid size-7 shrink-0 place-items-center rounded-full text-muted opacity-0 transition-opacity hover:bg-[var(--hover)] hover:text-ink group-hover/tile:opacity-100 focus:opacity-100 [@media(hover:none)]:hidden"
         aria-label="更多" onClick={event => { event.stopPropagation(); const r = event.currentTarget.getBoundingClientRect(); handlers.onMenu(obj, r.right, r.bottom); }}>
         <DotsThreeIcon size={16} weight="bold" />
       </button>
