@@ -16,6 +16,10 @@ func TestCleanName(t *testing.T) {
 		{"01.mp4", "", 0, 0, ""},
 		{"[周星驰] [原盘电影集 国粤语]", "", 0, 0, ""},
 		{"黑袍纠察队 (2019)", "黑袍纠察队", 2019, 0, ""},
+		{"葬送的芙莉莲 第二季", "葬送的芙莉莲", 0, 0, ""},
+		{"蜘蛛侠系列 (三部曲)", "蜘蛛侠", 0, 0, ""},
+		{"Running Man (2010)", "Running Man", 2010, 0, ""},
+		{"The.Last.of.Us.S02.2160p.WEB-DL", "The Last of Us", 0, 0, ""},
 	}
 	for _, c := range cases {
 		query, year, tmdb, imdb := CleanName(c.in)

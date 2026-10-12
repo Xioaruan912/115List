@@ -2,6 +2,7 @@ import { ArrowLeftIcon } from "@phosphor-icons/react";
 import { AnimatePresence, motion } from "motion/react";
 import { lazy, Suspense, useEffect, useRef } from "react";
 import { Link, useLocation } from "wouter";
+import { Dialogs } from "../../components/Dialogs";
 import { ThemeButton } from "../../components/TopBar";
 import { spring } from "../../lib/motion";
 import { useSession } from "../../stores/session";
@@ -56,6 +57,7 @@ export default function Manage() {
           </motion.div>
         </AnimatePresence>
       </main>
+      <Dialogs />
     </div>
   );
 }

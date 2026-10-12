@@ -12,7 +12,7 @@ import { isGuest } from "../lib/perm";
  * so while some are pending this asks again every few seconds (a minute at most).
  * No drive request is involved.
  */
-export function usePosters(dir: string, items: Obj[]): Record<string, Poster> {
+export function usePosters(dir: string, items: Obj[]): { items: Record<string, Poster>; blur: boolean } {
   const me = useSession(state => state.me);
   const names = useMemo(() => items.filter(item => item.is_dir || kindOf(item) === "video").map(item => item.name), [items]);
   const query = useQuery({
@@ -26,7 +26,7 @@ export function usePosters(dir: string, items: Obj[]): Record<string, Poster> {
       return data && data.pending > 0 && q.state.dataUpdateCount < 20 ? 3000 : false;
     },
   });
-  return query.data?.items ?? EMPTY;
+  return { items: query.data?.items ?? EMPTY, blur: !!query.data?.blur };
 }
 
 const EMPTY: Record<string, Poster> = {};

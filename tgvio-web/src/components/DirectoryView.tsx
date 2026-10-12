@@ -140,7 +140,7 @@ export function DirectoryView({ path }: { path: string }) {
 
   const items = useMemo(() => sortObjs(query.data?.content ?? [], sortKey, sortDesc), [query.data, sortKey, sortDesc]);
   const writable = can(me, Perm.Write, query.data?.write);
-  const posterMap = usePosters(path, items);
+  const { items: posterMap, blur: posterBlur } = usePosters(path, items);
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
@@ -473,6 +473,7 @@ export function DirectoryView({ path }: { path: string }) {
     <div
       ref={scrollRef}
       data-view={present ? "active" : "leaving"}
+      data-poster-blur={posterBlur ? "" : undefined}
       className="absolute inset-0 overflow-y-auto overflow-x-hidden overscroll-contain"
       onTouchStart={onTouchStart}
       onTouchMove={onTouchMove}

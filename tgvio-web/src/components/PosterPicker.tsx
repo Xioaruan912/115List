@@ -29,6 +29,7 @@ export function PosterPicker({ name, onClose }: { name: string; onClose: () => v
     try {
       await posters.set(name, choice ? { kind: choice.kind, id: choice.id } : null);
       await client.invalidateQueries({ queryKey: ["posters"] });
+      void client.invalidateQueries({ queryKey: ["poster-settings"] });
       toast.success(choice ? `封面换成了「${choice.title}」` : "不再显示海报");
       window.setTimeout(onClose, 380);
     } catch (error) {
