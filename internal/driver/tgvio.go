@@ -19,5 +19,6 @@ type BatchRemove interface {
 // space only once those entries are cleaned.
 type RecycleBin interface {
 	RecycleList(ctx context.Context, offset, limit int) ([]tgvio.RecycleItem, error)
-	RecycleClean(ctx context.Context, ids []string) error
+	// password is the account's security key, when the drive asks for one (115: six digits).
+	RecycleClean(ctx context.Context, ids []string, password string) error
 }

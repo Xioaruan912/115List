@@ -1,12 +1,13 @@
 import {
   ArrowSquareOutIcon, ArrowsLeftRightIcon, CheckSquareIcon, CopyIcon, DownloadSimpleIcon, FolderPlusIcon, InfoIcon,
-  LinkIcon, PencilSimpleIcon, ShareNetworkIcon, TrashIcon, UploadSimpleIcon, ArrowClockwiseIcon,
+  FilmSlateIcon, LinkIcon, PencilSimpleIcon, ShareNetworkIcon, TrashIcon, UploadSimpleIcon, ArrowClockwiseIcon,
 } from "@phosphor-icons/react";
 import { useLocation } from "wouter";
 import { useDir } from "../hooks/useDir";
 import * as actions from "../lib/actions";
 import { encodePath, join } from "../lib/path";
-import { can, Perm } from "../lib/perm";
+import { kindOf } from "../lib/kind";
+import { can, isGuest, Perm } from "../lib/perm";
 import { useSession } from "../stores/session";
 import { useUi } from "../stores/ui";
 import { useUploads } from "../stores/uploads";
@@ -64,6 +65,7 @@ export function ContextMenu() {
           { label: "复制链接", icon: <LinkIcon size={15} />, run: () => void actions.copyLinks(dir, [obj]) },
         ] : []),
         ...(can(me, Perm.Share) ? [{ label: "分享", icon: <ShareNetworkIcon size={15} />, run: () => ui().openDialog({ kind: "share", dir, names: [obj.name] }) }] : []),
+        ...((obj.is_dir || kindOf(obj) === "video") && !isGuest(me) ? [{ label: "更换封面", icon: <FilmSlateIcon size={15} />, run: () => ui().openDialog({ kind: "poster", name: obj.name }) }] : []),
         { label: "选择", icon: <CheckSquareIcon size={15} />, run: () => ui().toggle(dir, obj.name) },
         "divider",
         { label: "重命名", icon: <PencilSimpleIcon size={15} />, hint: "F2", disabled: !can(me, Perm.Rename), run: () => ui().openDialog({ kind: "rename", dir, obj }) },

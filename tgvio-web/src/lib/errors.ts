@@ -19,6 +19,7 @@ type Rule = [RegExp, string, string, boolean];
 
 // First match wins: the specific before the general.
 const RULES: Rule[] = [
+  [/密钥错误|security key/, "115 安全密钥不对", "清空回收站需要 115 的 6 位安全密钥。", false],
   [/udf volumes? are not supported/, "这个光盘镜像打不开", "它是 UDF 格式的 ISO，网页里还不能直接浏览。下载后用本地播放器打开就行。", false],
   [/wrong archive password|archive password|bad password/, "压缩包密码不对", "再输入一次试试。", true],
   [/(not supported|unsupported|unknown format|not a valid|cannot open|invalid header|not an archive)/, "这个格式打不开", "网页里暂时看不了，下载到本地再打开。", false],

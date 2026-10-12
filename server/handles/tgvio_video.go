@@ -113,7 +113,7 @@ func resolveVideoPath(c *gin.Context, req *tgvioVideoReq) (string, int, error) {
 	if err != nil && !errors.Is(errors.Cause(err), errs.MetaNotFound) {
 		return "", 500, err
 	}
-	if !common.CanAccess(user, meta, real, req.Password) {
+	if !webCanAccess(user, meta, real, req.Password) {
 		return "", 403, errors.New("password is incorrect or you have no permission")
 	}
 	return real, 200, nil

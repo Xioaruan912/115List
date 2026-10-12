@@ -114,6 +114,11 @@ func Init(e *gin.Engine) {
 	// so it lives beside /fs with disabled guests allowed; the handler checks access.
 	api.POST("/tgvio/video", middlewares.Auth(true), handles.TgvioVideo)
 	g.GET("/tgvio/hls/:ticket/:quality/:file", handles.TgvioHLS)
+	// TGVIO posters from TMDB: lookups for signed-in users, images for anyone (they are public art).
+	auth.POST("/tgvio/posters", middlewares.AuthNotGuest, handles.TgvioPosters)
+	auth.POST("/tgvio/posters/search", middlewares.AuthNotGuest, handles.TgvioPosterSearch)
+	auth.POST("/tgvio/posters/set", middlewares.AuthNotGuest, handles.TgvioPosterSet)
+	g.GET("/tgvio/poster/:size/:file", handles.TgvioPosterImage)
 	if flags.Debug || flags.Dev {
 		debug(g.Group("/debug"))
 	}
@@ -126,6 +131,7 @@ func admin(g *gin.RouterGroup) {
 	tgvioAdmin := g.Group("/tgvio")
 	tgvioAdmin.GET("/recycle", handles.TgvioRecycleList)
 	tgvioAdmin.POST("/recycle/clean", handles.TgvioRecycleClean)
+	tgvioAdmin.Any("/folder_lock", handles.TgvioFolderLock)
 
 	meta := g.Group("/meta")
 	meta.GET("/list", handles.ListMetas)

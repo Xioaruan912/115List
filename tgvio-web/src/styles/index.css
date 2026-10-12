@@ -318,3 +318,12 @@ button, a, [role="button"] { touch-action: manipulation; }
 .reel-left .reel-frames span:last-child { background: radial-gradient(circle at 30% 35%, #f0c27a 0 14%, transparent 15%), linear-gradient(180deg, #1e2a3c, #4a3a52); }
 .reel-right .reel-frames span:first-child { background: linear-gradient(200deg, #0f2f33, #2d6e6a 65%, #78b8a4); }
 .reel-right .reel-frames span:last-child { background: repeating-linear-gradient(120deg, #2a1420 0 10px, #5a2338 10px 22px); }
+
+/* Poster covers: the backdrop drifts, the poster leans and straightens on hover. */
+.poster-backdrop { transition: transform 1.6s var(--ease-expo); }
+.poster-card { transform: rotate(-3deg); transform-origin: 30% 100%; box-shadow: 0 12px 28px -10px rgb(0 0 0 / 0.75), 0 0 0 1px rgb(255 255 255 / 0.08); transition: transform 700ms var(--ease-expo), opacity 500ms; }
+@media (hover: hover) {
+  .tile:hover .poster-backdrop { transform: scale(1.08) translateX(-2%); }
+  .tile:hover .poster-card { transform: rotate(0deg) translateY(-4px) scale(1.04); }
+}
+@media (prefers-reduced-motion: reduce) { .poster-backdrop, .poster-card { transition: none; } }

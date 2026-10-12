@@ -111,7 +111,7 @@ func TestAConnectFailureIsRetried(t *testing.T) {
 
 func TestRecycleCleanNeverEmptiesTheWholeBin(t *testing.T) {
 	d := &Pan115{} // no client: an attempt to call the drive would panic
-	if err := d.RecycleClean(context.Background(), nil); err != errNoRecycleIDs {
+	if err := d.RecycleClean(context.Background(), nil, ""); err != errNoRecycleIDs {
 		t.Fatalf("an empty id list is refused before any drive call, got %v", err)
 	}
 }

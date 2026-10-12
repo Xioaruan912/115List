@@ -1,15 +1,19 @@
 import { PencilSimpleIcon, PlusIcon, TrashIcon } from "@phosphor-icons/react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { AnimatePresence, motion } from "motion/react";
+import { LockKeyIcon } from "@phosphor-icons/react";
 import { useState } from "react";
 import { metas } from "../../api/admin";
+import { FolderLock } from "./Users";
+import { hasBit, Perm } from "../../lib/perm";
+import { useSession } from "../../stores/session";
 import { Sheet } from "../../components/Sheet";
 import { spring } from "../../lib/motion";
 import type { Meta } from "../../lib/types";
 import { toast } from "../../stores/toast";
 import { PageHeader } from "./Form";
 
-const EMPTY: Partial<Meta> = { path: "/", password: "", p_sub: false, write: false, w_sub: false, hide: "", h_sub: false, readme: "", r_sub: false, header: "", header_sub: false };
+const EMPTY: Partial<Meta> = { path: "/", password: "", p_sub: true, write: false, w_sub: false, hide: "", h_sub: false, readme: "", r_sub: false, header: "", header_sub: false };
 
 function Sub({ on, onChange }: { on: boolean; onChange: (on: boolean) => void }) {
   return (
@@ -40,6 +44,14 @@ function Editor({ meta, onClose }: { meta: Meta | null; onClose: () => void }) {
           <label className="label" htmlFor="m-pass">访问密码</label>
           <input id="m-pass" className="field" value={form.password ?? ""} onChange={event => set({ password: event.target.value })} />
           <div className="mt-2"><Sub on={!!form.p_sub} onChange={p_sub => set({ p_sub })} /></div>
+          <AnimatePresence initial={false}>
+            {!!form.password && !form.p_sub && (
+              <motion.p key="sub" className="mt-2 text-[12.5px] text-muted" initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }}>
+                现在只锁这一层：打开它要密码，但直接进里面的子文件夹不用。想整个锁住，打开「应用到子文件夹」。
+              </motion.p>
+            )}
+          </AnimatePresence>
+          {!!form.password && <AdminBypass />}
         </div>
         <div className="flex items-center justify-between rounded-xl px-3 py-2.5 hairline">
           <span className="text-[13.5px]">允许所有人上传和新建</span>
@@ -57,6 +69,21 @@ function Editor({ meta, onClose }: { meta: Meta | null; onClose: () => void }) {
         </div>
       </div>
     </Sheet>
+  );
+}
+
+/** Admins skip folder passwords (免密访问, which WebDAV clients rely on); offer the web-only lock. */
+function AdminBypass() {
+  const me = useSession(state => state.me);
+  if (!me || !hasBit(me.permission, Perm.NoPassword)) return null;
+  return (
+    <motion.div className="mt-3 rounded-xl bg-accent-soft px-1 pb-1 pt-3" initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={spring.soft}>
+      <div className="flex items-start gap-3 px-2">
+        <LockKeyIcon size={18} weight="duotone" className="mt-0.5 shrink-0 text-accent-text" />
+        <p className="text-[12.5px] leading-relaxed text-muted"><span className="font-medium text-ink">管理员默认不被问密码</span>，密码只拦访客和其他账户。想自己打开时也要输密码，打开下面这个开关。</p>
+      </div>
+      <FolderLock />
+    </motion.div>
   );
 }
 
@@ -80,7 +107,7 @@ export default function Metas() {
               <div className="min-w-0 flex-1">
                 <p className="truncate font-medium">{meta.path}</p>
                 <p className="truncate text-[12.5px] text-muted">
-                  {[meta.password && "密码", meta.write && "可写", meta.hide && "隐藏规则", meta.readme && "说明"].filter(Boolean).join("，") || "无设置"}
+                  {[meta.password && (meta.p_sub ? "密码（含子文件夹）" : "密码（仅这一层）"), meta.write && "可写", meta.hide && "隐藏规则", meta.readme && "说明"].filter(Boolean).join("，") || "无设置"}
                 </p>
               </div>
               <button className="icon-btn" aria-label="编辑" onClick={() => setEditing(meta)}><PencilSimpleIcon size={17} /></button>

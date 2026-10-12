@@ -2,6 +2,8 @@ import { CheckIcon, DotsThreeIcon, FolderOpenIcon, FolderSimpleIcon, PlayIcon } 
 import { AnimatePresence, motion } from "motion/react";
 import { memo, useEffect, useRef, useState, type CSSProperties, type DragEvent, type MouseEvent, type PointerEvent } from "react";
 import { useCover } from "../hooks/useCover";
+import { posterSrc, type Poster } from "../api/posters";
+import { StarIcon } from "@phosphor-icons/react";
 import { formatBytes, formatDate } from "../lib/format";
 import { kindOf, type Kind } from "../lib/kind";
 import { spring } from "../lib/motion";
@@ -23,6 +25,8 @@ export interface TileHandlers {
 interface TileProps {
   density?: 0 | 1 | 2; // phones: 0 two columns, 1 three, 2 four
   dir?: string;
+  /** TMDB art for a folder or video named after a film or series. */
+  poster?: Poster;
   obj: Obj;
   index: number;
   selected: boolean;
@@ -93,7 +97,7 @@ function Check({ on, visible }: { on: boolean; visible: boolean }) {
   );
 }
 
-export const GridTile = memo(function GridTile({ obj, index, selected, selecting, entering, handlers, density = 0 }: TileProps) {
+export const GridTile = memo(function GridTile({ obj, index, selected, selecting, entering, handlers, density = 0, poster }: TileProps) {
   const kind = kindOf(obj);
   const [broken, setBroken] = useState(false);
   const [dropping, setDropping] = useState(false);
@@ -130,7 +134,7 @@ export const GridTile = memo(function GridTile({ obj, index, selected, selecting
         className={`relative aspect-[4/3] overflow-hidden rounded-[10px] bg-surface transition-transform duration-500 ease-[var(--ease-expo)] ${selected ? "scale-[0.94]" : "group-hover/tile:-translate-y-0.5"}`}
         style={{ boxShadow: "inset 0 0 0 1px var(--line)" }}
       >
-        {thumb ? (
+        {poster ? <PosterCover poster={poster} small={density > 0} /> : thumb ? (
           <img className="thumb absolute inset-0 size-full object-cover" src={obj.thumb} alt="" loading="lazy" decoding="async"
             referrerPolicy="no-referrer" draggable={false} onError={() => setBroken(true)} />
         ) : obj.is_dir ? (
@@ -226,6 +230,29 @@ export const ListRow = memo(function ListRow({ obj, index, selected, selecting, 
   );
 });
 
+/**
+ * A tile showing a film's or series' art: the backdrop fills it and drifts, the
+ * poster leans at the left and straightens up when the pointer arrives.
+ */
+export function PosterCover({ poster, small = false }: { poster: Poster; small?: boolean }) {
+  const [loaded, setLoaded] = useState(false);
+  const backdrop = posterSrc(poster.backdrop, undefined) || posterSrc(poster.poster, "w342");
+  return (
+    <div className="poster-cover absolute inset-0 overflow-hidden bg-[#111114]">
+      <img src={backdrop} alt="" loading="lazy" decoding="async" draggable={false}
+        className={`poster-backdrop absolute inset-0 size-full object-cover ${poster.backdrop ? "opacity-80" : "scale-125 opacity-60 blur-xl"}`} />
+      <div className="absolute inset-0 bg-gradient-to-r from-black/75 via-black/25 to-transparent" />
+      <img src={posterSrc(poster.poster, "w342")} alt="" loading="lazy" decoding="async" draggable={false} onLoad={() => setLoaded(true)}
+        className={`poster-card absolute bottom-[8%] left-[6%] h-[84%] w-auto rounded-[7px] ${loaded ? "opacity-100" : "opacity-0"}`} />
+      {!small && (poster.year || poster.rating) ? (
+        <span className="absolute bottom-1.5 right-1.5 inline-flex items-center gap-1 rounded-full bg-black/50 px-2 py-0.5 text-[11px] font-medium text-white backdrop-blur-md tabular">
+          {poster.year}{poster.rating ? <><StarIcon size={10} weight="fill" className="ml-0.5 text-accent" />{poster.rating.toFixed(1)}</> : null}
+        </span>
+      ) : null}
+    </div>
+  );
+}
+
 /** Folder cover: a mosaic of what is inside, cells trading places while hovered. */
 function Mosaic({ thumbs, live }: { thumbs: string[]; live: boolean }) {
   const [shift, setShift] = useState(0);
@@ -279,9 +306,9 @@ function FolderGlyph({ kinds, small }: { kinds: Kind[]; small: boolean }) {
 }
 
 /** Folders in grid view: same footprint as a file, with a cover made of what is inside. */
-export const FolderTile = memo(function FolderTile({ obj, dir = "/", index, selected, selecting, entering, handlers, density = 0 }: TileProps) {
+export const FolderTile = memo(function FolderTile({ obj, dir = "/", index, selected, selecting, entering, handlers, density = 0, poster }: TileProps) {
   const box = useRef<HTMLDivElement>(null);
-  const cover = useCover(join(dir, obj.name), box);
+  const cover = useCover(join(dir, obj.name), box, !poster);
   const [hover, setHover] = useState(false);
   const [dropping, setDropping] = useState(false);
   const press = useLongPress((x, y) => handlers.onLongPress(obj, x, y));
@@ -316,9 +343,10 @@ export const FolderTile = memo(function FolderTile({ obj, dir = "/", index, sele
         <span className="folder-sheet folder-sheet-back" aria-hidden />
         <span className="folder-sheet folder-sheet-mid" aria-hidden />
         <div className="absolute inset-0 overflow-hidden rounded-[10px] bg-surface" style={{ boxShadow: "inset 0 0 0 1px var(--line)" }}>
-          {thumbs.length ? <Mosaic thumbs={thumbs} live={hover} /> : <FolderGlyph kinds={cover?.kinds ?? []} small={density > 0} />}
-          {thumbs.length > 0 && <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/45 via-transparent to-transparent" />}
-          {cover && density < 2 && (
+          {poster ? <PosterCover poster={poster} small={density > 0} />
+            : thumbs.length ? <Mosaic thumbs={thumbs} live={hover} /> : <FolderGlyph kinds={cover?.kinds ?? []} small={density > 0} />}
+          {!poster && thumbs.length > 0 && <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/45 via-transparent to-transparent" />}
+          {cover && !poster && density < 2 && (
             <motion.span className={`absolute bottom-1.5 left-1.5 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium tabular backdrop-blur-md ${thumbs.length ? "bg-black/45 text-white" : "bg-[var(--hover)] text-muted"}`}
               initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={spring.snappy}>
               <FolderSimpleIcon size={11} weight="fill" />{cover.count}

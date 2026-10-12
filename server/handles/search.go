@@ -51,7 +51,7 @@ func Search(c *gin.Context) {
 		if err != nil && !errors.Is(errors.Cause(err), errs.MetaNotFound) {
 			return false
 		}
-		return common.CanAccess(user, meta, path.Join(node.Parent, node.Name), req.Password)
+		return webCanAccess(user, meta, path.Join(node.Parent, node.Name), req.Password)
 	})
 	if err != nil {
 		common.ErrorResp(c, err, 500)

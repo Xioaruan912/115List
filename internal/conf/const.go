@@ -22,6 +22,8 @@ const (
 	MainColor                      = "main_color"
 	HideStorageDetails             = "hide_storage_details"
 	HideStorageDetailsInManagePage = "hide_storage_details_in_manage_page"
+	// TGVIO: admins type folder passwords too, in the web UI only (WebDAV clients keep their bypass).
+	TgvioAdminFolderPassword = "tgvio_admin_folder_password"
 
 	// preview
 	TextTypes                     = "text_types"

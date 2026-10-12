@@ -16,6 +16,7 @@ import { toast, useToasts } from "../stores/toast";
 import { useUi, type Dialog } from "../stores/ui";
 import type { Obj } from "../lib/types";
 import { KindIcon } from "./KindIcon";
+import { PosterPicker } from "./PosterPicker";
 import { ShareDialog, SharesDialog } from "./Share";
 import { Sheet } from "./Sheet";
 import { ErrorState } from "./ErrorState";
@@ -305,6 +306,8 @@ function DialogFor({ dialog, onClose }: { dialog: Dialog; onClose: () => void })
       return <OfflineDialog dir={dialog.dir} onClose={onClose} />;
     case "share":
       return <ShareDialog dir={dialog.dir} names={dialog.names} onClose={onClose} />;
+    case "poster":
+      return <PosterPicker name={dialog.name} onClose={onClose} />;
     case "shares":
       return <SharesDialog onClose={onClose} />;
     case "account":
