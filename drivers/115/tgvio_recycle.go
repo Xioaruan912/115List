@@ -30,14 +30,14 @@ func (d *Pan115) RecycleList(ctx context.Context, offset, limit int) ([]tgvio.Re
 
 // RecycleClean permanently removes the given entries. It never empties the whole
 // bin: an empty id list would mean "everything" to the drive, so it is refused.
-func (d *Pan115) RecycleClean(ctx context.Context, ids []string) error {
+func (d *Pan115) RecycleClean(ctx context.Context, ids []string, password string) error {
 	if len(ids) == 0 {
 		return errNoRecycleIDs
 	}
 	if err := d.WaitLimit(ctx); err != nil {
 		return err
 	}
-	return d.client.CleanRecycleBin("", ids...)
+	return d.client.CleanRecycleBin(password, ids...)
 }
 
 var _ driver.RecycleBin = (*Pan115)(nil)

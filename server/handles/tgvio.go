@@ -106,6 +106,9 @@ func TgvioRecycleList(c *gin.Context) {
 
 type tgvioRecycleCleanReq struct {
 	IDs []string `json:"ids"`
+	// The 115 security key (安全密钥); 115 refuses to empty the bin without it
+	// when the account has one. Passed through, never stored.
+	Password string `json:"password"`
 }
 
 // TgvioRecycleClean: POST /api/admin/tgvio/recycle/clean {"ids": [...]}
@@ -126,7 +129,7 @@ func TgvioRecycleClean(c *gin.Context) {
 	if !ok {
 		return
 	}
-	if err := bin.RecycleClean(c.Request.Context(), req.IDs); err != nil {
+	if err := bin.RecycleClean(c.Request.Context(), req.IDs, req.Password); err != nil {
 		common.ErrorResp(c, err, 502)
 		return
 	}
