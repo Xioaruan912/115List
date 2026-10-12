@@ -16,6 +16,7 @@ import { toast, useToasts } from "../stores/toast";
 import { useUi, type Dialog } from "../stores/ui";
 import type { Obj } from "../lib/types";
 import { KindIcon } from "./KindIcon";
+import { ShareDialog, SharesDialog } from "./Share";
 import { Sheet } from "./Sheet";
 
 function useBusy() {
@@ -301,6 +302,10 @@ function DialogFor({ dialog, onClose }: { dialog: Dialog; onClose: () => void })
       return <InfoDialog dir={dialog.dir} obj={dialog.obj} onClose={onClose} />;
     case "offline":
       return <OfflineDialog dir={dialog.dir} onClose={onClose} />;
+    case "share":
+      return <ShareDialog dir={dialog.dir} names={dialog.names} onClose={onClose} />;
+    case "shares":
+      return <SharesDialog onClose={onClose} />;
     case "account":
       return <AccountDialog onClose={onClose} />;
     case "decompress":

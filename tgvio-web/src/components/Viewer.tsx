@@ -1,6 +1,6 @@
 import {
   ArrowSquareOutIcon, CaretLeftIcon, DotsThreeIcon, CaretRightIcon, DownloadSimpleIcon, InfoIcon, LinkIcon, MagnifyingGlassMinusIcon,
-  MagnifyingGlassPlusIcon, TrashIcon, XIcon,
+  MagnifyingGlassPlusIcon, PlayIcon, ShareNetworkIcon, TrashIcon, XIcon,
 } from "@phosphor-icons/react";
 import { useQuery } from "@tanstack/react-query";
 import { animate, AnimatePresence, motion, useMotionValue, useTransform, type MotionValue, type PanInfo } from "motion/react";
@@ -10,8 +10,9 @@ import { useDir } from "../hooks/useDir";
 import { useIsMobile } from "../hooks/useMedia";
 import * as actions from "../lib/actions";
 import { formatBytes, formatDate } from "../lib/format";
-import { kindOf, type Kind } from "../lib/kind";
-import { downloadUrl, proxyUrl } from "../lib/links";
+import { galleryKind, kindOf, type Kind } from "../lib/kind";
+import { absolute, downloadUrl, proxyUrl } from "../lib/links";
+import { formatClock, resumeAt, saveProgress } from "../lib/progress";
 import { spring } from "../lib/motion";
 import { extname, join } from "../lib/path";
 import { can, Perm } from "../lib/perm";
@@ -109,19 +110,180 @@ function ImageView({ src, fallback, thumb, zoom, panX, panY, onAspect }: {
   );
 }
 
-function VideoView({ src, fallback, thumb, onAspect }: { src: string; fallback: string; thumb: string; onAspect: (aspect: number) => void }) {
+/** Hand-off links for players that take a URL, per platform. */
+function externalPlayers(url: string): { label: string; href: string }[] {
+  const ua = navigator.userAgent;
+  const encoded = encodeURIComponent(url);
+  if (/iPhone|iPad|iPod/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1)) {
+    return [
+      { label: "Infuse", href: `infuse://x-callback-url/play?url=${encoded}` },
+      { label: "nPlayer", href: `nplayer-${url}` },
+      { label: "VLC", href: `vlc-x-callback://x-callback-url/stream?url=${encoded}` },
+    ];
+  }
+  if (/Android/.test(ua)) {
+    return [
+      { label: "VLC", href: `intent:${url}#Intent;package=org.videolan.vlc;type=video/*;end` },
+      { label: "MX Player", href: `intent:${url}#Intent;package=com.mxtech.videoplayer.ad;type=video/*;end` },
+      { label: "其他播放器", href: `intent:${url}#Intent;type=video/*;end` },
+    ];
+  }
+  if (/Macintosh/.test(ua)) {
+    return [{ label: "IINA", href: `iina://weblink?url=${encoded}` }, { label: "VLC", href: `vlc://${url}` }];
+  }
+  return [{ label: "PotPlayer", href: `potplayer://${url}` }, { label: "VLC", href: `vlc://${url}` }];
+}
+
+type VideoPhase = "loading" | "playing" | "paused" | "blocked" | "failed" | "silent";
+
+function VideoView({ path, src, fallback, thumb, onAspect, onDownload, onCopy }: {
+  path: string;
+  src: string;
+  fallback: string;
+  thumb: string;
+  onAspect: (aspect: number) => void;
+  onDownload: () => void;
+  onCopy: () => void;
+}) {
+  const ref = useRef<HTMLVideoElement>(null);
   const [url, setUrl] = useState(src);
+  const [phase, setPhase] = useState<VideoPhase>("loading");
+  const [slow, setSlow] = useState(false);
+  const [resumed, setResumed] = useState(0);
+  const saved = useRef(0);
+
+  // The 115 link is fetched on the first request and can take several seconds:
+  // say so instead of showing an empty frame.
+  useEffect(() => {
+    if (phase !== "loading") { setSlow(false); return; }
+    const timer = window.setTimeout(() => setSlow(true), 1800);
+    return () => clearTimeout(timer);
+  }, [phase]);
+
+  // Start inside the tap that opened the viewer, so iOS treats it as user initiated.
+  useEffect(() => {
+    const video = ref.current;
+    if (!video) return;
+    video.play().catch((error: unknown) => {
+      if (error instanceof DOMException && error.name === "NotAllowedError") setPhase(state => state === "failed" ? state : "blocked");
+    });
+  }, [url]);
+
+  useEffect(() => () => {
+    const video = ref.current;
+    if (video && video.currentTime > 0) saveProgress(path, video.currentTime, video.duration);
+  }, [path]);
+
+  useEffect(() => {
+    if (!resumed) return;
+    const timer = window.setTimeout(() => setResumed(0), 5200);
+    return () => clearTimeout(timer);
+  }, [resumed]);
+
+  const play = (): void => { void ref.current?.play().catch(() => setPhase("blocked")); };
+  const players = externalPlayers(absolute(src));
+  const showPoster = phase === "loading" || phase === "blocked" || phase === "failed";
+
   return (
-    <video
-      src={url}
-      poster={thumb || undefined}
-      controls
-      autoPlay
-      playsInline
-      className="absolute inset-0 size-full bg-black object-contain"
-      onLoadedMetadata={event => { const v = event.currentTarget; if (v.videoWidth) onAspect(v.videoWidth / v.videoHeight); }}
-      onError={() => { if (url !== fallback) setUrl(fallback); }}
-    />
+    <div className="absolute inset-0 bg-[#060607]">
+      <video
+        ref={ref}
+        src={url}
+        controls={phase !== "failed"}
+        playsInline
+        preload="metadata"
+        className="absolute inset-0 size-full object-contain"
+        onLoadedMetadata={event => {
+          const v = event.currentTarget;
+          if (v.videoWidth) onAspect(v.videoWidth / v.videoHeight);
+          const at = resumeAt(path);
+          if (at && v.currentTime < 1) { v.currentTime = at; setResumed(at); }
+        }}
+        onPlaying={event => setPhase(event.currentTarget.videoWidth === 0 ? "silent" : "playing")}
+        onPause={event => { setPhase(state => state === "failed" ? state : "paused"); saveProgress(path, event.currentTarget.currentTime, event.currentTarget.duration); }}
+        onWaiting={() => setPhase(state => state === "playing" ? state : state === "failed" ? state : "loading")}
+        onTimeUpdate={event => {
+          const v = event.currentTarget;
+          if (Math.abs(v.currentTime - saved.current) < 4) return;
+          saved.current = v.currentTime;
+          saveProgress(path, v.currentTime, v.duration);
+        }}
+        onEnded={event => saveProgress(path, event.currentTarget.duration, event.currentTarget.duration)}
+        onError={() => {
+          if (url !== fallback) { setUrl(fallback); setPhase("loading"); }
+          else setPhase("failed");
+        }}
+      />
+
+      <AnimatePresence>
+        {showPoster && (
+          <motion.div key="cover" className="pointer-events-none absolute inset-0 overflow-hidden" initial={{ opacity: 1 }} exit={{ opacity: 0, transition: { duration: 0.5 } }}>
+            {thumb && <img src={thumb} alt="" referrerPolicy="no-referrer" className="absolute inset-0 size-full scale-110 object-cover opacity-50 blur-2xl" />}
+            <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,transparent_0%,rgb(6_6_7/0.75)_80%)]" />
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence mode="wait">
+        {phase === "loading" && (
+          <motion.div key="loading" className="pointer-events-none absolute inset-0 grid place-items-center text-white"
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0, scale: 1.08 }} transition={{ duration: 0.3 }}>
+            <div className="flex flex-col items-center gap-4">
+              <span className="relative grid size-14 place-items-center">
+                <span className="absolute inset-0 rounded-full border-2 border-white/15" />
+                <span className="spin absolute inset-0 rounded-full border-2 border-transparent border-t-accent" />
+                <PlayIcon size={18} weight="fill" className="translate-x-px text-white/80" />
+              </span>
+              <AnimatePresence>
+                {slow && (
+                  <motion.p className="text-[13px] text-white/70" initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
+                    正在向网盘获取播放地址…
+                  </motion.p>
+                )}
+              </AnimatePresence>
+            </div>
+          </motion.div>
+        )}
+        {phase === "blocked" && (
+          <motion.button key="blocked" className="absolute inset-0 grid place-items-center text-white" onClick={play} aria-label="播放"
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0, scale: 1.2 }} transition={spring.soft}>
+            <span className="relative grid size-20 place-items-center rounded-full bg-accent text-accent-ink">
+              <span className="absolute inset-0 animate-ping rounded-full bg-accent/40 [animation-duration:1.8s]" />
+              <PlayIcon size={30} weight="fill" className="relative translate-x-0.5" />
+            </span>
+          </motion.button>
+        )}
+        {(phase === "failed" || phase === "silent") && (
+          <motion.div key="failed" className={`absolute inset-x-0 ${phase === "silent" ? "top-0" : "inset-y-0"} grid place-items-center p-4 text-white`}
+            initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} transition={spring.soft}>
+            <div className="w-full max-w-sm rounded-[18px] bg-black/55 p-5 text-center backdrop-blur-xl" style={{ boxShadow: "inset 0 0 0 1px rgb(255 255 255 / 0.1)" }}>
+              <p className="font-semibold">{phase === "silent" ? "只有声音，没有画面" : "浏览器放不了这个视频"}</p>
+              <p className="mt-1.5 text-[13px] leading-relaxed text-white/65">可能是 H.265、MKV 这类浏览器不支持的格式，换个播放器打开就行。</p>
+              <div className="mt-4 flex flex-wrap justify-center gap-2">
+                {players.map(player => (
+                  <a key={player.label} href={player.href} className="rounded-full bg-white/12 px-3.5 py-1.5 text-[13px] font-medium transition-colors hover:bg-white/20">{player.label}</a>
+                ))}
+              </div>
+              <div className="mt-3 flex justify-center gap-1 text-[13px] text-white/75">
+                <button className="rounded-full px-3 py-1.5 hover:bg-white/10" onClick={onDownload}>下载</button>
+                <button className="rounded-full px-3 py-1.5 hover:bg-white/10" onClick={onCopy}>复制链接</button>
+                {phase === "failed" && <button className="rounded-full px-3 py-1.5 hover:bg-white/10" onClick={() => { setUrl(`${src}${src.includes("?") ? "&" : "?"}_=${Date.now()}`); setPhase("loading"); }}>重试</button>}
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {resumed > 0 && (
+          <motion.div key="resume" className="absolute left-1/2 top-4 flex -translate-x-1/2 items-center gap-1 rounded-full bg-black/60 py-1 pl-3.5 pr-1 text-[13px] text-white backdrop-blur-xl"
+            initial={{ opacity: 0, y: -12, scale: 0.9 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: -8 }} transition={spring.bouncy}>
+            <span className="tabular">从 {formatClock(resumed)} 继续</span>
+            <button className="rounded-full px-2.5 py-1 text-accent hover:bg-white/10" onClick={() => { if (ref.current) ref.current.currentTime = 0; setResumed(0); }}>从头播放</button>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
   );
 }
 
@@ -237,7 +399,10 @@ function ViewerBody({ dir, name, origin }: { dir: string; name: string; origin: 
   const obj = files[current] as Obj | undefined;
   const kind = obj ? kindOf(obj) : "file";
   const media = kind === "image" || kind === "video";
-  const strip = files.length > 1 && files.some(item => item.thumb) && !mobile;
+  // The thumbnail strip is for pictures and videos only: documents and archives
+  // page with the arrows, the keys and the wheel, but never look like a gallery.
+  const gallery = useMemo(() => files.filter(item => galleryKind(kindOf(item)) === "media"), [files]);
+  const strip = media && gallery.length > 1 && gallery.some(item => item.thumb) && !mobile;
   const [aspects, setAspects] = useState<Record<string, number>>({});
   const aspect = obj ? aspects[obj.name] ?? (origin ? origin.width / origin.height : 16 / 9) : 16 / 9;
   const box = media ? fit(aspect, vw, vh, mobile, strip) : panelBox(vw, vh, mobile);
@@ -383,6 +548,25 @@ function ViewerBody({ dir, name, origin }: { dir: string; name: string; origin: 
     if (next <= 1.01) resetZoom(); else setZoomed(true);
   };
 
+  // Wheel over the empty stage pages through files: one file per gesture. Each
+  // wheel event during the cool-down extends it, so a trackpad fling or a fast
+  // spin of the wheel moves one step, not ten.
+  const wheel = useRef({ sum: 0, last: 0, lockUntil: 0 });
+  const onStageWheel = (event: React.WheelEvent): void => {
+    const now = performance.now();
+    const state = wheel.current;
+    const idle = now - state.last;
+    state.last = now;
+    if (now < state.lockUntil) { state.lockUntil = Math.max(state.lockUntil, now + 320); return; }
+    if (idle > 320) state.sum = 0;
+    const delta = Math.abs(event.deltaY) >= Math.abs(event.deltaX) ? event.deltaY : event.deltaX;
+    state.sum += event.deltaMode === 1 ? delta * 40 : delta;
+    if (Math.abs(state.sum) < 60) return;
+    go(state.sum > 0 ? 1 : -1);
+    state.sum = 0;
+    state.lockUntil = now + 560;
+  };
+
   const onDragEnd = (_: unknown, info: PanInfo): void => {
     if (zoomed) return;
     if (info.offset.y > 110 || info.velocity.y > 650) { close(); return; }
@@ -408,18 +592,21 @@ function ViewerBody({ dir, name, origin }: { dir: string; name: string; origin: 
   };
   const draggable = !zoomed && kind !== "video" && kind !== "audio";
   const darkStage = media;
+  // Chrome over a dark stage is white; over the light scrim (documents) it follows the theme.
+  const tone = darkStage
+    ? { bar: "bg-gradient-to-b from-black/60 to-transparent text-white", text: "text-white", sub: "text-white/60", chip: "bg-white/10", hover: "hover:bg-white/15", danger: "text-[#ff8a7e]" }
+    : { bar: "text-ink", text: "text-ink", sub: "text-muted", chip: "bg-raised hairline", hover: "hover:bg-[var(--hover)]", danger: "text-danger" };
 
   return (
     <motion.div className="fixed inset-0 z-60 select-none overflow-hidden" role="dialog" aria-modal="true" aria-label={obj.name}
       initial={{ opacity: 1 }} exit={{ opacity: 0, transition: { duration: 0.2 } }}>
-      <motion.div
-        className={`absolute inset-0 ${darkStage ? "bg-[#060607]" : "bg-scrim backdrop-blur-xl"}`}
-        style={{ opacity: closing ? undefined : scrim }}
-        initial={{ opacity: 0 }}
-        animate={closing ? { opacity: 0 } : undefined}
-        transition={{ duration: 0.35 }}
-        onClick={close}
-      />
+      {/* Fade in and out on the wrapper; the drag-to-dismiss fade lives on the layer
+          inside. One element doing both left the stage transparent until the next
+          re-render whenever the open animation was skipped (Reduce Motion on iOS). */}
+      <motion.div className="absolute inset-0" initial={{ opacity: 0 }} animate={{ opacity: closing ? 0 : 1 }} transition={{ duration: 0.35 }}
+        onClick={close} onWheel={onStageWheel}>
+        <motion.div className={`absolute inset-0 ${darkStage ? "bg-[#060607]" : "bg-scrim backdrop-blur-xl"}`} style={{ opacity: scrim }} />
+      </motion.div>
 
       <AnimatePresence initial={false} custom={direction}>
         <motion.div
@@ -455,7 +642,7 @@ function ViewerBody({ dir, name, origin }: { dir: string; name: string; origin: 
             onWheel={onWheel}
           >
             {kind === "image" && <ImageView key={obj.name} src={src} fallback={fallback} thumb={obj.thumb} zoom={zoom} panX={panX} panY={panY} onAspect={setAspect} />}
-            {kind === "video" && <VideoView key={obj.name} src={src} fallback={fallback} thumb={obj.thumb} onAspect={setAspect} />}
+            {kind === "video" && <VideoView key={obj.name} path={path} src={src} fallback={fallback} thumb={obj.thumb} onAspect={setAspect} onDownload={() => actions.download(dir, obj)} onCopy={() => void actions.copyLinks(dir, [obj])} />}
             {kind === "audio" && <AudioView obj={obj} src={src} />}
             {(kind === "text" || kind === "code" || kind === "markdown") && <TextView obj={obj} url={fallback} kind={kind} />}
             {kind === "archive" && can(me, Perm.ReadArchives) && <ArchiveView dir={dir} obj={obj} />}
@@ -476,31 +663,34 @@ function ViewerBody({ dir, name, origin }: { dir: string; name: string; origin: 
       )}
 
       <motion.header
-        className="absolute inset-x-0 top-0 z-[2] flex items-center gap-2 bg-gradient-to-b from-black/60 to-transparent px-3 pb-8 pt-[max(0.6rem,env(safe-area-inset-top))] text-white sm:px-5"
+        className={`absolute inset-x-0 top-0 z-[2] flex items-center gap-2 ${tone.bar} px-3 pb-8 pt-[max(0.6rem,env(safe-area-inset-top))] ${tone.text} sm:px-5`}
         initial={{ opacity: 0, y: -16 }}
         animate={{ opacity: chrome && !closing ? 1 : 0, y: chrome && !closing ? 0 : -16 }}
         transition={spring.snappy}
         style={{ pointerEvents: chrome ? "auto" : "none" }}
       >
-        <button className="grid size-9 place-items-center rounded-full bg-white/10 backdrop-blur-md transition-transform hover:bg-white/20 active:scale-90" onClick={close} aria-label="关闭"><XIcon size={18} /></button>
+        <button className={`grid size-9 place-items-center rounded-full ${tone.chip} backdrop-blur-md transition-transform ${tone.hover} active:scale-90`} onClick={close} aria-label="关闭"><XIcon size={18} /></button>
         <div className="min-w-0 flex-1 px-1">
           <p className="truncate text-[14px] font-medium">{obj.name}</p>
-          <p className="text-[12px] text-white/60 tabular">{current + 1} / {files.length}，{formatBytes(obj.size)}{extname(obj.name) ? `，${extname(obj.name).toUpperCase()}` : ""}</p>
+          <p className={`text-[12px] ${tone.sub} tabular`}>{current + 1} / {files.length}，{formatBytes(obj.size)}{extname(obj.name) ? `，${extname(obj.name).toUpperCase()}` : ""}</p>
         </div>
         {kind === "image" && !mobile && (
-          <button className="grid size-9 place-items-center rounded-full hover:bg-white/15" aria-label={zoomed ? "缩小" : "放大"}
+          <button className={`grid size-9 place-items-center rounded-full ${tone.hover}`} aria-label={zoomed ? "缩小" : "放大"}
             onClick={() => { if (zoomed) resetZoom(); else { animate(zoom, 2, spring.snappy); setZoomed(true); } }}>
             {zoomed ? <MagnifyingGlassMinusIcon size={18} /> : <MagnifyingGlassPlusIcon size={18} />}
           </button>
         )}
-        <a className="grid size-9 place-items-center rounded-full hover:bg-white/15" href={src} target="_blank" rel="noreferrer" aria-label="新标签页打开"><ArrowSquareOutIcon size={18} /></a>
-        <button className="grid size-9 place-items-center rounded-full hover:bg-white/15" onClick={() => actions.download(dir, obj)} aria-label="下载"><DownloadSimpleIcon size={18} /></button>
-        <button className="grid size-9 place-items-center rounded-full hover:bg-white/15" onClick={() => void actions.copyLinks(dir, [obj])} aria-label="复制链接"><LinkIcon size={18} /></button>
-        <button className="grid size-9 place-items-center rounded-full hover:bg-white/15 max-sm:hidden" onClick={() => openDialog({ kind: "info", dir, obj })} aria-label="属性"><InfoIcon size={18} /></button>
-        <button className="grid size-9 place-items-center rounded-full hover:bg-white/15 sm:hidden" aria-label="更多"
+        <a className={`grid size-9 place-items-center rounded-full ${tone.hover}`} href={src} target="_blank" rel="noreferrer" aria-label="新标签页打开"><ArrowSquareOutIcon size={18} /></a>
+        <button className={`grid size-9 place-items-center rounded-full ${tone.hover}`} onClick={() => actions.download(dir, obj)} aria-label="下载"><DownloadSimpleIcon size={18} /></button>
+        <button className={`grid size-9 place-items-center rounded-full ${tone.hover}`} onClick={() => void actions.copyLinks(dir, [obj])} aria-label="复制链接"><LinkIcon size={18} /></button>
+        {can(me, Perm.Share) && (
+          <button className={`grid size-9 place-items-center rounded-full ${tone.hover} max-sm:hidden`} onClick={() => openDialog({ kind: "share", dir, names: [obj.name] })} aria-label="分享"><ShareNetworkIcon size={18} /></button>
+        )}
+        <button className={`grid size-9 place-items-center rounded-full ${tone.hover} max-sm:hidden`} onClick={() => openDialog({ kind: "info", dir, obj })} aria-label="属性"><InfoIcon size={18} /></button>
+        <button className={`grid size-9 place-items-center rounded-full ${tone.hover} sm:hidden`} aria-label="更多"
           onClick={() => setMore(true)}><DotsThreeIcon size={20} weight="bold" /></button>
         {can(me, Perm.Remove) && (
-          <button className="grid size-9 place-items-center rounded-full text-[#ff8a7e] hover:bg-white/15 max-sm:hidden" aria-label="删除"
+          <button className={`grid size-9 place-items-center rounded-full ${tone.danger} ${tone.hover} max-sm:hidden`} aria-label="删除"
             onClick={() => openDialog({ kind: "delete", dir, names: [obj.name] })}><TrashIcon size={18} /></button>
         )}
       </motion.header>
@@ -509,7 +699,7 @@ function ViewerBody({ dir, name, origin }: { dir: string; name: string; origin: 
         <>
           {[-1, 1].map(delta => (
             <motion.button key={delta}
-              className={`absolute top-1/2 z-[2] grid size-11 -translate-y-1/2 place-items-center rounded-full bg-white/10 text-white backdrop-blur-md hover:bg-white/20 ${delta < 0 ? "left-4" : "right-4"}`}
+              className={`absolute top-1/2 z-[2] grid size-11 -translate-y-1/2 place-items-center rounded-full ${tone.chip} ${tone.text} backdrop-blur-md ${tone.hover} ${delta < 0 ? "left-4" : "right-4"}`}
               animate={{ opacity: chrome && !closing ? (files[current + delta] ? 1 : 0.25) : 0, x: chrome ? 0 : delta * 12 }}
               whileTap={{ scale: 0.88 }}
               onClick={() => go(delta)} aria-label={delta < 0 ? "上一个" : "下一个"}>
@@ -523,6 +713,7 @@ function ViewerBody({ dir, name, origin }: { dir: string; name: string; origin: 
         { heading: obj.name },
         { label: "属性", icon: <InfoIcon size={15} />, run: () => openDialog({ kind: "info", dir, obj }) },
         { label: "在新标签页打开", icon: <ArrowSquareOutIcon size={15} />, run: () => { window.open(src, "_blank", "noopener"); } },
+        ...(can(me, Perm.Share) ? [{ label: "分享", icon: <ShareNetworkIcon size={15} />, run: () => openDialog({ kind: "share", dir, names: [obj.name] }) }] : []),
         ...(can(me, Perm.Remove) ? ["divider" as const, { label: "删除", icon: <TrashIcon size={15} />, danger: true, run: () => openDialog({ kind: "delete", dir, names: [obj.name] }) }] : []),
       ]} />
 
@@ -530,7 +721,10 @@ function ViewerBody({ dir, name, origin }: { dir: string; name: string; origin: 
         <motion.footer className="absolute inset-x-0 bottom-0 z-[2] flex justify-center bg-gradient-to-t from-black/60 to-transparent pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-6"
           initial={{ opacity: 0, y: 20 }} animate={{ opacity: chrome && !closing ? 1 : 0, y: chrome && !closing ? 0 : 20 }} transition={spring.snappy}
           style={{ pointerEvents: chrome ? "auto" : "none" }}>
-          <Strip items={files} current={current} onPick={index => { if (index !== current) { resetZoom(); setDirection(index > current ? 1 : -1); setCurrent(index); } }} />
+          <Strip items={gallery} current={gallery.indexOf(obj)} onPick={pick => {
+            const index = files.indexOf(gallery[pick]);
+            if (index >= 0 && index !== current) { resetZoom(); setDirection(index > current ? 1 : -1); setCurrent(index); }
+          }} />
         </motion.footer>
       )}
     </motion.div>

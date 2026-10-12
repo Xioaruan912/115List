@@ -1,6 +1,6 @@
 import {
   ArrowClockwiseIcon, ArrowsLeftRightIcon, CheckSquareIcon, ChecksIcon, CloudArrowDownIcon, DotsThreeIcon, CopyIcon, DownloadSimpleIcon, FolderPlusIcon,
-  GearIcon, LinkIcon, ListChecksIcon, MagnifyingGlassIcon, PencilSimpleIcon, TrashIcon, UploadSimpleIcon, XIcon, FolderSimpleIcon,
+  GearIcon, LinkIcon, ShareNetworkIcon, ListChecksIcon, MagnifyingGlassIcon, PencilSimpleIcon, TrashIcon, UploadSimpleIcon, XIcon, FolderSimpleIcon,
 } from "@phosphor-icons/react";
 import { AnimatePresence, motion, useMotionValue, useSpring, useTransform, type MotionValue } from "motion/react";
 import { useRef, useState, type ReactNode } from "react";
@@ -155,6 +155,9 @@ export function Dock({ path }: { path: string }) {
       )}
       <button className="icon-btn size-10" aria-label="复制链接" title="复制链接" disabled={!chosen.some(item => !item.is_dir)}
         onClick={() => void actions.copyLinks(path, chosen.filter(item => !item.is_dir))}><LinkIcon size={19} /></button>
+      {can(me, Perm.Share) && (
+        <button className="icon-btn size-10" aria-label="分享" title="分享" onClick={() => openDialog({ kind: "share", dir: path, names: [...(selected ?? [])] })}><ShareNetworkIcon size={19} /></button>
+      )}
       {single && can(me, Perm.Rename) && (
         <button className="icon-btn size-10" aria-label="重命名" title="重命名" onClick={() => openDialog({ kind: "rename", dir: path, obj: single })}><PencilSimpleIcon size={19} /></button>
       )}

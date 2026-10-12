@@ -20,7 +20,8 @@ import { useSession } from "../stores/session";
 import { rectOf, useUi } from "../stores/ui";
 import { Readme } from "./Readme";
 import { SplitText } from "./SplitText";
-import { FolderCard, GridTile, ListRow, type TileHandlers } from "./Tile";
+import { Cinema } from "./Cinema";
+import { FolderTile, GridTile, ListRow, type TileHandlers } from "./Tile";
 
 const EMPTY = new Set<string>();
 const PULL = 72;
@@ -154,15 +155,12 @@ export function DirectoryView({ path }: { path: string }) {
   const gap = mobile ? (phoneCols === 4 ? 2 : 4) : 10;
   const minTile = mobile ? 150 : 190;
   const density = (mobile ? phoneCols - 2 : 0) as 0 | 1 | 2;
-  const minFolder = mobile ? 160 : 230;
   const cols = view !== "grid" ? 1 : mobile ? phoneCols : Math.max(2, Math.floor((width + gap) / (minTile + gap)));
-  const folderCols = view === "grid" ? Math.max(2, Math.floor((width + gap) / (minFolder + gap))) : 1;
   const tileWidth = width ? (width - gap * (cols - 1)) / cols : minTile;
   const pad = density ? 8 : 12;
   const tileHeight = view === "grid" ? Math.round((tileWidth - pad) * 0.75 + pad + [60, 40, 22][density]) : 52;
-  const folderHeight = view === "grid" ? 60 : 52;
 
-  // Grid view: folders first as compact cards, then files as thumbnails. List view: one row per item.
+  // Grid view: folders first (covers made of what is inside), then files as thumbnails. List view: one row per item.
   const rows = useMemo(() => {
     const out: { kind: "folders" | "files"; items: Obj[]; size: number; first: number }[] = [];
     const push = (kind: "folders" | "files", list: Obj[], per: number, height: number, offset: number, tail: number, spacing = gap): void => {
@@ -171,13 +169,14 @@ export function DirectoryView({ path }: { path: string }) {
         out.push({ kind, items: list.slice(i, i + per), size: height + (last ? tail : spacing), first: offset + i });
       }
     };
+    if (view === "cinema") return out;
     if (view === "list") { push("files", items, 1, 52, 0, 0, 0); return out; }
     const folderList = items.filter(item => item.is_dir);
     const fileList = items.filter(item => !item.is_dir);
-    push("folders", folderList, folderCols, folderHeight, 0, fileList.length ? 28 : 0);
+    push("folders", folderList, cols, tileHeight, 0, fileList.length ? 28 : 0);
     push("files", fileList, cols, tileHeight, folderList.length, gap);
     return out;
-  }, [items, view, cols, folderCols, tileHeight, folderHeight, gap]);
+  }, [items, view, cols, tileHeight, gap]);
 
   const virtualizer = useVirtualizer({
     count: rows.length,
@@ -364,7 +363,7 @@ export function DirectoryView({ path }: { path: string }) {
   const drag = useRef<{ x: number; y: number; base: Set<string>; moved: boolean; frame: number } | null>(null);
   const onPointerDown = useCallback((event: PointerEvent<HTMLDivElement>) => {
     if (event.pointerType !== "mouse" || event.button !== 0) return;
-    if ((event.target as Element).closest(".tile, button, a, input, textarea, form, .prose-ink")) return;
+    if ((event.target as Element).closest(".tile, [data-name], button, a, input, textarea, form, .prose-ink")) return;
     const current = useUi.getState().selectionDir === path ? useUi.getState().selected : EMPTY;
     drag.current = { x: event.clientX, y: event.clientY, base: event.shiftKey || event.metaKey || event.ctrlKey ? new Set(current) : new Set(), moved: false, frame: 0 };
     event.currentTarget.setPointerCapture(event.pointerId);
@@ -409,7 +408,7 @@ export function DirectoryView({ path }: { path: string }) {
 
   let body: React.ReactNode;
   if (query.isPending) {
-    body = <Skeleton view={view} cols={cols} />;
+    body = <Skeleton view={view === "list" ? "list" : "grid"} cols={cols} />;
   } else if (query.isError && needsPassword(query.error)) {
     body = <PasswordGate path={path} onUnlock={() => void client.resetQueries({ queryKey: dirKey(path) })} />;
   } else if (query.isError) {
@@ -433,20 +432,22 @@ export function DirectoryView({ path }: { path: string }) {
         )}
       </div>
     );
+  } else if (view === "cinema") {
+    body = <Cinema key={path} dir={path} items={items} handlers={handlers} />;
   } else {
     body = (
       <div key={view} className="relative w-full" style={{ height: virtualizer.getTotalSize() }}>
         {virtualizer.getVirtualItems().map(virtual => {
           const row = rows[virtual.index];
-          const Item = view === "list" ? ListRow : row.kind === "folders" ? FolderCard : GridTile;
-          const per = view === "list" ? 1 : row.kind === "folders" ? folderCols : cols;
+          const Item = view === "list" ? ListRow : row.kind === "folders" ? FolderTile : GridTile;
+          const per = view === "list" ? 1 : cols;
           return (
             <div
               key={virtual.key}
               className={view === "grid" ? "absolute inset-x-0 top-0 grid" : "absolute inset-x-0 top-0"}
               style={{
                 transform: `translateY(${virtual.start - listTop}px)`,
-                height: view === "list" ? 52 : row.kind === "folders" ? folderHeight : tileHeight,
+                height: view === "list" ? 52 : tileHeight,
                 gridTemplateColumns: view === "grid" ? `repeat(${per}, minmax(0, 1fr))` : undefined,
                 columnGap: gap,
               }}
@@ -455,6 +456,7 @@ export function DirectoryView({ path }: { path: string }) {
                 <Item
                   key={obj.name}
                   density={density}
+                  dir={path}
                   obj={obj}
                   index={virtual.index * Math.min(per, 4) + offset}
                   selected={selected.has(obj.name)}

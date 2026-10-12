@@ -38,9 +38,9 @@ function random(seed: number): () => number {
   };
 }
 
-interface Poster { style: CSSProperties; title: string; credit: string; year: number; layout: number; ink: string; accent: string }
+export interface Poster { style: CSSProperties; title: string; credit: string; year: number; layout: number; ink: string; accent: string }
 
-function makePoster(seed: number): Poster {
+export function makePoster(seed: number): Poster {
   const r = random(seed + 1);
   const [base, accent, light] = PALETTES[Math.floor(r() * PALETTES.length)];
   const layout = Math.floor(r() * 5);
@@ -86,6 +86,30 @@ const PosterCard = memo(function PosterCard({ poster }: { poster: Poster }) {
         <p className={`${latin ? "tracking-[0.04em]" : "tracking-[0.02em]"} text-[clamp(11px,1.35vw,20px)] font-bold leading-[1.05]`}>{title}</p>
         <div className="mt-[6%] h-px w-1/3" style={{ background: "currentColor", opacity: 0.5 }} />
         <p className="mt-[5%] text-[clamp(7px,0.65vw,10px)] uppercase tracking-[0.18em] opacity-70">{credit}  {year}</p>
+      </div>
+    </div>
+  );
+});
+
+/** A stable seed for a name, so a file always gets the same poster. */
+export function seedOf(text: string): number {
+  let hash = 2166136261;
+  for (let i = 0; i < text.length; i++) hash = Math.imul(hash ^ text.charCodeAt(i), 16777619);
+  return Math.abs(hash) % 100_000;
+}
+
+/** A generated poster carrying a real title: for files and folders with no picture. */
+export const NamedPoster = memo(function NamedPoster({ title, caption }: { title: string; caption: string }) {
+  const poster = makePoster(seedOf(title));
+  const { layout, ink } = poster;
+  return (
+    <div className="absolute inset-0 overflow-hidden" style={poster.style}>
+      <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-black/10" />
+      {layout === 3 && <span className="absolute left-[8%] top-[5%] text-[clamp(26px,3.6vw,52px)] font-bold leading-none tracking-[-0.06em]" style={{ color: ink, opacity: 0.9 }}>{String(poster.year).slice(2)}</span>}
+      <div className={`absolute inset-x-[9%] ${layout === 4 ? "top-[9%]" : "bottom-[8%]"}`} style={{ color: layout === 3 ? ink : "#f4f1ea" }}>
+        <p className="line-clamp-3 break-all text-[clamp(13px,1.25vw,19px)] font-bold leading-[1.08] tracking-[0.01em]">{title}</p>
+        <div className="mt-[7%] h-px w-1/3" style={{ background: "currentColor", opacity: 0.5 }} />
+        <p className="mt-[6%] truncate text-[10px] uppercase tracking-[0.16em] opacity-70">{caption}</p>
       </div>
     </div>
   );

@@ -1,4 +1,4 @@
-import { ArrowUUpLeftIcon, CaretRightIcon, GearIcon, ListBulletsIcon, MagnifyingGlassIcon, MoonIcon, SignOutIcon, SquaresFourIcon, SunIcon, UserIcon, HouseIcon, DesktopIcon } from "@phosphor-icons/react";
+import { ArrowUUpLeftIcon, FilmSlateIcon, CaretRightIcon, GearIcon, ListBulletsIcon, MagnifyingGlassIcon, MoonIcon, ShareNetworkIcon, SignOutIcon, SquaresFourIcon, SunIcon, UserIcon, HouseIcon, DesktopIcon } from "@phosphor-icons/react";
 import { AnimatePresence, motion } from "motion/react";
 import { useState, type DragEvent } from "react";
 import { useLocation } from "wouter";
@@ -6,7 +6,7 @@ import { useIsMobile } from "../hooks/useMedia";
 import * as actions from "../lib/actions";
 import { spring } from "../lib/motion";
 import { encodePath, parent, segments } from "../lib/path";
-import { isAdmin, isGuest } from "../lib/perm";
+import { can, isAdmin, isGuest, Perm } from "../lib/perm";
 import { resolvedTheme, usePrefs, type Theme } from "../stores/prefs";
 import { useSession } from "../stores/session";
 import { useUi } from "../stores/ui";
@@ -71,16 +71,19 @@ export function Breadcrumbs({ path }: { path: string }) {
   );
 }
 
+const VIEW_LABEL = { grid: "网格", list: "列表", cinema: "影院" } as const;
+const VIEW_ICON = { grid: <SquaresFourIcon size={16} />, list: <ListBulletsIcon size={16} />, cinema: <FilmSlateIcon size={16} /> } as const;
+
 function ViewToggle() {
   const view = usePrefs(state => state.view);
   const setView = usePrefs(state => state.setView);
   return (
     <div className="relative flex rounded-[11px] p-0.5 hairline" role="group" aria-label="视图">
-      {(["grid", "list"] as const).map(mode => (
+      {(["grid", "list", "cinema"] as const).map(mode => (
         <button key={mode} className={`relative grid size-8 place-items-center rounded-[9px] transition-colors ${view === mode ? "text-ink" : "text-muted hover:text-ink"}`}
-          onClick={() => setView(mode)} aria-pressed={view === mode} aria-label={mode === "grid" ? "网格" : "列表"}>
+          onClick={() => setView(mode)} aria-pressed={view === mode} aria-label={VIEW_LABEL[mode]} title={VIEW_LABEL[mode]}>
           {view === mode && <motion.span layoutId="view-thumb" className="absolute inset-0 rounded-[9px] bg-raised" style={{ boxShadow: "var(--shadow-lift)" }} transition={spring.bouncy} />}
-          <span className="relative">{mode === "grid" ? <SquaresFourIcon size={16} /> : <ListBulletsIcon size={16} />}</span>
+          <span className="relative">{VIEW_ICON[mode]}</span>
         </button>
       ))}
     </div>
@@ -134,9 +137,10 @@ function Account() {
           { heading: guest ? "访客" : me.username },
           ...(isAdmin(me) ? [{ label: "管理", icon: <GearIcon size={15} />, run: () => navigate("/@manage") }] : []),
           ...(!guest ? [{ label: "账户资料", icon: <UserIcon size={15} />, run: () => useUi.getState().openDialog({ kind: "account" }) }] : []),
+          ...(can(me, Perm.Share) ? [{ label: "我的分享", icon: <ShareNetworkIcon size={15} />, run: () => useUi.getState().openDialog({ kind: "shares" }) }] : []),
           ...(mobile ? [
             "divider" as const,
-            { label: view === "grid" ? "列表视图" : "网格视图", icon: view === "grid" ? <ListBulletsIcon size={15} /> : <SquaresFourIcon size={15} />, run: () => usePrefs.getState().setView(view === "grid" ? "list" : "grid") },
+            ...(["grid", "list", "cinema"] as const).filter(mode => mode !== view).map(mode => ({ label: `${VIEW_LABEL[mode]}视图`, icon: VIEW_ICON[mode], run: () => usePrefs.getState().setView(mode) })),
             { label: theme === "light" ? "深色主题" : "浅色主题", icon: theme === "light" ? <MoonIcon size={15} /> : <SunIcon size={15} />, run: () => switchTheme(theme === "light" ? "dark" : "light", innerWidth - 30, 30) },
           ] : []),
           "divider",

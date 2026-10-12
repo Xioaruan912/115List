@@ -83,6 +83,7 @@ This fork embeds its own front end instead of OpenList-Frontend. Read `tgvio-web
 - 一律弹簧（`lib/motion.ts` 的预设），时长型动画用 expo 缓出。按下有回弹（scale 0.92 到 0.97）。
 - 只动 transform 和 opacity。连续值（指针位置、拖拽、滚动、下拉距离）用 Motion 的 motion value，不进 React state；不要监听 window scroll。
 - 大列表靠虚拟滚动（`@tanstack/react-virtual`，必须 `useFlushSync: false`），格子 `memo`，入场动画用 CSS 关键帧和 `--i` 错峰，只有首屏错峰。
+- 有隐喻的地方用实物的动作：分享结果是一张会“撕开”的票（二维码从中心涟漪拼出，提取码像翻牌落位），文件夹是一叠纸（封面由里面的图拼成，悬停时纸张散开、格子互换），影院模式的海报跟着指针倾斜并带高光。
 - 一直在动的东西要自我保护：登录海报墙先测帧率，撑不住就停下来（`useCanDrift`）。颗粒只放在固定层上。
 - `prefers-reduced-motion` 时所有动效关闭（`MotionConfig reducedMotion="user"` 加 CSS 媒体查询），功能不受影响。
 
@@ -90,12 +91,13 @@ This fork embeds its own front end instead of OpenList-Frontend. Read `tgvio-web
 
 - 桌面：悬停显示次要按钮和光斑，右键菜单、框选、Shift 连选、拖到文件夹或面包屑移动、键盘（`/` 搜索、Backspace 上一级、Ctrl A、Delete、F2）。
 - 手机：长按进入多选（多选中再长按出菜单），菜单一律底部操作表，双指捏合 2/3/4 列，下拉刷新，面板可下滑关闭，输入框 16px，悬停才有的按钮在触屏上隐藏。
+- 预览里：滚轮在空白处切换文件，一次手势只切一个（冷却期内的滚轮事件会延长冷却）；缩略图条只给图片和视频；视频要有加载、自动播放被拦、浏览器放不了（给外部播放器）三种状态，并记住播放进度。
 - 每个状态都要设计：骨架屏加载、空文件夹给出下一步、错误就地显示并可重试、需要密码的文件夹给内联表单、操作结果用 toast（可横滑关闭）。
 - 操作先改本地缓存让界面立刻动起来，再后台向服务器重读；失败要回滚并提示。
 
 ### 工程约束
 
 - 只调用 OpenList HTTP API，不依赖官方前端代码。新接口加在 `src/api/`，类型在 `src/lib/types.ts`。
-- 115 有风控：不要增加列表请求。悬停预取同时最多一个，且只取未缓存的目录。
+- 115 有风控：不要增加列表请求。悬停预取同时最多一个，且只取未缓存的目录。文件夹封面（`hooks/useCover.ts`）只为在屏幕上停留过的文件夹排队取列表，同时一个、新的优先，结果缓存 30 分钟并顺手写入目录缓存。
 - 站点在 Cloudflare 后面：页面 HTML 是 `no-cache`，`/api` 是 `no-store`，缺失的静态资源返回 404（`server/static/tgvio_cache.go`）；构建会把最近 6 次构建的哈希资源一起嵌入，旧页面不至于白屏。
 - 改完先在本机测试实例 `/root/dev/oltest`（端口 5299，本地存储）上用 Playwright 走一遍桌面和手机流程并截图（`/root/dev/shots/olshot*.sh`），看帧时间，再用 `tgvio/upgrade.sh` 上线。
