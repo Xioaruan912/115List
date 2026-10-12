@@ -31,6 +31,7 @@ npm run check      # tsc + vitest + vite build
 | `src/components/Share.tsx`, `src/pages/SharePage.tsx`, `src/api/share.ts` | 创建分享（有效期、提取码、次数）、二维码、我的分享；访客分享页 |
 | `src/lib/progress.ts` | 视频播放进度（本机 localStorage），供续播和继续观看 |
 | `src/components/Viewer.tsx` | 预览：FLIP 打开/关回格子、手势、缩放、滚轮切换、各类型视图（视频含加载/外部播放器/续播） |
+| `src/components/VideoPlayer.tsx` | 视频播放器：自绘控制条（缓冲区间、悬停时间、音量、倍速、画中画、全屏）、快捷键、双击快进、续播、卡住/放不了时给外部播放器 |
 | `src/components/Dock.tsx` | 底部 Dock（桌面放大效果），有选择时变形为选择操作栏 |
 | `src/components/Palette.tsx` | 搜索/命令面板（从顶栏搜索框 layoutId 变形） |
 | `src/components/{Dialogs,Sheet,Menu,ContextMenu,Transfers,DropZone,Toaster}.tsx` | 对话框、底部/居中面板、菜单、传输面板、拖入上传、通知 |
