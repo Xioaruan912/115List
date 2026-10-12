@@ -3,6 +3,9 @@ package static
 import (
 	"strings"
 
+	"github.com/OpenListTeam/OpenList/v4/internal/conf"
+	"github.com/OpenListTeam/OpenList/v4/internal/setting"
+	"github.com/OpenListTeam/OpenList/v4/internal/tgvio"
 	"github.com/gin-gonic/gin"
 )
 
@@ -37,4 +40,30 @@ func serveMissingAsset(c *gin.Context) bool {
 func NoStore(c *gin.Context) {
 	c.Header("Cache-Control", "no-store")
 	c.Next()
+}
+
+// markURL is the site mark under the configured base path.
+func markURL() string {
+	base := getSiteConfig().BasePath
+	if base == "/" {
+		base = ""
+	}
+	return base + tgvio.MarkPath
+}
+
+// tgvioBrand swaps OpenList's stock favicon and logo for the site mark.
+func tgvioBrand(favicon, logo string) (string, string) {
+	if tgvio.IsStockLogo(favicon) {
+		favicon = markURL()
+	}
+	if tgvio.IsStockLogo(logo) {
+		logo = markURL()
+	}
+	return favicon, logo
+}
+
+// Mark serves the site mark, drawn from the current site title.
+func Mark(c *gin.Context) {
+	c.Header("Cache-Control", "public, max-age=3600")
+	c.Data(200, "image/svg+xml; charset=utf-8", []byte(tgvio.MarkSVG(setting.GetStr(conf.SiteTitle))))
 }

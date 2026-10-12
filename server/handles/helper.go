@@ -8,13 +8,18 @@ import (
 
 	"github.com/OpenListTeam/OpenList/v4/internal/conf"
 	"github.com/OpenListTeam/OpenList/v4/internal/setting"
+	"github.com/OpenListTeam/OpenList/v4/internal/tgvio"
 	"github.com/OpenListTeam/OpenList/v4/pkg/utils"
 	"github.com/OpenListTeam/OpenList/v4/server/common"
 	"github.com/gin-gonic/gin"
 )
 
 func Favicon(c *gin.Context) {
-	c.Redirect(302, setting.GetStr(conf.Favicon))
+	favicon := setting.GetStr(conf.Favicon)
+	if tgvio.IsStockLogo(favicon) {
+		favicon = common.GetApiUrlFromRequest(c.Request) + tgvio.MarkPath
+	}
+	c.Redirect(302, favicon)
 }
 
 func Robots(c *gin.Context) {

@@ -10,6 +10,7 @@ import { isAdmin, isGuest } from "../lib/perm";
 import { resolvedTheme, usePrefs, type Theme } from "../stores/prefs";
 import { useSession } from "../stores/session";
 import { useUi } from "../stores/ui";
+import { Mark } from "./Mark";
 import { Menu } from "./Menu";
 import { switchTheme } from "./theme";
 
@@ -166,9 +167,9 @@ export function TopBar({ path }: { path: string }) {
             </motion.button>
           ) : (
             <motion.button key="mark" onClick={() => navigate("/")} aria-label={title}
-              className="grid size-8 shrink-0 place-items-center rounded-[10px] bg-accent text-[16px] font-bold text-accent-ink transition-transform hover:rotate-[-8deg] active:scale-90"
+              className="shrink-0 transition-transform hover:rotate-[-8deg] active:scale-90"
               initial={{ opacity: 0, scale: 0.6 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.6 }} transition={spring.bouncy}>
-              {title.slice(0, 1).toUpperCase()}
+              <Mark className="size-8 text-[16px]" />
             </motion.button>
           )}
         </AnimatePresence>

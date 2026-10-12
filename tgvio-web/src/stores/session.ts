@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import * as auth from "../api/auth";
+import { applyTouchIcon } from "../lib/brand";
 import { onUnauthorized, setToken } from "../lib/api";
 import type { Me, Settings } from "../lib/types";
 
@@ -25,6 +26,7 @@ export const useSession = create<SessionState>((set, getState) => ({
       const settings = await auth.publicSettings().catch(() => ({} as Settings));
       set({ settings });
       if (settings.site_title) document.title = settings.site_title;
+      void applyTouchIcon(settings);
       const me = await auth.me();
       set({ me, status: "ready", error: "" });
     } catch (error) {

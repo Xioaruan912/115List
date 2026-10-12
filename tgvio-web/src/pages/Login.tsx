@@ -2,6 +2,7 @@ import { ArrowRightIcon, CheckIcon } from "@phosphor-icons/react";
 import { AnimatePresence, motion, useAnimate } from "motion/react";
 import { useState, type FormEvent } from "react";
 import { useLocation, useSearch } from "wouter";
+import { Mark } from "../components/Mark";
 import { PosterWall } from "../components/PosterWall";
 import { SplitText } from "../components/SplitText";
 import { ApiError } from "../lib/api";
@@ -53,7 +54,7 @@ export function Login() {
       >
         <div className="pointer-events-none flex flex-col justify-end pb-2 lg:justify-center lg:pb-0">
           <motion.div className="mb-5 flex items-center gap-3" initial={{ opacity: 0, y: -12 }} animate={{ opacity: 1, y: 0 }} transition={{ ...spring.soft, delay: 0.3 }}>
-            <span className="grid size-10 place-items-center rounded-xl bg-accent text-lg font-bold text-accent-ink">{title.slice(0, 1).toUpperCase()}</span>
+            <Mark className="size-10 text-lg" rounded="rounded-xl" />
             <span className="text-[13px] font-medium tracking-[0.3em] text-white/70">正在上映</span>
           </motion.div>
           <h1 className="text-[clamp(44px,8vw,104px)] font-semibold leading-[0.98] tracking-[-0.05em] text-white [text-shadow:0_8px_40px_rgb(0_0_0/0.6)]">
