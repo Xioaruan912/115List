@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 
-export type ViewMode = "grid" | "list";
+export type ViewMode = "grid" | "list" | "cinema";
 export type SortKey = "name" | "size" | "modified";
 export type Theme = "system" | "dark" | "light";
 

@@ -11,6 +11,7 @@ import { isAdmin, isGuest } from "./lib/perm";
 import { queryClient } from "./lib/query";
 import { Browser } from "./pages/Browser";
 import { Login } from "./pages/Login";
+import { SharePage } from "./pages/SharePage";
 import { usePrefs } from "./stores/prefs";
 import { useSession } from "./stores/session";
 import { onUploadFinished, useUploads } from "./stores/uploads";
@@ -38,6 +39,8 @@ function Routes() {
   const me = useSession(state => state.me);
   const pathname = decodePath(location);
 
+  // Shares are public: whoever has the link sees them, signed in or not.
+  if (location.startsWith("/@s/")) return <SharePage />;
   if (status === "loading") return <Splash />;
   if (location.startsWith("/@login")) {
     return status === "ready" && !isGuest(me) ? <Redirect to="/" replace /> : <Login />;

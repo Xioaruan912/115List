@@ -251,3 +251,42 @@ button, a, [role="button"] { touch-action: manipulation; }
   --color-danger: var(--danger); --color-scrim: var(--scrim);
   color-scheme: dark;
 }
+
+/* Share: QR modules ripple in from the centre, the finder eyes spin into place. */
+@keyframes qr-dot { from { opacity: 0; transform: scale(0); } 60% { opacity: 1; transform: scale(1.35); } to { opacity: 1; transform: scale(1); } }
+@keyframes qr-eye { from { opacity: 0; transform: rotate(-180deg) scale(0.2); } to { opacity: 1; transform: rotate(0) scale(1); } }
+.qr-dot { transform-box: fill-box; transform-origin: center; animation: qr-dot 520ms var(--ease-expo) both; }
+.qr-eye { transform-box: view-box; animation: qr-eye 900ms var(--ease-expo) both; }
+/* A ticket: a dashed tear line with a notch cut out of each edge. */
+.ticket-cut { position: relative; height: 0; border-top: 1.5px dashed var(--line-strong); margin: 0 18px; }
+.ticket-cut::before, .ticket-cut::after { content: ""; position: absolute; top: -11px; width: 22px; height: 22px; border-radius: 999px; background: var(--raised); box-shadow: inset 0 0 0 1px var(--line); }
+.ticket-cut::before { left: -30px; }
+.ticket-cut::after { right: -30px; }
+
+/* Folder covers: two sheets peek out behind the cover and fan out on hover; the
+   mosaic cells unfold from their corners when the cover arrives. */
+.folder-sheet { position: absolute; inset: 0; border-radius: 10px; background: var(--raised); box-shadow: inset 0 0 0 1px var(--line); transition: transform 600ms var(--ease-expo), opacity 600ms; }
+.folder-sheet-mid { transform: translateY(-8px) scale(0.92); }
+.folder-sheet-back { transform: translateY(-15px) scale(0.84); opacity: 0.6; }
+.folder-stack-sm .folder-sheet-mid { transform: translateY(-5px) scale(0.92); }
+.folder-stack-sm .folder-sheet-back { transform: translateY(-9px) scale(0.84); }
+@media (hover: hover) {
+  .tile:hover .folder-sheet-mid { transform: translate(-6px, -12px) rotate(-4deg) scale(0.94); }
+  .tile:hover .folder-sheet-back { transform: translate(8px, -19px) rotate(5deg) scale(0.88); opacity: 0.9; }
+  .tile:hover .cover-img { scale: 1.07; }
+  .tile:hover .peek { transform: translate(calc(-50% + var(--x) * 1.5), -62%) rotate(calc(var(--r) * 1.6)); }
+}
+.cover-img { transition: scale 1.6s var(--ease-expo); }
+@keyframes cover-in { from { clip-path: inset(50% 50% 50% 50% round 6px); } to { clip-path: inset(0 0 0 0 round 0); } }
+.cover-cell { animation: cover-in 700ms var(--ease-expo) both; animation-delay: calc(var(--c, 0) * 70ms); }
+.peek { transform: translate(calc(-50% + var(--x)), -18%) rotate(var(--r)); transition: transform 600ms var(--ease-expo); transition-delay: var(--d); animation: fade-in 500ms var(--ease-expo) both; }
+@keyframes fade-in { from { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) {
+  .cover-cell, .peek { animation: none; }
+  .folder-sheet, .cover-img, .peek { transition: none; }
+}
+
+/* Cinema billboard: a slow push-in on the backdrop, like a title sequence. */
+@keyframes ken-burns { from { transform: scale(1) translate3d(0, 0, 0); } to { transform: scale(1.08) translate3d(-1.5%, -1%, 0); } }
+.ken-burns { animation: ken-burns 22s ease-in-out infinite alternate; }
+@media (prefers-reduced-motion: reduce) { .ken-burns { animation: none; } }

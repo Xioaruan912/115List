@@ -16,7 +16,7 @@ npm run check      # tsc + vitest + vite build
 
 | 路径 | 内容 |
 |---|---|
-| `src/App.tsx` | 启动（公开设置、/api/me）、路由：`/@login`、`/@manage/*`、其余为文件路径 |
+| `src/App.tsx` | 启动（公开设置、/api/me）、路由：`/@login`、`/@s/<id>`（公开分享页，免登录）、`/@manage/*`、其余为文件路径 |
 | `src/lib/api.ts` | fetch 封装（`{code,message,data}`，401 回登录）、token 存 `localStorage.token`（与官方前端同 key） |
 | `src/api/*.ts` | fs、auth（密码 sha256 加盐登录）、admin（存储/驱动/用户/设置/元信息/任务/TGVIO 统计与回收站） |
 | `src/lib/upload.ts` | 上传：小文件 `PUT /api/fs/put`（As-Task），大文件 multipart 分片续传 |
@@ -25,8 +25,12 @@ npm run check      # tsc + vitest + vite build
 | `src/lib/actions.ts` | 新建/重命名/删除/移动/复制：先本地改缓存（配合 `lib/flip.ts` 的 FLIP 动画），再后台重读 |
 | `src/components/Stage.tsx` | 文件夹转场（进入=从点击处放大，返回=缩小，跳转=横移），每个文件夹一层、各自滚动位置 |
 | `src/components/DirectoryView.tsx` | 标题、排序、虚拟滚动（文件夹卡片行 + 缩略图行 / 列表行）、框选、拖放、空/错/密码状态、README |
-| `src/components/Tile.tsx` | GridTile、FolderCard、ListRow（memo；指针光斑、长按菜单） |
-| `src/components/Viewer.tsx` | 预览：FLIP 打开/关回格子、手势、缩放、各类型视图 |
+| `src/components/Tile.tsx` | GridTile、FolderTile（里面的图拼成的动态封面）、ListRow（memo；指针光斑、长按菜单） |
+| `src/hooks/useCover.ts` | 文件夹封面：可见才排队取列表（同时 1 个），缓存 30 分钟 |
+| `src/components/Cinema.tsx` | 影院模式：大幅海报位、继续观看、可倾斜的海报墙 |
+| `src/components/Share.tsx`, `src/pages/SharePage.tsx`, `src/api/share.ts` | 创建分享（有效期、提取码、次数）、二维码、我的分享；访客分享页 |
+| `src/lib/progress.ts` | 视频播放进度（本机 localStorage），供续播和继续观看 |
+| `src/components/Viewer.tsx` | 预览：FLIP 打开/关回格子、手势、缩放、滚轮切换、各类型视图（视频含加载/外部播放器/续播） |
 | `src/components/Dock.tsx` | 底部 Dock（桌面放大效果），有选择时变形为选择操作栏 |
 | `src/components/Palette.tsx` | 搜索/命令面板（从顶栏搜索框 layoutId 变形） |
 | `src/components/{Dialogs,Sheet,Menu,ContextMenu,Transfers,DropZone,Toaster}.tsx` | 对话框、底部/居中面板、菜单、传输面板、拖入上传、通知 |

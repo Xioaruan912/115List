@@ -1,7 +1,11 @@
-import { CheckIcon, DotsThreeIcon, FolderOpenIcon, PlayIcon } from "@phosphor-icons/react";
-import { memo, useRef, useState, type CSSProperties, type DragEvent, type MouseEvent, type PointerEvent } from "react";
+import { CheckIcon, DotsThreeIcon, FolderOpenIcon, FolderSimpleIcon, PlayIcon } from "@phosphor-icons/react";
+import { AnimatePresence, motion } from "motion/react";
+import { memo, useEffect, useRef, useState, type CSSProperties, type DragEvent, type MouseEvent, type PointerEvent } from "react";
+import { useCover } from "../hooks/useCover";
 import { formatBytes, formatDate } from "../lib/format";
-import { kindOf } from "../lib/kind";
+import { kindOf, type Kind } from "../lib/kind";
+import { spring } from "../lib/motion";
+import { join } from "../lib/path";
 import type { Obj } from "../lib/types";
 import { KindIcon } from "./KindIcon";
 
@@ -18,6 +22,7 @@ export interface TileHandlers {
 
 interface TileProps {
   density?: 0 | 1 | 2; // phones: 0 two columns, 1 three, 2 four
+  dir?: string;
   obj: Obj;
   index: number;
   selected: boolean;
@@ -221,16 +226,73 @@ export const ListRow = memo(function ListRow({ obj, index, selected, selecting, 
   );
 });
 
-/** Folders in grid view: a compact card. Thumbnail space is for files that have something to show. */
-export const FolderCard = memo(function FolderCard({ obj, index, selected, selecting, entering, handlers }: TileProps) {
+/** Folder cover: a mosaic of what is inside, cells trading places while hovered. */
+function Mosaic({ thumbs, live }: { thumbs: string[]; live: boolean }) {
+  const [shift, setShift] = useState(0);
+  const n = thumbs.length;
+  useEffect(() => {
+    if (!live || n < 2) return;
+    const timer = window.setInterval(() => setShift(value => value + 1), 1300);
+    return () => clearInterval(timer);
+  }, [live, n]);
+  const layout = n === 1 ? "grid-cols-1" : n === 2 ? "grid-cols-2" : n === 3 ? "grid-cols-[2fr_1fr] grid-rows-2" : "grid-cols-2 grid-rows-2";
+  return (
+    <div className={`absolute inset-0 grid gap-[2px] ${layout}`}>
+      {thumbs.map((_, cell) => {
+        const url = thumbs[(cell + shift) % n];
+        return (
+          <div key={cell} className={`cover-cell relative overflow-hidden bg-raised ${n === 3 && cell === 0 ? "row-span-2" : ""}`} style={{ "--c": cell } as CSSProperties}>
+            <AnimatePresence initial={false}>
+              <motion.img key={url} src={url} alt="" loading="lazy" decoding="async" referrerPolicy="no-referrer" draggable={false}
+                className="cover-img absolute inset-0 size-full object-cover"
+                style={{ transformOrigin: ["0% 0%", "100% 0%", "0% 100%", "100% 100%"][cell] }}
+                initial={{ opacity: 0, scale: 1.18 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0 }}
+                transition={{ duration: 0.7, ease: [0.16, 1, 0.3, 1] }} />
+            </AnimatePresence>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+/** A folder with nothing to show: the kinds of things inside peek out of it. */
+function FolderGlyph({ kinds, small }: { kinds: Kind[]; small: boolean }) {
+  const size = small ? 40 : 56;
+  return (
+    <div className="absolute inset-0 grid place-items-center text-muted">
+      <span className="relative block" style={{ width: size, height: size }}>
+        {kinds.filter(kind => kind !== "folder").slice(0, 3).map((kind, index, list) => {
+          const spread = (index - (list.length - 1) / 2);
+          return (
+            <span key={kind} className="peek absolute left-1/2 top-[-6%] grid size-[44%] place-items-center rounded-[6px] bg-raised text-faint"
+              style={{ "--r": `${spread * 14}deg`, "--x": `${spread * 36}%`, "--d": `${index * 40}ms`, boxShadow: "0 0 0 1px var(--line), var(--shadow-lift)" } as CSSProperties}>
+              <KindIcon kind={kind} size={small ? 11 : 14} weight="bold" />
+            </span>
+          );
+        })}
+        <KindIcon kind="folder" weight="duotone" className="absolute inset-0 size-full transition-all duration-500 ease-[var(--ease-expo)] group-hover/tile:scale-75 group-hover/tile:opacity-0" />
+        <FolderOpenIcon weight="duotone" className="absolute inset-0 size-full scale-110 text-accent-text opacity-0 transition-all duration-500 ease-[var(--ease-expo)] group-hover/tile:scale-100 group-hover/tile:opacity-100" />
+      </span>
+    </div>
+  );
+}
+
+/** Folders in grid view: same footprint as a file, with a cover made of what is inside. */
+export const FolderTile = memo(function FolderTile({ obj, dir = "/", index, selected, selecting, entering, handlers, density = 0 }: TileProps) {
+  const box = useRef<HTMLDivElement>(null);
+  const cover = useCover(join(dir, obj.name), box);
+  const [hover, setHover] = useState(false);
   const [dropping, setDropping] = useState(false);
   const press = useLongPress((x, y) => handlers.onLongPress(obj, x, y));
+  const thumbs = cover?.thumbs ?? [];
+  const meta = cover ? `${cover.count} 项` : formatDate(obj.modified);
   return (
     <div
       data-flip={obj.name}
       data-name={obj.name}
-      className={`tile spot group/tile relative flex h-full items-center gap-3 rounded-[var(--radius-tile)] px-3 outline-none transition-[background-color,box-shadow,transform] duration-300 ${entering ? "enter" : "enter-soft"} ${selected ? "bg-accent-soft" : "bg-surface hover:bg-raised"} ${dropping ? "scale-[1.03] ring-2 ring-accent" : ""}`}
-      style={{ "--i": index, boxShadow: selected ? "inset 0 0 0 1px var(--accent)" : "inset 0 0 0 1px var(--line)" } as CSSProperties}
+      className={`tile spot group/tile relative rounded-[var(--radius-tile)] ${density ? "p-1" : "p-1.5"} outline-none transition-[background-color,box-shadow] duration-300 ${entering ? "enter" : "enter-soft"} ${selected ? "bg-accent-soft" : "hover:bg-[var(--hover)]"} ${dropping ? "ring-2 ring-accent" : ""}`}
+      style={{ "--i": index } as CSSProperties}
       tabIndex={0}
       role="button"
       aria-selected={selected}
@@ -241,7 +303,8 @@ export const FolderCard = memo(function FolderCard({ obj, index, selected, selec
       onDragLeave={() => setDropping(false)}
       onDrop={event => { setDropping(false); handlers.onDropInto(obj, event); }}
       onPointerMove={event => { spotlight(event); press.onPointerMove(event); }}
-      onPointerEnter={() => handlers.onHoverFolder(obj)}
+      onPointerEnter={event => { handlers.onHoverFolder(obj); if (event.pointerType === "mouse") setHover(true); }}
+      onPointerLeave={() => setHover(false)}
       onPointerDown={press.onPointerDown}
       onPointerUp={press.onPointerUp}
       onPointerCancel={press.onPointerCancel}
@@ -249,22 +312,40 @@ export const FolderCard = memo(function FolderCard({ obj, index, selected, selec
       onContextMenu={event => { event.preventDefault(); handlers.onMenu(obj, event.clientX, event.clientY); }}
       onKeyDown={event => { if (event.key === "Enter") handlers.onActivate(obj, event as unknown as MouseEvent<HTMLElement>, event.currentTarget); }}
     >
-      <button type="button" data-thumb className="relative grid size-9 shrink-0 place-items-center" aria-label={selected ? "取消选择" : "选择"}
-        onClick={event => { event.stopPropagation(); handlers.onToggle(obj, event); }}>
-        <span className={`absolute inset-0 grid place-items-center text-muted transition-all duration-300 ease-[var(--ease-expo)] ${selected || selecting ? "scale-50 opacity-0" : "group-hover/tile:text-accent-text"}`}>
-          <KindIcon kind="folder" size={26} weight="duotone" className="transition-all duration-500 ease-[var(--ease-expo)] group-hover/tile:scale-0 group-hover/tile:opacity-0" />
-          <FolderOpenIcon size={26} weight="duotone" className="absolute scale-50 opacity-0 transition-all duration-500 ease-[var(--ease-expo)] group-hover/tile:scale-100 group-hover/tile:opacity-100" />
-        </span>
-        <span className={`absolute inset-0 grid place-items-center transition-all duration-300 ${selected || selecting ? "scale-100 opacity-100" : "scale-50 opacity-0"}`}><Check on={selected} visible /></span>
-      </button>
-      <div className="min-w-0 flex-1">
-        <p className="truncate text-[13.5px] font-medium leading-snug" title={obj.name}>{obj.name}</p>
-        <p className="truncate text-[12px] text-muted tabular">{formatDate(obj.modified)}</p>
+      <div ref={box} data-thumb className={`folder-stack relative aspect-[4/3] transition-transform duration-500 ease-[var(--ease-expo)] ${density ? "folder-stack-sm" : ""} ${selected ? "scale-[0.94]" : "group-hover/tile:-translate-y-0.5"}`}>
+        <span className="folder-sheet folder-sheet-back" aria-hidden />
+        <span className="folder-sheet folder-sheet-mid" aria-hidden />
+        <div className="absolute inset-0 overflow-hidden rounded-[10px] bg-surface" style={{ boxShadow: "inset 0 0 0 1px var(--line)" }}>
+          {thumbs.length ? <Mosaic thumbs={thumbs} live={hover} /> : <FolderGlyph kinds={cover?.kinds ?? []} small={density > 0} />}
+          {thumbs.length > 0 && <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/45 via-transparent to-transparent" />}
+          {cover && density < 2 && (
+            <motion.span className={`absolute bottom-1.5 left-1.5 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium tabular backdrop-blur-md ${thumbs.length ? "bg-black/45 text-white" : "bg-[var(--hover)] text-muted"}`}
+              initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={spring.snappy}>
+              <FolderSimpleIcon size={11} weight="fill" />{cover.count}
+            </motion.span>
+          )}
+          <button type="button" className="absolute left-2 top-2" aria-label={selected ? "取消选择" : "选择"}
+            onClick={event => { event.stopPropagation(); handlers.onToggle(obj, event); }}>
+            <Check on={selected} visible={selecting} />
+          </button>
+          <button type="button"
+            className="absolute right-1.5 top-1.5 grid size-7 place-items-center rounded-full bg-black/40 text-white opacity-0 backdrop-blur-md transition-opacity duration-200 group-hover/tile:opacity-100 focus:opacity-100 [@media(hover:none)]:hidden"
+            aria-label="更多" onClick={event => { event.stopPropagation(); const r = event.currentTarget.getBoundingClientRect(); handlers.onMenu(obj, r.right, r.bottom); }}>
+            <DotsThreeIcon size={16} weight="bold" />
+          </button>
+        </div>
       </div>
-      <button type="button" className="grid size-7 shrink-0 place-items-center rounded-full text-muted opacity-0 transition-opacity hover:bg-[var(--hover)] hover:text-ink group-hover/tile:opacity-100 focus:opacity-100 [@media(hover:none)]:hidden"
-        aria-label="更多" onClick={event => { event.stopPropagation(); const r = event.currentTarget.getBoundingClientRect(); handlers.onMenu(obj, r.right, r.bottom); }}>
-        <DotsThreeIcon size={16} weight="bold" />
-      </button>
+      {density === 0 ? (
+        <div className="px-1 pt-2 pb-0.5">
+          <p className="line-clamp-2 break-all text-[13.5px] font-medium leading-snug" title={obj.name}>{obj.name}</p>
+          <p className="mt-0.5 truncate text-[12px] text-muted tabular">{meta}</p>
+        </div>
+      ) : (
+        <div className="px-0.5 pt-1.5">
+          <p className={`truncate font-medium leading-snug ${density === 2 ? "text-[11px]" : "text-[12px]"}`} title={obj.name}>{obj.name}</p>
+          {density === 1 && <p className="truncate text-[11px] text-muted tabular">{meta}</p>}
+        </div>
+      )}
     </div>
   );
 });

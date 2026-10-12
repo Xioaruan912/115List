@@ -1,6 +1,6 @@
 import {
   ArrowSquareOutIcon, ArrowsLeftRightIcon, CheckSquareIcon, CopyIcon, DownloadSimpleIcon, FolderPlusIcon, InfoIcon,
-  LinkIcon, PencilSimpleIcon, TrashIcon, UploadSimpleIcon, ArrowClockwiseIcon,
+  LinkIcon, PencilSimpleIcon, ShareNetworkIcon, TrashIcon, UploadSimpleIcon, ArrowClockwiseIcon,
 } from "@phosphor-icons/react";
 import { useLocation } from "wouter";
 import { useDir } from "../hooks/useDir";
@@ -46,6 +46,7 @@ export function ContextMenu() {
       entries = [
         { heading: `${names.length} 项` },
         { label: "复制链接", icon: <LinkIcon size={15} />, disabled: !chosen.some(item => !item.is_dir), run: () => void actions.copyLinks(dir, chosen.filter(item => !item.is_dir)) },
+        ...(can(me, Perm.Share) ? [{ label: "分享", icon: <ShareNetworkIcon size={15} />, run: () => ui().openDialog({ kind: "share", dir, names }) }] : []),
         { label: "移动到…", icon: <ArrowsLeftRightIcon size={15} />, disabled: !can(me, Perm.Move), run: () => ui().openDialog({ kind: "transfer", mode: "move", dir, names }) },
         { label: "复制到…", icon: <CopyIcon size={15} />, disabled: !can(me, Perm.Copy), run: () => ui().openDialog({ kind: "transfer", mode: "copy", dir, names }) },
         "divider",
@@ -62,6 +63,7 @@ export function ContextMenu() {
           { label: "下载", icon: <DownloadSimpleIcon size={15} />, run: () => actions.download(dir, obj) },
           { label: "复制链接", icon: <LinkIcon size={15} />, run: () => void actions.copyLinks(dir, [obj]) },
         ] : []),
+        ...(can(me, Perm.Share) ? [{ label: "分享", icon: <ShareNetworkIcon size={15} />, run: () => ui().openDialog({ kind: "share", dir, names: [obj.name] }) }] : []),
         { label: "选择", icon: <CheckSquareIcon size={15} />, run: () => ui().toggle(dir, obj.name) },
         "divider",
         { label: "重命名", icon: <PencilSimpleIcon size={15} />, hint: "F2", disabled: !can(me, Perm.Rename), run: () => ui().openDialog({ kind: "rename", dir, obj }) },

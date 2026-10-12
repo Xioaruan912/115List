@@ -9,6 +9,8 @@ export type Dialog =
   | { kind: "info"; dir: string; obj: Obj }
   | { kind: "offline"; dir: string }
   | { kind: "decompress"; dir: string; obj: Obj; innerPath: string; archivePass: string }
+  | { kind: "share"; dir: string; names: string[] }
+  | { kind: "shares" }
   | { kind: "account" };
 
 export interface Rect { x: number; y: number; width: number; height: number }
