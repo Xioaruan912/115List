@@ -132,6 +132,9 @@ func admin(g *gin.RouterGroup) {
 	tgvioAdmin.GET("/recycle", handles.TgvioRecycleList)
 	tgvioAdmin.POST("/recycle/clean", handles.TgvioRecycleClean)
 	tgvioAdmin.Any("/folder_lock", handles.TgvioFolderLock)
+	tgvioAdmin.Any("/posters", handles.TgvioPosterSettings)
+	tgvioAdmin.POST("/posters/test", handles.TgvioPosterTest)
+	tgvioAdmin.POST("/posters/reset", handles.TgvioPosterReset)
 
 	meta := g.Group("/meta")
 	meta.GET("/list", handles.ListMetas)

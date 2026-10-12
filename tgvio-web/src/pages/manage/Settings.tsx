@@ -1,6 +1,6 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { AnimatePresence, motion } from "motion/react";
-import { useEffect, useMemo, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useState } from "react";
 import { settings } from "../../api/admin";
 import { spring } from "../../lib/motion";
 import type { SettingItem } from "../../lib/types";
@@ -9,7 +9,11 @@ import { toast } from "../../stores/toast";
 import { Field, PageHeader } from "./Form";
 import { ErrorState } from "../../components/ErrorState";
 
-const GROUPS: [number, string][] = [[1, "站点"], [2, "样式"], [3, "预览"], [4, "全局"], [11, "流量"], [6, "索引"], [5, "离线下载"], [7, "单点登录"], [8, "LDAP"], [9, "S3"], [10, "FTP"]];
+// 100 is ours: TGVIO settings that are not OpenList setting items.
+const POSTERS = 100;
+const GROUPS: [number, string][] = [[1, "站点"], [2, "样式"], [3, "预览"], [4, "全局"], [POSTERS, "海报"], [11, "流量"], [6, "索引"], [5, "离线下载"], [7, "单点登录"], [8, "LDAP"], [9, "S3"], [10, "FTP"]];
+
+const PosterSettings = lazy(() => import("./PosterSettings"));
 
 const NAMES: Record<string, string> = {
   site_title: "站点标题", announcement: "公告", pagination_type: "分页方式", default_page_size: "默认分页大小", allow_indexed: "允许搜索引擎收录",
@@ -85,7 +89,7 @@ export default function Settings() {
       </div>
       <AnimatePresence mode="wait">
         <motion.div key={group} initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.22 }}>
-          <Group group={group} />
+          {group === POSTERS ? <Suspense fallback={null}><PosterSettings /></Suspense> : <Group group={group} />}
         </motion.div>
       </AnimatePresence>
     </div>

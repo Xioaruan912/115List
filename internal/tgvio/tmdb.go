@@ -42,6 +42,8 @@ type Poster struct {
 	Overview string  `json:"overview,omitempty"`
 	Rating   float64 `json:"rating,omitempty"`
 	Manual   bool    `json:"manual,omitempty"`
+	Name     string  `json:"name,omitempty"` // the folder or file name it was found for
+	Rev      int     `json:"rev,omitempty"`  // name-cleaning revision that produced a "none"
 	None     bool    `json:"none,omitempty"` // looked up, nothing fits (or the user said no poster)
 	At       int64   `json:"at"`
 }
@@ -55,10 +57,16 @@ var (
 	brackets    = regexp.MustCompile(`[\[【{][^\]】}]*[\]】}]`)
 	parens      = regexp.MustCompile(`[(（][^)）]*[)）]`)
 	extension   = regexp.MustCompile(`(?i)\.(mp4|mkv|avi|mov|wmv|flv|ts|m2ts|rmvb|webm|iso|m4v)$`)
-	releaseJunk = regexp.MustCompile(`(?i)\b(2160p|1080p|720p|480p|4k|uhd|hdr10?\+?|hdr|dv|dolby ?vision|web-?dl|web-?rip|webrip|blu-?ray|bdrip|remux|x26[45]|h\.?26[45]|hevc|avc|aac|ddp?\d?\.?\d?|atmos|truehd|dts(-hd)?|10bit|ma|hmax|nf|amzn|dsnp|repack|proper|complete|s\d{1,2}(e\d{1,3})?|第.{1,3}[季集部])\b`)
-	cjkJunk     = regexp.MustCompile(`(国粤语|国语|粤语|中字|中英字幕|简繁|双语|原盘|全集|合集|特效字幕|蓝光|高清|超清|完结|更新至.*|全\d+集)`)
-	spaces      = regexp.MustCompile(`\s+`)
+	releaseJunk = regexp.MustCompile(`(?i)\b(2160p|1080p|720p|480p|4k|uhd|hdr10?\+?|hdr|dv|dolby ?vision|web-?dl|web-?rip|webrip|blu-?ray|bdrip|remux|x26[45]|h\.?26[45]|hevc|avc|aac|ddp?\d?\.?\d?|atmos|truehd|dts(-hd)?|10bit|ma|hmax|nf|amzn|dsnp|repack|proper|complete|s\d{1,2}(e\d{1,3})?|season ?\d{1,2})\b`)
+	// Chinese has no word boundaries: season and series markers go without \b.
+	cjkSeason = regexp.MustCompile(`第[0-9一二三四五六七八九十百]{1,3}[季部集辑期]|[一二三四五六七八九十]部曲|系列|全[0-9一二三四五六七八九十]+[季部集]`)
+	cjkJunk   = regexp.MustCompile(`(国粤语|国语|粤语|中字|中英字幕|简繁|双语|原盘|全集|合集|特效字幕|蓝光|高清|超清|完结|更新至.*|全\d+集)`)
+	spaces    = regexp.MustCompile(`\s+`)
 )
+
+// cleanerRev changes whenever CleanName gets better: names that found nothing
+// under an older revision are looked up again.
+const cleanerRev = 2
 
 // CleanName reads a file or folder name for what a film database can search.
 func CleanName(name string) (query string, year int, tmdbID int, imdbID string) {
@@ -86,6 +94,7 @@ func CleanName(name string) (query string, year int, tmdbID int, imdbID string) 
 		}
 	}
 	cut = releaseJunk.ReplaceAllString(cut, " ")
+	cut = cjkSeason.ReplaceAllString(cut, " ")
 	cut = cjkJunk.ReplaceAllString(cut, " ")
 	cut = strings.Trim(spaces.ReplaceAllString(cut, " "), " .-_")
 	// Episode files ("01", "E05") and bare numbers name nothing.
@@ -120,6 +129,9 @@ type TMDB struct {
 
 	mu      sync.Mutex
 	entries map[string]*Poster
+	cfgOnce sync.Once
+	cfgMu   sync.RWMutex
+	cfg     PosterConfig
 	saveAt  *time.Timer
 	queue   chan string
 	queued  map[string]bool
@@ -158,10 +170,14 @@ func Posters(dataDir string) *TMDB {
 	return tmdbInstance
 }
 
-func (t *TMDB) Enabled() bool { return t.token != "" }
+func (t *TMDB) Enabled() bool {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return t.token != ""
+}
 
 func (t *TMDB) get(ctx context.Context, path string, query url.Values, out any) error {
-	return t.getIn(ctx, "zh-CN", path, query, out)
+	return t.getIn(ctx, t.Config().Language, path, query, out)
 }
 
 func (t *TMDB) getIn(ctx context.Context, language, path string, query url.Values, out any) error {
@@ -176,7 +192,17 @@ func (t *TMDB) getIn(ctx context.Context, language, path string, query url.Value
 	if err != nil {
 		return err
 	}
-	req.Header.Set("Authorization", "Bearer "+t.token)
+	t.mu.Lock()
+	token := t.token
+	t.mu.Unlock()
+	// A v4 read token goes in the header; a v3 API key (32 hex) in the query.
+	if len(token) == 32 && !strings.Contains(token, ".") {
+		q := req.URL.Query()
+		q.Set("api_key", token)
+		req.URL.RawQuery = q.Encode()
+	} else {
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
 	req.Header.Set("Accept", "application/json")
 	Inc("tmdb_api")
 	resp, err := t.http.Do(req)
@@ -315,7 +341,7 @@ func (t *TMDB) Details(ctx context.Context, kind string, id int) (*Poster, error
 // lookup finds the best poster for a name, or a "none" entry.
 func (t *TMDB) lookup(ctx context.Context, name string) (*Poster, error) {
 	query, year, tmdbID, imdbID := CleanName(name)
-	none := &Poster{None: true, At: time.Now().Unix()}
+	none := &Poster{None: true, Rev: cleanerRev, At: time.Now().Unix()}
 	if imdbID != "" {
 		var r struct {
 			Movies []tmdbItem `json:"movie_results"`
@@ -407,18 +433,22 @@ func isLatin(s string) bool {
 func (t *TMDB) Lookup(names []string) (map[string]*Poster, int) {
 	out := make(map[string]*Poster, len(names))
 	pending := 0
+	if !t.Config().Enabled {
+		return out, 0
+	}
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	now := time.Now().Unix()
 	for _, name := range names {
 		key := Key(name)
 		entry, ok := t.entries[key]
-		// "Nothing found" is retried after a week: TMDB keeps growing.
-		if ok && (!entry.None || entry.Manual || now-entry.At < 7*24*3600) {
+		// "Nothing found" is retried after a week (TMDB keeps growing) or when
+		// the name cleaning has improved since.
+		if ok && (!entry.None || entry.Manual || (now-entry.At < 7*24*3600 && entry.Rev >= cleanerRev)) {
 			out[name] = entry
 			continue
 		}
-		if !t.Enabled() {
+		if t.token == "" { // t.mu is held here
 			continue
 		}
 		pending++
@@ -436,6 +466,7 @@ func (t *TMDB) Lookup(names []string) (map[string]*Poster, int) {
 // Set stores a choice made by a person; it wins over any lookup.
 func (t *TMDB) Set(name string, p *Poster) {
 	p.Manual = true
+	p.Name = name
 	p.At = time.Now().Unix()
 	t.mu.Lock()
 	t.entries[Key(name)] = p
@@ -452,6 +483,7 @@ func (t *TMDB) work() {
 		t.mu.Lock()
 		delete(t.queued, key)
 		if err == nil {
+			p.Name = name
 			t.entries[key] = p
 		}
 		t.mu.Unlock()
@@ -537,4 +569,156 @@ func (t *TMDB) Image(ctx context.Context, size, file string) (string, error) {
 	}
 	out.Close()
 	return path, os.Rename(tmp, path)
+}
+
+// ---------------------------------------------------------------- settings
+
+// PosterConfig is what an admin sets in the web UI; it lives in <data>/tgvio/tmdb.json.
+type PosterConfig struct {
+	Enabled  bool   `json:"enabled"`
+	Language string `json:"language"`
+	Blur     bool   `json:"blur"` // posters follow the cover blur like drive pictures do
+}
+
+var posterLanguages = map[string]bool{"zh-CN": true, "zh-TW": true, "zh-HK": true, "en-US": true, "ja-JP": true, "ko-KR": true}
+
+func (t *TMDB) Config() PosterConfig {
+	t.cfgOnce.Do(func() {
+		t.cfg = PosterConfig{Enabled: true, Language: "zh-CN"}
+		if raw, err := os.ReadFile(filepath.Join(t.dir, "tmdb.json")); err == nil {
+			_ = json.Unmarshal(raw, &t.cfg)
+		}
+		if !posterLanguages[t.cfg.Language] {
+			t.cfg.Language = "zh-CN"
+		}
+	})
+	t.cfgMu.RLock()
+	defer t.cfgMu.RUnlock()
+	return t.cfg
+}
+
+func (t *TMDB) SetConfig(cfg PosterConfig) error {
+	if !posterLanguages[cfg.Language] {
+		return fmt.Errorf("unsupported language %q", cfg.Language)
+	}
+	t.Config()
+	t.cfgMu.Lock()
+	changedLanguage := t.cfg.Language != cfg.Language
+	t.cfg = cfg
+	t.cfgMu.Unlock()
+	raw, _ := json.Marshal(cfg)
+	if err := os.MkdirAll(t.dir, 0o700); err != nil {
+		return err
+	}
+	if err := os.WriteFile(filepath.Join(t.dir, "tmdb.json"), raw, 0o600); err != nil {
+		return err
+	}
+	if changedLanguage {
+		t.Reset("auto") // titles and overviews come in the new language
+	}
+	return nil
+}
+
+// TokenHint shows that a token is set without revealing it.
+func (t *TMDB) TokenHint() string {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if len(t.token) < 8 {
+		return ""
+	}
+	return "…" + t.token[len(t.token)-4:]
+}
+
+// SetToken stores a new read token (or API key) in <data>/tgvio/tmdb_token, mode 0600.
+func (t *TMDB) SetToken(token string) error {
+	token = strings.TrimSpace(token)
+	if err := os.MkdirAll(t.dir, 0o700); err != nil {
+		return err
+	}
+	if err := os.WriteFile(filepath.Join(t.dir, "tmdb_token"), []byte(token), 0o600); err != nil {
+		return err
+	}
+	t.mu.Lock()
+	t.token = token
+	t.mu.Unlock()
+	return nil
+}
+
+// Test checks the token against TMDB.
+func (t *TMDB) Test(ctx context.Context) error {
+	if !t.Enabled() {
+		return errors.New("no TMDB token")
+	}
+	var out map[string]any
+	return t.get(ctx, "configuration", nil, &out)
+}
+
+type PosterStats struct {
+	Matched    int      `json:"matched"`
+	None       int      `json:"none"`
+	Manual     int      `json:"manual"`
+	Pending    int      `json:"pending"`
+	Images     int      `json:"images"`
+	ImageBytes int64    `json:"image_bytes"`
+	Unmatched  []string `json:"unmatched"`
+}
+
+func (t *TMDB) Stats() PosterStats {
+	var st PosterStats
+	t.mu.Lock()
+	for key, entry := range t.entries {
+		switch {
+		case entry.Manual:
+			st.Manual++
+		case entry.None:
+			st.None++
+			if len(st.Unmatched) < 200 {
+				name := entry.Name
+				if name == "" {
+					name = key
+				}
+				st.Unmatched = append(st.Unmatched, name)
+			}
+		default:
+			st.Matched++
+		}
+	}
+	st.Pending = len(t.queued)
+	t.mu.Unlock()
+	sort.Strings(st.Unmatched)
+	_ = filepath.Walk(filepath.Join(t.dir, "posters"), func(_ string, info os.FileInfo, err error) error {
+		if err == nil && !info.IsDir() {
+			st.Images++
+			st.ImageBytes += info.Size()
+		}
+		return nil
+	})
+	return st
+}
+
+// Reset forgets matches: "none" the names that found nothing, "auto" every
+// automatic match (manual choices stay), "images" the downloaded images.
+func (t *TMDB) Reset(scope string) int {
+	n := 0
+	switch scope {
+	case "images":
+		_ = filepath.Walk(filepath.Join(t.dir, "posters"), func(path string, info os.FileInfo, err error) error {
+			if err == nil && !info.IsDir() && os.Remove(path) == nil {
+				n++
+			}
+			return nil
+		})
+		return n
+	case "none", "auto":
+		t.mu.Lock()
+		for key, entry := range t.entries {
+			if !entry.Manual && (scope == "auto" || entry.None) {
+				delete(t.entries, key)
+				n++
+			}
+		}
+		t.mu.Unlock()
+		t.save()
+	}
+	return n
 }

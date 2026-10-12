@@ -1,6 +1,8 @@
 package handles
 
 import (
+	"errors"
+	"io"
 	"net/http"
 	"strings"
 
@@ -62,7 +64,8 @@ func TgvioPosters(c *gin.Context) {
 			items[name] = out
 		}
 	}
-	common.SuccessResp(c, gin.H{"items": items, "pending": pending, "enabled": posters().Enabled()})
+	cfg := posters().Config()
+	common.SuccessResp(c, gin.H{"items": items, "pending": pending, "enabled": posters().Enabled() && cfg.Enabled, "blur": cfg.Blur})
 }
 
 type posterSearchReq struct {
@@ -144,4 +147,65 @@ func TgvioPosterImage(c *gin.Context) {
 	}
 	c.Header("Cache-Control", "public, max-age=31536000, immutable")
 	c.File(path)
+}
+
+// ---------------------------------------------------------------- admin settings
+
+func posterSettings() gin.H {
+	p := posters()
+	return gin.H{"config": p.Config(), "token_set": p.Enabled(), "token_hint": p.TokenHint(), "stats": p.Stats()}
+}
+
+type posterSettingsReq struct {
+	Config *tgvio.PosterConfig `json:"config"`
+	Token  *string             `json:"token"`
+}
+
+// TgvioPosterSettings: GET/POST /api/admin/tgvio/posters
+// The token is write-only: it is never sent back, only its last four characters.
+func TgvioPosterSettings(c *gin.Context) {
+	if c.Request.Method == http.MethodPost {
+		var req posterSettingsReq
+		if err := c.ShouldBindJSON(&req); err != nil && !errors.Is(err, io.EOF) {
+			common.ErrorResp(c, err, 400)
+			return
+		}
+		if req.Token != nil {
+			if err := posters().SetToken(*req.Token); err != nil {
+				common.ErrorResp(c, err, 500)
+				return
+			}
+		}
+		if req.Config != nil {
+			if err := posters().SetConfig(*req.Config); err != nil {
+				common.ErrorResp(c, err, 400)
+				return
+			}
+		}
+	}
+	common.SuccessResp(c, posterSettings())
+}
+
+// TgvioPosterTest: POST /api/admin/tgvio/posters/test
+func TgvioPosterTest(c *gin.Context) {
+	if err := posters().Test(c.Request.Context()); err != nil {
+		common.ErrorResp(c, err, 502)
+		return
+	}
+	common.SuccessResp(c, gin.H{"ok": true})
+}
+
+type posterResetReq struct {
+	Scope string `json:"scope"`
+}
+
+// TgvioPosterReset: POST /api/admin/tgvio/posters/reset {scope: none|auto|images}
+func TgvioPosterReset(c *gin.Context) {
+	var req posterResetReq
+	if err := c.ShouldBindJSON(&req); err != nil || (req.Scope != "none" && req.Scope != "auto" && req.Scope != "images") {
+		common.ErrorStrResp(c, "scope must be none, auto or images", 400)
+		return
+	}
+	n := posters().Reset(req.Scope)
+	common.SuccessResp(c, gin.H{"cleared": n, "settings": posterSettings()})
 }

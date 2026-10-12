@@ -327,3 +327,8 @@ button, a, [role="button"] { touch-action: manipulation; }
   .tile:hover .poster-card { transform: rotate(0deg) translateY(-4px) scale(1.04); }
 }
 @media (prefers-reduced-motion: reduce) { .poster-backdrop, .poster-card { transition: none; } }
+
+/* Posters blur with the covers only when the poster setting asks for it. */
+.cover-blur [data-poster-blur] .poster-cover img, .cover-blur [data-poster-blur] .poster-cell [data-thumb] img { filter: blur(18px) saturate(0.7); transition: filter 420ms var(--ease-expo); }
+@media (hover: hover) { .cover-blur [data-poster-blur] .tile:hover .poster-cover img, .cover-blur [data-poster-blur] .poster-cell:hover [data-thumb] img { filter: none; } }
+.cover-blur [data-poster-blur] .tile.reveal .poster-cover img { filter: none; }
