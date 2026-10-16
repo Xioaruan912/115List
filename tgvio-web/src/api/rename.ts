@@ -8,7 +8,7 @@ export interface RenameItem {
   kind: "video" | "subtitle" | "folder";
   season?: number;
   episode?: number;
-  reason?: "same" | "no-episode" | "several" | "conflict";
+  reason?: "same" | "no-episode" | "several" | "conflict" | "unknown";
 }
 
 export interface RenamePlan {
@@ -21,7 +21,8 @@ export interface RenamePlan {
 export interface RenameResult { old: string; new: string; error?: string }
 
 export const tmdbRename = {
-  plan: (path: string, password: string) => post<RenamePlan>("/tgvio/rename/plan", { path, password }),
+  /** `only`: just these files of the folder, each named by its own match. */
+  plan: (path: string, password: string, only?: string[]) => post<RenamePlan>("/tgvio/rename/plan", { path, password, only }),
   apply: (path: string, password: string, items: { old: string; new: string }[], folder = "") =>
     post<{ results: RenameResult[]; path: string }>("/tgvio/rename/apply", { path, password, items, folder }),
 };

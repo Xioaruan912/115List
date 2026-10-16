@@ -1,4 +1,5 @@
 import {
+  TextAaIcon,
   ArrowClockwiseIcon, ArrowsLeftRightIcon, CheckSquareIcon, ChecksIcon, CloudArrowDownIcon, DotsThreeIcon, CopyIcon, DownloadSimpleIcon, FolderPlusIcon,
   GearIcon, LinkIcon, ShareNetworkIcon, ListChecksIcon, MagnifyingGlassIcon, PencilSimpleIcon, TrashIcon, UploadSimpleIcon, XIcon, FolderSimpleIcon,
 } from "@phosphor-icons/react";
@@ -9,7 +10,7 @@ import { useDir } from "../hooks/useDir";
 import { useCanHover, useIsMobile } from "../hooks/useMedia";
 import * as actions from "../lib/actions";
 import { spring } from "../lib/motion";
-import { can, isAdmin, Perm } from "../lib/perm";
+import { can, isAdmin, isGuest, Perm } from "../lib/perm";
 import { useSession } from "../stores/session";
 import { useUi } from "../stores/ui";
 import { useUploads } from "../stores/uploads";
@@ -160,6 +161,10 @@ export function Dock({ path }: { path: string }) {
       )}
       {single && can(me, Perm.Rename) && (
         <button className="icon-btn size-10" aria-label="重命名" title="重命名" onClick={() => openDialog({ kind: "rename", dir: path, obj: single })}><PencilSimpleIcon size={19} /></button>
+      )}
+      {can(me, Perm.Rename) && !isGuest(me) && actions.tmdbTargets(path, chosen).length > 0 && (
+        <button className="icon-btn size-10" aria-label="按 TMDB 整理命名" title="按 TMDB 整理命名"
+          onClick={() => openDialog({ kind: "tmdb-rename", targets: actions.tmdbTargets(path, chosen) })}><TextAaIcon size={19} /></button>
       )}
       {can(me, Perm.Move) && (
         <button className="icon-btn size-10 max-sm:hidden" aria-label="移动" title="移动到" onClick={() => openDialog({ kind: "transfer", mode: "move", dir: path, names: [...(selected ?? [])] })}><ArrowsLeftRightIcon size={19} /></button>
