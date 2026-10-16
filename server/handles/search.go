@@ -65,7 +65,7 @@ func Search(c *gin.Context) {
 			}
 			return nodeToSearchResp(node)
 		}),
-		Total:   total,
+		Total: total,
 	})
 }
 

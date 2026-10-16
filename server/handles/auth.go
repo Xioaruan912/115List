@@ -75,7 +75,7 @@ func loginHash(c *gin.Context, req *LoginReq) {
 		}
 	}
 	// generate token
-	token, err := common.GenerateToken(user)
+	token, err := common.GenerateToken(user, c)
 	if err != nil {
 		common.ErrorResp(c, err, 500, true)
 		return

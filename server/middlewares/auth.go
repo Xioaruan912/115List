@@ -69,6 +69,11 @@ func Auth(allowDisabledGuest bool) func(c *gin.Context) {
 			c.Abort()
 			return
 		}
+		if userClaims.ID != "" && !common.TouchDeviceSession(userClaims.ID, user.ID, c.ClientIP()) {
+			common.ErrorStrResp(c, "this device has been signed out, login please", 401)
+			c.Abort()
+			return
+		}
 		common.GinAppendValues(c, conf.UserKey, user)
 		log.Debugf("use login token: %+v", user)
 		c.Next()

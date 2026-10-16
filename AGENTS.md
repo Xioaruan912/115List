@@ -94,6 +94,7 @@ This fork embeds its own front end instead of OpenList-Frontend. Read `tgvio-web
 - 预览里：滚轮在空白处切换文件，一次手势只切一个（冷却期内的滚轮事件会延长冷却）；缩略图条只给图片和视频；视频要有加载、自动播放被拦、浏览器放不了（给外部播放器）三种状态，并记住播放进度。
 - 错误一律经过 `lib/errors.ts` 翻译成一句人话加下一步，原始英文报错（路径、驱动信息）绝不显示，只能“复制详情”。整块的错误用 `ErrorState`（被撕断的胶片，重试时两半接回去再请求），一行的用它的 compact 形态或 `reason()`。
 - 片名对应的海报来自 TMDB（`internal/tgvio/tmdb.go`）：服务器清洗名字、后台排队查询（4 次/秒）、结果存 `data/tgvio/posters.json`、图片缓存在 `data/tgvio/posters/`；令牌只在 `data/tgvio/tmdb_token`，绝不进仓库和输出。有海报就不再为封面列 115 目录。匹配错了用右键「更换封面」改，人工选择优先。官方海报是公开图，不做模糊。
+- 登录令牌绑定设备会话（`server/common/tgvio_sessions.go`），有效性看磁盘上的会话，不看内存缓存；新的登录入口要调用 `common.GenerateToken(user, c)` 传上请求。
 - 用户可以有多个根目录（`BasePath` 一行一个，`internal/model/tgvio_roots.go`）：所有请求路径都经 `JoinPath` 换成真实路径，返回给用户的路径用 `ShowPath` 换回来；新增接口不要直接拼 `BasePath`。
 - 大文件上传走 `/api/fs/staged/*`（`server/handles/tgvio_staged.go`）：分块写进 `data/tgvio/staged`（不是 temp，OpenList 启动会清空 temp），可跨会话续传。
 - 管理员带「免密访问」，因为 Player 和后台任务用管理员走 WebDAV；不要去掉这个权限。想让管理员在网页里也输入文件夹密码，用设置 `tgvio_admin_folder_password`（只影响网页接口）。
