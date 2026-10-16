@@ -98,6 +98,7 @@ This fork embeds its own front end instead of OpenList-Frontend. Read `tgvio-web
 - 用户可以有多个根目录（`BasePath` 一行一个，`internal/model/tgvio_roots.go`）：所有请求路径都经 `JoinPath` 换成真实路径，返回给用户的路径用 `ShowPath` 换回来；新增接口不要直接拼 `BasePath`。
 - 大文件上传走 `/api/fs/staged/*`（`server/handles/tgvio_staged.go`）：分块写进 `data/tgvio/staged`（不是 temp，OpenList 启动会清空 temp），可跨会话续传。
 - 管理员带「免密访问」，因为 Player 和后台任务用管理员走 WebDAV；不要去掉这个权限。想让管理员在网页里也输入文件夹密码，用设置 `tgvio_admin_folder_password`（只影响网页接口）。
+- 视频缩略图（`hooks/useThumbs.ts`）：剧集单集用 TMDB 剧照，其他视频由服务器从 115 云端转码截帧，后台单队列、限速、熔断时暂停，结果永久缓存；不要改成浏览器直接拉视频截图。
 - 视频优先用 115 云端转码（`/api/tgvio/video` 拿清晰度和票据，`/tgvio/hls/` 由服务器代取分片，浏览器拿不到网盘地址）；默认 1080P，原文件放不了或卡住时自动换云端，用户的清晰度选择会记住。
 - 每个状态都要设计：骨架屏加载、空文件夹给出下一步、错误就地显示并可重试、需要密码的文件夹给内联表单、操作结果用 toast（可横滑关闭）。
 - 操作先改本地缓存让界面立刻动起来，再后台向服务器重读；失败要回滚并提示。

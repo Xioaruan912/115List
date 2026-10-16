@@ -64,6 +64,7 @@ var guard = newAPIGuard(envFloat("TGVIO_115_API_RATE", 4), 8)
 
 func init() {
 	tgvio.Provide("115_breaker", func() any { return guard.state() })
+	tgvio.DriveBusy = guard.open // background work (thumbnails) waits while the breaker is open
 }
 
 func (g *apiGuard) open() bool {
