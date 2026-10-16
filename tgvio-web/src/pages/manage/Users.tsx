@@ -1,5 +1,6 @@
 import { FolderPlusIcon, PencilSimpleIcon, PlusIcon, ShieldCheckIcon, TrashIcon, UserIcon } from "@phosphor-icons/react";
 import { FolderPicker } from "../../components/Dialogs";
+import { DeviceList } from "../../components/Devices";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { AnimatePresence, motion } from "motion/react";
 import { useState } from "react";
@@ -84,6 +85,7 @@ function Editor({ user, onClose }: { user: User | null; onClose: () => void }) {
         </div>
       )}
       {user?.role === Role.Admin && <FolderLock />}
+      {user && user.role !== Role.Guest && <div className="mt-6 border-t border-line pt-5"><DeviceList userId={user.id} /></div>}
       <Sheet open={picking} onClose={() => setPicking(false)} width={520} title="加一个根目录"
         footer={<><button className="btn btn-ghost" onClick={() => setPicking(false)}>取消</button>
           <button className="btn btn-primary" onClick={() => {

@@ -8,10 +8,12 @@ import { useSession } from "../../stores/session";
 import { toast } from "../../stores/toast";
 import { Field, PageHeader } from "./Form";
 import { ErrorState } from "../../components/ErrorState";
+import { SessionSettings } from "../../components/Devices";
 
 // 100 is ours: TGVIO settings that are not OpenList setting items.
 const POSTERS = 100;
-const GROUPS: [number, string][] = [[1, "站点"], [2, "样式"], [3, "预览"], [4, "全局"], [POSTERS, "海报"], [11, "流量"], [6, "索引"], [5, "离线下载"], [7, "单点登录"], [8, "LDAP"], [9, "S3"], [10, "FTP"]];
+const LOGIN = 101;
+const GROUPS: [number, string][] = [[1, "站点"], [2, "样式"], [3, "预览"], [4, "全局"], [POSTERS, "海报"], [LOGIN, "登录"], [11, "流量"], [6, "索引"], [5, "离线下载"], [7, "单点登录"], [8, "LDAP"], [9, "S3"], [10, "FTP"]];
 
 const PosterSettings = lazy(() => import("./PosterSettings"));
 
@@ -89,7 +91,7 @@ export default function Settings() {
       </div>
       <AnimatePresence mode="wait">
         <motion.div key={group} initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.22 }}>
-          {group === POSTERS ? <Suspense fallback={null}><PosterSettings /></Suspense> : <Group group={group} />}
+          {group === POSTERS ? <Suspense fallback={null}><PosterSettings /></Suspense> : group === LOGIN ? <SessionSettings /> : <Group group={group} />}
         </motion.div>
       </AnimatePresence>
     </div>

@@ -16,6 +16,7 @@ import { toast, useToasts } from "../stores/toast";
 import { useUi, type Dialog } from "../stores/ui";
 import type { Obj } from "../lib/types";
 import { KindIcon } from "./KindIcon";
+import { DeviceList } from "./Devices";
 import { PosterPicker } from "./PosterPicker";
 import { ShareDialog, SharesDialog } from "./Share";
 import { Sheet } from "./Sheet";
@@ -258,7 +259,7 @@ function AccountDialog({ onClose }: { onClose: () => void }) {
   const [busy, run] = useBusy();
   const mismatch = password !== confirm;
   return (
-    <Sheet open onClose={onClose} title="账户资料"
+    <Sheet open onClose={onClose} title="账户资料" width={560}
       footer={<><button className="btn btn-ghost" onClick={onClose}>取消</button>
         <button className="btn btn-primary" disabled={busy || mismatch || !username.trim()} onClick={() => void run(async () => {
           try {
@@ -275,6 +276,7 @@ function AccountDialog({ onClose }: { onClose: () => void }) {
           <span className="mt-1.5 block text-[12.5px] text-faint">留空则不修改密码</span></label>
         {password && <label><span className="label">确认新密码</span><input className="field" type="password" autoComplete="new-password" value={confirm} onChange={event => setConfirm(event.target.value)} />
           {mismatch && confirm && <span className="mt-1.5 block text-[12.5px] text-danger">两次输入不一致</span>}</label>}
+        <div className="mt-2 border-t border-line pt-5"><DeviceList /></div>
       </div>
     </Sheet>
   );
