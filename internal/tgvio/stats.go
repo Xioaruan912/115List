@@ -65,3 +65,9 @@ type RecycleItem struct {
 	Parent    string `json:"parent"`
 	DeletedAt int64  `json:"deleted_at"`
 }
+
+// DriveFolder is one folder of a drive, for choosing what to mount.
+type DriveFolder struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+}

@@ -1,0 +1,79 @@
+package tgvio
+
+import "testing"
+
+func TestParseEpisode(t *testing.T) {
+	cases := []struct {
+		name            string
+		season, episode int
+	}{
+		{"The.Mandalorian.S03E05.2160p.DSNP.WEB-DL.DDP5.1.Atmos.DV.HEVC.mkv", 3, 5},
+		{"[SweetSub] Sousou no Frieren - 29 [WebRip 1080p HEVC-10bit AAC].mkv", 0, 29},
+		{"[Nekomoe kissaten][Sousou no Frieren][03][1080p][CHS].mp4", 0, 3},
+		{"葬送的芙莉莲 第12集.mp4", 0, 12},
+		{"爱情公寓 第二季 第十五集.mkv", 2, 15},
+		{"EP07.mp4", 0, 7},
+		{"07.mkv", 0, 7},
+		{"Show 1080p x265 12.mkv", 0, 12},
+		{"最后孤屋 (2026).mkv", 0, 0},
+		{"Movie.2023.1080p.BluRay.x264.mkv", 0, 0},
+	}
+	for _, c := range cases {
+		s, e := ParseEpisode(c.name)
+		if s != c.season || e != c.episode {
+			t.Errorf("ParseEpisode(%q) = %d, %d, want %d, %d", c.name, s, e, c.season, c.episode)
+		}
+	}
+}
+
+func TestSafeNameAndNumerals(t *testing.T) {
+	if got := SafeName(`星球大战: 曼达洛人 / 古古?`); got != "星球大战： 曼达洛人 古古？" {
+		t.Errorf("SafeName = %q", got)
+	}
+	for n, want := range map[int]string{1: "一", 2: "二", 10: "十", 12: "十二", 20: "二十", 23: "二十三"} {
+		if got := cnNumeral(n); got != want {
+			t.Errorf("cnNumeral(%d) = %q, want %q", n, got, want)
+		}
+	}
+}
+
+func TestCleanNameTagsOnly(t *testing.T) {
+	q, year, _, _ := CleanName("[大话西游][1-2集][1994-1995][国粤双语+简繁特效字幕][42.67GB]")
+	if q != "大话西游" || year != 1994 {
+		t.Errorf("got %q %d", q, year)
+	}
+	if q, _, _, _ := CleanName("[周星驰] [原盘电影集 国粤语]"); q != "" {
+		t.Errorf("collection folder cleaned to %q", q)
+	}
+}
+
+func TestMarkConflicts(t *testing.T) {
+	plan := &RenamePlan{Items: []RenameItem{
+		{Old: "a.mkv", New: "X - S01E01.mkv", Kind: "video"},
+		{Old: "b.mkv", New: "X - S01E01.mkv", Kind: "video"},
+		{Old: "c.mkv", New: "keep.mkv", Kind: "video"},
+	}}
+	markConflicts(plan, []RenameEntry{{Name: "a.mkv"}, {Name: "b.mkv"}, {Name: "c.mkv"}, {Name: "keep.mkv"}})
+	for _, item := range plan.Items {
+		if item.New != "" || item.Reason != "conflict" {
+			t.Errorf("%s: want conflict, got %+v", item.Old, item)
+		}
+	}
+}
+
+func TestPlaceEpisode(t *testing.T) {
+	frieren := map[int]int{1: 38, 0: 26}
+	if s, e := placeEpisode(frieren, 1, 2, 29); s != 1 || e != 29 {
+		t.Errorf("frieren S2 29 -> S%dE%d", s, e)
+	}
+	twoSeasons := map[int]int{1: 28, 2: 12}
+	if s, e := placeEpisode(twoSeasons, 2, 2, 31); s != 2 || e != 3 {
+		t.Errorf("absolute 31 -> S%dE%d", s, e)
+	}
+	if s, e := placeEpisode(twoSeasons, 2, 2, 5); s != 2 || e != 5 {
+		t.Errorf("S2 5 -> S%dE%d", s, e)
+	}
+	if s, e := placeEpisode(map[int]int{}, 0, 3, 7); s != 3 || e != 7 {
+		t.Errorf("no seasons -> S%dE%d", s, e)
+	}
+}

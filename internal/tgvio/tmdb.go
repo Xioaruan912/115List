@@ -63,13 +63,15 @@ var (
 	releaseJunk = regexp.MustCompile(`(?i)\b(2160p|1080p|720p|480p|4k|uhd|hdr10?\+?|hdr|dv|dolby ?vision|web-?dl|web-?rip|webrip|blu-?ray|bdrip|remux|x26[45]|h\.?26[45]|hevc|avc|aac|ddp?\d?\.?\d?|atmos|truehd|dts(-hd)?|10bit|ma|hmax|nf|amzn|dsnp|repack|proper|complete|s\d{1,2}(e\d{1,3})?|season ?\d{1,2})\b`)
 	// Chinese has no word boundaries: season and series markers go without \b.
 	cjkSeason = regexp.MustCompile(`第[0-9一二三四五六七八九十百]{1,3}[季部集辑期]|[一二三四五六七八九十]部曲|系列|全[0-9一二三四五六七八九十]+[季部集]`)
-	cjkJunk   = regexp.MustCompile(`(国粤语|国语|粤语|中字|中英字幕|简繁|双语|原盘|全集|合集|特效字幕|蓝光|高清|超清|完结|更新至.*|全\d+集)`)
+	cjkJunk   = regexp.MustCompile(`(国粤语|国语|粤语|中字|中英字幕|简繁|双语|原盘|全集|合集|特效字幕|蓝光|高清|超清|完结|更新至.*|全\d+集|\d+\s*-\s*\d+\s*[集部])`)
 	spaces    = regexp.MustCompile(`\s+`)
+	// A folder of several films ("[周星驰] [原盘电影集 国粤语]") names no one film.
+	collection = regexp.MustCompile(`电影集|作品集|合集|全集|系列|collection`)
 )
 
 // cleanerRev changes whenever CleanName gets better: names that found nothing
 // under an older revision are looked up again.
-const cleanerRev = 3
+const cleanerRev = 4
 
 // CleanName reads a file or folder name for what a film database can search.
 func CleanName(name string) (query string, year int, tmdbID int, imdbID string) {
@@ -100,11 +102,36 @@ func CleanName(name string) (query string, year int, tmdbID int, imdbID string) 
 	cut = cjkSeason.ReplaceAllString(cut, " ")
 	cut = cjkJunk.ReplaceAllString(cut, " ")
 	cut = strings.Trim(spaces.ReplaceAllString(cut, " "), " .-_")
+	// A name made only of tags ("[大话西游][1-2集][1994-1995][国粤双语]") keeps
+	// its title in the first tag that still says something once cleaned.
+	if !hasLetter(cut) && !collection.MatchString(name) {
+		cut = ""
+		for _, tag := range brackets.FindAllString(name, -1) {
+			inner := strings.Trim(tag, "[]【】{}")
+			if year > 0 {
+				if i := strings.Index(inner, strconv.Itoa(year)); i > 0 {
+					inner = inner[:i]
+				}
+			}
+			inner = releaseJunk.ReplaceAllString(inner, " ")
+			inner = cjkSeason.ReplaceAllString(inner, " ")
+			inner = cjkJunk.ReplaceAllString(inner, " ")
+			inner = strings.Trim(spaces.ReplaceAllString(inner, " "), " .-_")
+			if hasLetter(inner) && !strings.Contains(inner, "@") {
+				cut = inner
+				break
+			}
+		}
+	}
 	// Episode files ("01", "E05") and bare numbers name nothing.
-	if strings.IndexFunc(cut, func(r rune) bool { return unicode.IsLetter(r) }) < 0 {
+	if !hasLetter(cut) {
 		cut = ""
 	}
 	return cut, year, tmdbID, imdbID
+}
+
+func hasLetter(s string) bool {
+	return strings.IndexFunc(s, func(r rune) bool { return unicode.IsLetter(r) }) >= 0
 }
 
 var (
@@ -380,6 +407,10 @@ func (t *TMDB) Search(ctx context.Context, query string, year int) ([]*Poster, e
 		}
 		if year > 0 && p.Year == year {
 			score += 30
+		} else if year > 0 && p.Year > 0 && p.Year-year >= -1 && p.Year-year <= 1 {
+			score += 20 // "[1994-1995]" names the first year of a pair
+		} else if year > 0 && p.Year > 0 && (p.Year-year > 3 || year-p.Year > 3) {
+			score -= 25 // a sequel or remake decades apart
 		}
 		if p.Poster == "" {
 			score -= 50
@@ -570,7 +601,10 @@ func isLatin(s string) bool {
 
 // ---------------------------------------------------------------- store
 
-type lookupJob struct{ name, dir string }
+type lookupJob struct {
+	name, dir string
+	solo      bool // the folder's only video: its film is the folder's too
+}
 
 // Lookup answers for the names in one folder (dir is its real path) from the
 // store, and queues unknown names for the background worker. Names no longer
@@ -584,6 +618,16 @@ func (t *TMDB) Lookup(dir string, names []string) (map[string]*Poster, int) {
 	}
 	effective := make(map[string]string, len(names)) // shown name -> name to look up
 	present := make(map[string]bool, len(names))
+	solo := ""
+	for _, name := range names {
+		if mediaExt.MatchString(name) {
+			if solo == "" {
+				solo = name
+			} else {
+				solo = "\x00" // more than one
+			}
+		}
+	}
 	for _, name := range names {
 		if Skip(name) {
 			continue
@@ -611,6 +655,9 @@ func (t *TMDB) Lookup(dir string, names []string) (map[string]*Poster, int) {
 		// the name cleaning has improved since.
 		if ok && (!entry.None || entry.Manual || (now-entry.At < 7*24*3600 && entry.Rev >= cleanerRev)) {
 			out[name] = entry
+			if name == solo && t.inheritLocked(dir, entry) {
+				pruned = true
+			}
 			continue
 		}
 		if t.token == "" { // t.mu is held here
@@ -619,7 +666,7 @@ func (t *TMDB) Lookup(dir string, names []string) (map[string]*Poster, int) {
 		pending++
 		if !t.queued[key] {
 			select {
-			case t.queue <- lookupJob{name: look, dir: dir}:
+			case t.queue <- lookupJob{name: look, dir: dir, solo: name == solo}:
 				t.queued[key] = true
 			default:
 			}
@@ -630,6 +677,42 @@ func (t *TMDB) Lookup(dir string, names []string) (map[string]*Poster, int) {
 		t.save()
 	}
 	return out, pending
+}
+
+// inheritLocked gives a folder that found nothing under its own name ("最后孤岛"
+// holding "最后孤屋 (2026).mkv") the film of its only video. t.mu is held.
+func (t *TMDB) inheritLocked(dir string, p *Poster) bool {
+	if p == nil || p.None || p.Kind != "movie" || dir == "/" {
+		return false
+	}
+	folder := pathBase(dir)
+	key := Key(folder)
+	cur := t.entries[key]
+	if cur != nil && (!cur.None || cur.Manual) {
+		return false
+	}
+	inherited := *p
+	inherited.Name = folder
+	inherited.Dir = stdpath.Dir(dir)
+	inherited.Manual = false
+	t.entries[key] = &inherited
+	return true
+}
+
+// RenamedDir follows a renamed folder: entries seen inside it keep their poster.
+func (t *TMDB) RenamedDir(oldPath, newPath string) {
+	t.mu.Lock()
+	changed := false
+	for _, entry := range t.entries {
+		if entry.Dir == oldPath || strings.HasPrefix(entry.Dir, oldPath+"/") {
+			entry.Dir = newPath + strings.TrimPrefix(entry.Dir, oldPath)
+			changed = true
+		}
+	}
+	t.mu.Unlock()
+	if changed {
+		t.save()
+	}
 }
 
 func pathBase(p string) string {
@@ -674,6 +757,9 @@ func (t *TMDB) work() {
 			p.Name = name
 			p.Dir = job.dir
 			t.entries[key] = p
+			if job.solo {
+				t.inheritLocked(job.dir, p)
+			}
 		}
 		t.mu.Unlock()
 		if err == nil {

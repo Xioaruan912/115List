@@ -11,7 +11,7 @@ func TestCleanName(t *testing.T) {
 		{"爱情公寓", "爱情公寓", 0, 0, ""},
 		{"东京喰种 (2014)", "东京喰种", 2014, 0, ""},
 		{"后室 (2026) {tmdb-1083381}", "后室", 2026, 1083381, ""},
-		{"[大话西游之月光宝盒 A Chinese Odyssey Part1 1994][豆瓣电影评分9.0][MT-311364][tt0112778][20.27GB].iso", "", 1994, 0, "tt0112778"},
+		{"[大话西游之月光宝盒 A Chinese Odyssey Part1 1994][豆瓣电影评分9.0][MT-311364][tt0112778][20.27GB].iso", "大话西游之月光宝盒 A Chinese Odyssey Part1", 1994, 0, "tt0112778"},
 		{"Chainsaw.Man.The.Movie.Reze.Arc.2025.2160p.MA.WEB-DL.mkv", "Chainsaw Man The Movie Reze Arc", 2025, 0, ""},
 		{"01.mp4", "", 0, 0, ""},
 		{"[周星驰] [原盘电影集 国粤语]", "", 0, 0, ""},
