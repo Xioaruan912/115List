@@ -57,7 +57,7 @@ func LoginLdap(c *gin.Context) {
 	}
 
 	// generate token
-	token, err := common.GenerateToken(user)
+	token, err := common.GenerateToken(user, c)
 	if err != nil {
 		common.ErrorResp(c, err, 400, true)
 		return

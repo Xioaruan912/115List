@@ -110,6 +110,9 @@ func Init(e *gin.Engine) {
 	admin(auth.Group("/admin", middlewares.AuthAdmin))
 	// TGVIO: process counters and drive quota for monitoring; recycle bin for admins.
 	auth.GET("/tgvio/stats", middlewares.AuthNotGuest, handles.TgvioStats)
+	// TGVIO: the caller's signed-in devices.
+	auth.GET("/me/devices", middlewares.AuthNotGuest, handles.TgvioMyDevices)
+	auth.POST("/me/devices/revoke", middlewares.AuthNotGuest, handles.TgvioMyDeviceRevoke)
 	// TGVIO cloud playback: the drive's own transcodes. Share visitors use it too,
 	// so it lives beside /fs with disabled guests allowed; the handler checks access.
 	api.POST("/tgvio/video", middlewares.Auth(true), handles.TgvioVideo)
@@ -133,6 +136,9 @@ func admin(g *gin.RouterGroup) {
 	tgvioAdmin.GET("/recycle", handles.TgvioRecycleList)
 	tgvioAdmin.POST("/recycle/clean", handles.TgvioRecycleClean)
 	tgvioAdmin.Any("/folder_lock", handles.TgvioFolderLock)
+	tgvioAdmin.GET("/devices", handles.TgvioDevices)
+	tgvioAdmin.POST("/devices/revoke", handles.TgvioDeviceRevoke)
+	tgvioAdmin.Any("/sessions", handles.TgvioSessionConfig)
 	tgvioAdmin.Any("/posters", handles.TgvioPosterSettings)
 	tgvioAdmin.POST("/posters/test", handles.TgvioPosterTest)
 	tgvioAdmin.POST("/posters/reset", handles.TgvioPosterReset)

@@ -6,6 +6,7 @@ import (
 	"github.com/OpenListTeam/OpenList/v4/internal/conf"
 	"github.com/OpenListTeam/OpenList/v4/internal/model"
 	"github.com/OpenListTeam/go-cache"
+	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v4"
 	"github.com/pkg/errors"
 )
@@ -20,12 +21,23 @@ type UserClaims struct {
 
 var validTokenCache = cache.NewMemCache[bool]()
 
-func GenerateToken(user *model.User) (tokenString string, err error) {
+// GenerateToken signs a user in. With the request at hand (every sign-in path
+// passes it) the token belongs to a device session that survives restarts and
+// lasts while the device is used (tgvio_sessions.go); the JWT's own expiry is
+// then only a far backstop.
+func GenerateToken(user *model.User, c ...*gin.Context) (tokenString string, err error) {
+	expires := time.Now().Add(time.Duration(conf.Conf.TokenExpiresIn) * time.Hour)
+	sessionID := ""
+	if len(c) > 0 && c[0] != nil {
+		sessionID = NewDeviceSession(user.ID, user.Username, c[0].ClientIP(), c[0].GetHeader("User-Agent"))
+		expires = time.Now().AddDate(10, 0, 0)
+	}
 	claim := UserClaims{
 		Username: user.Username,
 		PwdTS:    user.PwdTS,
 		RegisteredClaims: jwt.RegisteredClaims{
-			ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Duration(conf.Conf.TokenExpiresIn) * time.Hour)),
+			ID:        sessionID,
+			ExpiresAt: jwt.NewNumericDate(expires),
 			IssuedAt:  jwt.NewNumericDate(time.Now()),
 			NotBefore: jwt.NewNumericDate(time.Now()),
 		}}
@@ -42,7 +54,15 @@ func ParseToken(tokenString string) (*UserClaims, error) {
 	token, err := jwt.ParseWithClaims(tokenString, &UserClaims{}, func(token *jwt.Token) (interface{}, error) {
 		return SecretKey, nil
 	})
-	if IsTokenInvalidated(tokenString) {
+	if token == nil {
+		return nil, errors.New("that's not even a token")
+	}
+	if claims, ok := token.Claims.(*UserClaims); ok && claims.ID != "" {
+		// A device session token: valid while its session is (checked on disk, not in memory).
+		if s, found := DeviceSessionOf(claims.ID); !found || s.Username != claims.Username {
+			return nil, errors.New("this device has been signed out")
+		}
+	} else if IsTokenInvalidated(tokenString) {
 		return nil, errors.New("token is invalidated")
 	}
 	if err != nil {
@@ -69,7 +89,19 @@ func InvalidateToken(tokenString string) error {
 		return nil // don't invalidate empty guest token
 	}
 	validTokenCache.Del(tokenString)
+	if id := SessionIDOf(tokenString); id != "" {
+		RevokeDeviceSession(id)
+	}
 	return nil
+}
+
+// SessionIDOf reads the device session id of a token without validating it.
+func SessionIDOf(tokenString string) string {
+	claims := &UserClaims{}
+	if _, _, err := jwt.NewParser().ParseUnverified(tokenString, claims); err != nil {
+		return ""
+	}
+	return claims.ID
 }
 
 func IsTokenInvalidated(tokenString string) bool {
