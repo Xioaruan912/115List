@@ -18,6 +18,7 @@ import type { Obj } from "../lib/types";
 import { KindIcon } from "./KindIcon";
 import { DeviceList } from "./Devices";
 import { PosterPicker } from "./PosterPicker";
+import { TmdbRename } from "./TmdbRename";
 import { ShareDialog, SharesDialog } from "./Share";
 import { Sheet } from "./Sheet";
 import { ErrorState } from "./ErrorState";
@@ -310,6 +311,8 @@ function DialogFor({ dialog, onClose }: { dialog: Dialog; onClose: () => void })
       return <ShareDialog dir={dialog.dir} names={dialog.names} onClose={onClose} />;
     case "poster":
       return <PosterPicker name={dialog.name} onClose={onClose} />;
+    case "tmdb-rename":
+      return <TmdbRename path={dialog.path} onClose={onClose} />;
     case "shares":
       return <SharesDialog onClose={onClose} />;
     case "account":

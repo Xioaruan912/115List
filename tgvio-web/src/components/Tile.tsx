@@ -272,6 +272,7 @@ function Mosaic({ thumbs, live }: { thumbs: string[]; live: boolean }) {
             <AnimatePresence initial={false}>
               <motion.img key={url} src={url} alt="" loading="lazy" decoding="async" referrerPolicy="no-referrer" draggable={false}
                 className="cover-img absolute inset-0 size-full object-cover"
+                onError={event => { event.currentTarget.style.visibility = "hidden"; }}
                 style={{ transformOrigin: ["0% 0%", "100% 0%", "0% 100%", "100% 100%"][cell] }}
                 initial={{ opacity: 0, scale: 1.18 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0 }}
                 transition={{ duration: 0.7, ease: [0.16, 1, 0.3, 1] }} />
