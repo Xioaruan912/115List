@@ -797,7 +797,7 @@ func (t *TMDB) save() {
 
 var (
 	imageName  = regexp.MustCompile(`^[A-Za-z0-9_-]{6,64}\.(jpg|png)$`)
-	imageSizes = map[string]bool{"w185": true, "w342": true, "w500": true, "w780": true, "w1280": true}
+	imageSizes = map[string]bool{"w300": true, "w185": true, "w342": true, "w500": true, "w780": true, "w1280": true}
 	imageLocks sync.Map
 )
 

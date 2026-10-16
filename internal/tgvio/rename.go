@@ -10,6 +10,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -135,23 +136,110 @@ func extOf(name string) string {
 type tmdbEpisode struct {
 	EpisodeNumber int    `json:"episode_number"`
 	Name          string `json:"name"`
+	StillPath     string `json:"still_path"`
 }
 
 var genericEpisode = regexp.MustCompile(`(?i)^(第\s*\d+\s*[集话話]|episode\s*\d+|エピソード\s*\d+|\d+)$`)
 
-// episodeTitles reads the episode names of one season (missing or placeholder
-// names are left out).
-func (t *TMDB) episodeTitles(ctx context.Context, id, season int) map[int]string {
+type seasonEpisodes struct {
+	at     time.Time
+	titles map[int]string
+	stills map[int]string
+}
+
+// seasonCache keeps one season's episode names and stills for half a day:
+// thumbnails ask for them on every folder visit.
+var seasonCache sync.Map // "id/season/language" -> *seasonEpisodes
+
+func (t *TMDB) episodes(ctx context.Context, id, season int) *seasonEpisodes {
+	key := fmt.Sprintf("%d/%d/%s", id, season, t.Config().Language)
+	if v, ok := seasonCache.Load(key); ok && time.Since(v.(*seasonEpisodes).at) < 12*time.Hour {
+		return v.(*seasonEpisodes)
+	}
 	var s struct {
 		Episodes []tmdbEpisode `json:"episodes"`
 	}
-	out := map[int]string{}
+	out := &seasonEpisodes{at: time.Now(), titles: map[int]string{}, stills: map[int]string{}}
 	if err := t.get(ctx, "tv/"+strconv.Itoa(id)+"/season/"+strconv.Itoa(season), url.Values{}, &s); err != nil {
-		return out
+		return out // not cached: asked again next time
 	}
 	for _, e := range s.Episodes {
 		if name := strings.TrimSpace(e.Name); name != "" && !genericEpisode.MatchString(name) {
-			out[e.EpisodeNumber] = name
+			out.titles[e.EpisodeNumber] = name
+		}
+		if e.StillPath != "" {
+			out.stills[e.EpisodeNumber] = e.StillPath
+		}
+	}
+	seasonCache.Store(key, out)
+	return out
+}
+
+// episodeTitles reads the episode names of one season (missing or placeholder
+// names are left out).
+func (t *TMDB) episodeTitles(ctx context.Context, id, season int) map[int]string {
+	return t.episodes(ctx, id, season).titles
+}
+
+var seasonsCache sync.Map // id -> seasonsEntry
+
+type seasonsEntry struct {
+	at   time.Time
+	list []SeasonInfo
+}
+
+// EpisodeStills finds TMDB's still image for the episode files of a folder that
+// is a series (or one season of it). Only the poster store and TMDB are asked.
+func (t *TMDB) EpisodeStills(ctx context.Context, dir string, names []string) map[string]string {
+	out := map[string]string{}
+	if !t.Enabled() || !t.Config().Enabled || !t.Covers(dir) || dir == "/" {
+		return out
+	}
+	folder := pathBase(dir)
+	t.mu.Lock()
+	entry := t.entries[Key(folder)]
+	if entry == nil {
+		entry = t.entries[Key(pathBase(stdpath.Dir(dir))+" "+folder)]
+	}
+	t.mu.Unlock()
+	if entry == nil || entry.None || entry.Kind != "tv" {
+		return out
+	}
+	folderSeason := entry.Season
+	if folderSeason == 0 {
+		folderSeason = SeasonOf(folder)
+	}
+	var seasons []SeasonInfo
+	if v, ok := seasonsCache.Load(entry.ID); ok && time.Since(v.(seasonsEntry).at) < 12*time.Hour {
+		seasons = v.(seasonsEntry).list
+	} else if list, err := t.Seasons(ctx, entry.ID); err == nil {
+		seasons = list
+		seasonsCache.Store(entry.ID, seasonsEntry{at: time.Now(), list: list})
+	}
+	counts, last := map[int]int{}, 0
+	for _, s := range seasons {
+		counts[s.Season] = s.Episodes
+		if s.Season > last {
+			last = s.Season
+		}
+	}
+	for _, name := range names {
+		if !mediaExt.MatchString(name) {
+			continue
+		}
+		s, ep := ParseEpisode(name)
+		if ep == 0 {
+			continue
+		}
+		switch {
+		case folderSeason > 0:
+			s = folderSeason
+		case s == 0:
+			s = 1
+		}
+		s, ep = placeEpisode(counts, last, s, ep)
+		if still := t.episodes(ctx, entry.ID, s).stills[ep]; still != "" {
+			out[name] = still
 		}
 	}
 	return out

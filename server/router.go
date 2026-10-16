@@ -125,6 +125,8 @@ func Init(e *gin.Engine) {
 	auth.POST("/tgvio/rename/plan", middlewares.AuthNotGuest, handles.TgvioRenamePlan)
 	auth.POST("/tgvio/rename/apply", middlewares.AuthNotGuest, handles.TgvioRenameApply)
 	g.GET("/tgvio/poster/:size/:file", handles.TgvioPosterImage)
+	auth.POST("/tgvio/thumbs", middlewares.AuthNotGuest, handles.TgvioThumbs)
+	g.GET("/tgvio/thumb/:file", handles.TgvioThumbImage)
 	if flags.Debug || flags.Dev {
 		debug(g.Group("/debug"))
 	}
