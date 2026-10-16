@@ -155,6 +155,13 @@ export function TmdbRename({ targets, onClose }: { targets: RenameTarget[]; onCl
     else toast.error(`有 ${failed} 个没改成`, new Error(`${done} renamed, ${failed} failed`));
   };
 
+  // Closing while renaming does not stop it: the renames go on in the
+  // background and the toast at the end reports how they went.
+  const close = (): void => {
+    if (running) toast.info("在后台继续整理", "改完会告诉你结果，可以接着做别的");
+    onClose();
+  };
+
   const single = !multi ? sections[0] : null;
   const footer = (multi ? ready > 0 : single?.plan && !single.plan.reason) && (anything || finished) ? (
     <>
@@ -164,7 +171,7 @@ export function TmdbRename({ targets, onClose }: { targets: RenameTarget[]; onCl
           {off.size ? "全选" : "全不选"}
         </button>
       )}
-      <button className="btn btn-ghost" onClick={onClose}>{finished ? "完成" : "取消"}</button>
+      <button className="btn btn-ghost" onClick={close}>{finished ? "完成" : running ? "后台继续" : "取消"}</button>
       {!finished && (
         <button className="btn btn-primary" disabled={running || count === 0 || ready < targets.length} onClick={() => void apply()}>
           {running ? "正在改名…" : ready < targets.length ? `查询中 ${ready}/${targets.length}` : `整理 ${count} 项`}
@@ -174,7 +181,7 @@ export function TmdbRename({ targets, onClose }: { targets: RenameTarget[]; onCl
   ) : undefined;
 
   return (
-    <Sheet open onClose={running ? () => undefined : onClose} title={title} width={640} footer={footer}>
+    <Sheet open onClose={close} title={title} width={640} footer={footer}>
       {multi && (
         <p className="mb-4 flex items-center gap-2 text-[12.5px] text-faint">
           {ready < targets.length && <span className="loader-bars -my-2 scale-50" aria-hidden><i /><i /><i /><i /></span>}
