@@ -26,7 +26,8 @@ export async function applyTouchIcon(settings: Settings): Promise<void> {
   try { await document.fonts.load(font); } catch { /* fall back to system fonts */ }
   ctx.fillStyle = "#c4ec5c";
   ctx.beginPath();
-  ctx.roundRect(0, 0, size, size, size * 0.234);
+  if (ctx.roundRect) ctx.roundRect(0, 0, size, size, size * 0.234);
+  else ctx.rect(0, 0, size, size); // Chrome < 99
   ctx.fill();
   ctx.fillStyle = "#11140b";
   ctx.font = font;

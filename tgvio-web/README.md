@@ -50,3 +50,4 @@ npm run check      # tsc + vitest + vite build
 - 一个强调色（`--accent`）；圆角：控件 10、卡片 14、面板 22。
 - `MotionConfig reducedMotion="user"` + CSS 媒体查询，减少动态效果时全部关闭。
 - 不写 em dash；界面文字中文。
+- 旧内核（Chrome 86～98，360/QQ/搜狗等）：构建时 `legacy-css.ts` 在每个样式表旁写一份 `*.legacy.css`（展开 `@layer`、`:where`、逻辑属性，`translate/scale/rotate` 折成 `transform`，主题色的 `color-mix` 按深浅主题算成 rgba，`dvh` 前置 `vh`）。`index.html` 里的小脚本只在浏览器没有 `CSSLayerBlockRule` 时追加这份样式，并补 `Object.hasOwn`、`.at()`、`findLast`、`crypto.randomUUID` 和 `aspect-ratio`。主样式表不变。验证用 `zenika/alpine-chrome:86`。
