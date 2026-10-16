@@ -13,6 +13,8 @@ export interface RenameItem {
 
 export interface RenamePlan {
   subject: Poster | null;
+  /** The season episodes were named under (series only). */
+  season?: number;
   items: RenameItem[];
   /** "no-match": TMDB has nothing for this folder (choose its poster first). */
   reason?: "no-match";
@@ -22,7 +24,7 @@ export interface RenameResult { old: string; new: string; error?: string }
 
 export const tmdbRename = {
   /** `only`: just these files of the folder, each named by its own match. */
-  plan: (path: string, password: string, only?: string[]) => post<RenamePlan>("/tgvio/rename/plan", { path, password, only }),
+  plan: (path: string, password: string, only?: string[], season?: number) => post<RenamePlan>("/tgvio/rename/plan", { path, password, only, season }),
   apply: (path: string, password: string, items: { old: string; new: string }[], folder = "") =>
     post<{ results: RenameResult[]; path: string }>("/tgvio/rename/apply", { path, password, items, folder }),
 };

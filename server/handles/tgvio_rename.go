@@ -25,6 +25,7 @@ type renamePlanReq struct {
 	Path     string   `json:"path"`
 	Password string   `json:"password"`
 	Only     []string `json:"only"` // chosen files: each named by its own match, folder name kept
+	Season   int      `json:"season"` // name episodes under this season (0: from the folder)
 }
 
 // renameFolder checks that the user may rename inside a folder and returns its
@@ -79,15 +80,15 @@ func TgvioRenamePlan(c *gin.Context) {
 	}
 	var plan *tgvio.RenamePlan
 	if len(req.Only) > 0 {
-		plan, err = posters().PlanFiles(c.Request.Context(), reqPath, entries, req.Only)
+		plan, err = posters().PlanFiles(c.Request.Context(), reqPath, entries, req.Only, req.Season)
 	} else {
-		plan, err = posters().PlanRename(c.Request.Context(), reqPath, entries)
+		plan, err = posters().PlanRename(c.Request.Context(), reqPath, entries, req.Season)
 	}
 	if err != nil {
 		common.ErrorResp(c, err, 500)
 		return
 	}
-	common.SuccessResp(c, gin.H{"subject": toPosterOut(plan.Subject), "items": plan.Items, "reason": plan.Reason})
+	common.SuccessResp(c, gin.H{"subject": toPosterOut(plan.Subject), "season": plan.Season, "items": plan.Items, "reason": plan.Reason})
 }
 
 type renameApplyItem struct {
