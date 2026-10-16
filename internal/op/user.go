@@ -5,7 +5,6 @@ import (
 	"github.com/OpenListTeam/OpenList/v4/internal/errs"
 	"github.com/OpenListTeam/OpenList/v4/internal/model"
 	"github.com/OpenListTeam/OpenList/v4/pkg/singleflight"
-	"github.com/OpenListTeam/OpenList/v4/pkg/utils"
 	"github.com/pkg/errors"
 )
 
@@ -66,7 +65,7 @@ func GetUsers(pageIndex, pageSize int) (users []model.User, count int64, err err
 }
 
 func CreateUser(u *model.User) error {
-	u.BasePath = utils.FixAndCleanPath(u.BasePath)
+	u.BasePath = model.CleanBasePath(u.BasePath)
 	return db.CreateUser(u)
 }
 
@@ -97,7 +96,7 @@ func UpdateUser(u *model.User) error {
 		guestUser = nil
 	}
 	Cache.DeleteUser(old.Username)
-	u.BasePath = utils.FixAndCleanPath(u.BasePath)
+	u.BasePath = model.CleanBasePath(u.BasePath)
 	return db.UpdateUser(u)
 }
 

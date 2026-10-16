@@ -118,6 +118,7 @@ func Init(e *gin.Engine) {
 	auth.POST("/tgvio/posters", middlewares.AuthNotGuest, handles.TgvioPosters)
 	auth.POST("/tgvio/posters/search", middlewares.AuthNotGuest, handles.TgvioPosterSearch)
 	auth.POST("/tgvio/posters/set", middlewares.AuthNotGuest, handles.TgvioPosterSet)
+	auth.GET("/tgvio/posters/seasons", middlewares.AuthNotGuest, handles.TgvioPosterSeasons)
 	g.GET("/tgvio/poster/:size/:file", handles.TgvioPosterImage)
 	if flags.Debug || flags.Dev {
 		debug(g.Group("/debug"))
@@ -239,6 +240,14 @@ func _fs(g *gin.RouterGroup) {
 	multipart.PUT("/chunk", uploadLimiter, handles.MultipartChunk)
 	multipart.POST("/complete", handles.MultipartComplete)
 	multipart.GET("/status", handles.MultipartStatus)
+	// TGVIO staged uploads: chunks wait on the server's disk, resumable for 72 h.
+	stagedUp := g.Group("/staged")
+	stagedUp.POST("/init", middlewares.FsUp, handles.TgvioStagedInit)
+	stagedUp.PUT("/chunk", uploadLimiter, handles.TgvioStagedChunk)
+	stagedUp.GET("/status", handles.TgvioStagedStatus)
+	stagedUp.GET("/list", handles.TgvioStagedList)
+	stagedUp.POST("/complete", handles.TgvioStagedComplete)
+	stagedUp.POST("/abort", handles.TgvioStagedAbort)
 	multipart.POST("/abort", handles.MultipartAbort)
 	g.POST("/link", middlewares.AuthAdmin, handles.Link)
 	// g.POST("/add_aria2", handles.AddOfflineDownload)

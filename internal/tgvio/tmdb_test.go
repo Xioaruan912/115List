@@ -28,3 +28,29 @@ func TestCleanName(t *testing.T) {
 		}
 	}
 }
+
+func TestSeasonAndSkip(t *testing.T) {
+	seasons := map[string]int{"第一季": 1, "第二季": 2, "第十二季": 12, "Season 01": 1, "season 3": 3, "S02": 2, "葬送的芙莉莲 第二季": 2, "爱情公寓": 0, "The.Last.of.Us.S02.2160p": 2, "阿凡达2009": 0}
+	for name, want := range seasons {
+		if got := SeasonOf(name); got != want {
+			t.Errorf("SeasonOf(%q) = %d, want %d", name, got, want)
+		}
+	}
+	skips := map[string]bool{"Off.Campus.S01E01.2160p.AMZN.WEB-DL.mkv": true, "frieren.beyond.journeys.end.s02e01.shall.we.go.mkv": true, "miaa-354.mp4": true,
+		"www.98t.la@snos-309_restored.mp4": true, "ipzz-814【非常好看】": true, "第03集.mp4": true, "爱情公寓": false, "Avatar.2009.1080p.BluRay.x264.mkv": false, "东京喰种 (2014)": false}
+	for name, want := range skips {
+		if got := Skip(name); got != want {
+			t.Errorf("Skip(%q) = %v, want %v", name, got, want)
+		}
+	}
+}
+
+func TestCleanPaths(t *testing.T) {
+	got := CleanPaths([]string{" /115/我要看/ ", "/115/我要看/剧集", "115/读书", "", "/115/读书"})
+	if len(got) != 2 || got[0] != "/115/我要看" || got[1] != "/115/读书" {
+		t.Fatalf("CleanPaths = %v", got)
+	}
+	if got := CleanPaths([]string{"/", "/a"}); len(got) != 1 || got[0] != "/" {
+		t.Fatalf("root swallows the rest: %v", got)
+	}
+}

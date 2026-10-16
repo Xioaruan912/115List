@@ -229,7 +229,10 @@ func (u *User) CanCustomizeShareID() bool {
 }
 
 func (u *User) JoinPath(reqPath string) (string, error) {
-	return utils.JoinBasePath(u.BasePath, reqPath)
+	if u.MultiRoot() {
+		return u.joinMulti(reqPath) // TGVIO: several root folders, see tgvio_roots.go
+	}
+	return utils.JoinBasePath(CleanBasePath(u.BasePath), reqPath)
 }
 
 func StaticHash(password string) string {

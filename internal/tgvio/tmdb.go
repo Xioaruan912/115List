@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	stdpath "path"
 	"path/filepath"
 	"regexp"
 	"sort"
@@ -44,6 +45,8 @@ type Poster struct {
 	Manual   bool    `json:"manual,omitempty"`
 	Name     string  `json:"name,omitempty"` // the folder or file name it was found for
 	Rev      int     `json:"rev,omitempty"`  // name-cleaning revision that produced a "none"
+	Dir      string  `json:"dir,omitempty"`  // the folder the name was seen in (real path)
+	Season   int     `json:"season,omitempty"`
 	None     bool    `json:"none,omitempty"` // looked up, nothing fits (or the user said no poster)
 	At       int64   `json:"at"`
 }
@@ -66,7 +69,7 @@ var (
 
 // cleanerRev changes whenever CleanName gets better: names that found nothing
 // under an older revision are looked up again.
-const cleanerRev = 2
+const cleanerRev = 3
 
 // CleanName reads a file or folder name for what a film database can search.
 func CleanName(name string) (query string, year int, tmdbID int, imdbID string) {
@@ -104,6 +107,60 @@ func CleanName(name string) (query string, year int, tmdbID int, imdbID string) 
 	return cut, year, tmdbID, imdbID
 }
 
+var (
+	seasonCN    = regexp.MustCompile(`第\s*([0-9一二三四五六七八九十]{1,3})\s*[季部]`)
+	seasonEN    = regexp.MustCompile(`(?i)\bseason[ ._-]?(\d{1,2})\b`)
+	seasonShort = regexp.MustCompile(`(?i)(?:^|[\s._\-\[(])s(\d{1,2})(?:e\d{1,3})?(?:$|[\s._\-\])])`)
+	episodeTag  = regexp.MustCompile(`(?i)s\d{1,2}[ ._-]?e\d{1,3}|(?:^|[\s._\-\[])e[p]?\d{1,3}(?:$|[\s._\-\]])|第\s*\d{1,4}\s*[集话話]`)
+	adultCode   = regexp.MustCompile(`(?i)^(?:[\w.]+@)?[a-z]{2,6}-?\d{3,5}(?:[^\d]|$)`)
+	videoExt    = regexp.MustCompile(`(?i)\.(mp4|mkv|avi|mov|wmv|flv|ts|m2ts|rmvb|webm|m4v)$`)
+)
+
+func cnNumber(s string) int {
+	if n, err := strconv.Atoi(s); err == nil {
+		return n
+	}
+	digits := map[rune]int{'一': 1, '二': 2, '三': 3, '四': 4, '五': 5, '六': 6, '七': 7, '八': 8, '九': 9}
+	n, unit := 0, 0
+	for _, r := range s {
+		if r == '十' {
+			if unit == 0 {
+				unit = 1
+			}
+			n += unit * 10
+			unit = 0
+		} else if d, ok := digits[r]; ok {
+			unit = d
+		}
+	}
+	return n + unit
+}
+
+// SeasonOf reads a season number from a name: 第二季, Season 2, S02.
+func SeasonOf(name string) int {
+	if m := seasonCN.FindStringSubmatch(name); m != nil {
+		return cnNumber(m[1])
+	}
+	if m := seasonEN.FindStringSubmatch(name); m != nil {
+		n, _ := strconv.Atoi(m[1])
+		return n
+	}
+	if m := seasonShort.FindStringSubmatch(extension.ReplaceAllString(name, "")); m != nil {
+		n, _ := strconv.Atoi(m[1])
+		return n
+	}
+	return 0
+}
+
+// Skip reports names not worth asking a film database about: episode files
+// (the series folder carries the poster) and adult release codes.
+func Skip(name string) bool {
+	if adultCode.MatchString(name) {
+		return true
+	}
+	return videoExt.MatchString(name) && episodeTag.MatchString(extension.ReplaceAllString(name, ""))
+}
+
 // Key is how a name is stored: case and spacing do not make a new entry.
 func Key(name string) string {
 	return strings.ToLower(spaces.ReplaceAllString(strings.TrimSpace(name), " "))
@@ -133,7 +190,7 @@ type TMDB struct {
 	cfgMu   sync.RWMutex
 	cfg     PosterConfig
 	saveAt  *time.Timer
-	queue   chan string
+	queue   chan lookupJob
 	queued  map[string]bool
 }
 
@@ -158,11 +215,19 @@ func Posters(dataDir string) *TMDB {
 			http:    &http.Client{Timeout: 20 * time.Second},
 			limiter: rate.NewLimiter(4, 4),
 			entries: map[string]*Poster{},
-			queue:   make(chan string, 4096),
+			queue:   make(chan lookupJob, 4096),
 			queued:  map[string]bool{},
 		}
 		if raw, err := os.ReadFile(filepath.Join(dir, "posters.json")); err == nil {
 			_ = json.Unmarshal(raw, &t.entries)
+			// "Nothing found" entries from before folders were recorded can never
+			// be pruned when their folder goes away: forget them, they come back
+			// (with their folder) the next time they are seen.
+			for key, entry := range t.entries {
+				if entry.None && !entry.Manual && entry.Dir == "" {
+					delete(t.entries, key)
+				}
+			}
 		}
 		go t.work()
 		tmdbInstance = t
@@ -338,8 +403,84 @@ func (t *TMDB) Details(ctx context.Context, kind string, id int) (*Poster, error
 	return item.poster(kind), nil
 }
 
-// lookup finds the best poster for a name, or a "none" entry.
+// lookup finds the best poster for a name (its season's, for a season), or a "none" entry.
 func (t *TMDB) lookup(ctx context.Context, name string) (*Poster, error) {
+	p, err := t.lookupBase(ctx, name)
+	if err != nil || p.None || p.Kind != "tv" {
+		return p, err
+	}
+	if season := SeasonOf(name); season > 0 {
+		t.ApplySeason(ctx, p, season)
+	}
+	return p, nil
+}
+
+type tmdbSeason struct {
+	SeasonNumber int    `json:"season_number"`
+	Name         string `json:"name"`
+	PosterPath   string `json:"poster_path"`
+	AirDate      string `json:"air_date"`
+	Overview     string `json:"overview"`
+	EpisodeCount int    `json:"episode_count"`
+}
+
+// ApplySeason turns a series' poster into one season's, when TMDB has it.
+func (t *TMDB) ApplySeason(ctx context.Context, p *Poster, season int) {
+	var s tmdbSeason
+	if err := t.get(ctx, "tv/"+strconv.Itoa(p.ID)+"/season/"+strconv.Itoa(season), nil, &s); err != nil {
+		return
+	}
+	p.Season = season
+	if s.PosterPath != "" {
+		p.Poster = s.PosterPath
+	}
+	if s.Name != "" && !strings.Contains(p.Title, s.Name) {
+		p.Title = p.Title + " " + s.Name
+	}
+	if len(s.AirDate) >= 4 {
+		p.Year, _ = strconv.Atoi(s.AirDate[:4])
+	}
+	if s.Overview != "" {
+		p.Overview = s.Overview
+	}
+}
+
+// SeasonInfo is one season of a series, for choosing by hand.
+type SeasonInfo struct {
+	Season   int    `json:"season"`
+	Name     string `json:"name"`
+	Poster   string `json:"poster,omitempty"`
+	Year     int    `json:"year,omitempty"`
+	Episodes int    `json:"episodes"`
+}
+
+// Seasons lists a series' seasons.
+func (t *TMDB) Seasons(ctx context.Context, id int) ([]SeasonInfo, error) {
+	var show struct {
+		Seasons []tmdbSeason `json:"seasons"`
+	}
+	if err := t.get(ctx, "tv/"+strconv.Itoa(id), nil, &show); err != nil {
+		return nil, err
+	}
+	out := []SeasonInfo{}
+	for _, s := range show.Seasons {
+		year := 0
+		if len(s.AirDate) >= 4 {
+			year, _ = strconv.Atoi(s.AirDate[:4])
+		}
+		out = append(out, SeasonInfo{Season: s.SeasonNumber, Name: s.Name, Poster: s.PosterPath, Year: year, Episodes: s.EpisodeCount})
+	}
+	// Regular seasons in order; specials (season 0) last.
+	sort.SliceStable(out, func(i, j int) bool {
+		if (out[i].Season == 0) != (out[j].Season == 0) {
+			return out[j].Season == 0
+		}
+		return out[i].Season < out[j].Season
+	})
+	return out, nil
+}
+
+func (t *TMDB) lookupBase(ctx context.Context, name string) (*Poster, error) {
 	query, year, tmdbID, imdbID := CleanName(name)
 	none := &Poster{None: true, Rev: cleanerRev, At: time.Now().Unix()}
 	if imdbID != "" {
@@ -429,18 +570,42 @@ func isLatin(s string) bool {
 
 // ---------------------------------------------------------------- store
 
-// Lookup answers from the store; unknown names are queued for the background worker.
-func (t *TMDB) Lookup(names []string) (map[string]*Poster, int) {
+type lookupJob struct{ name, dir string }
+
+// Lookup answers for the names in one folder (dir is its real path) from the
+// store, and queues unknown names for the background worker. Names no longer
+// in the folder are forgotten, so deleted folders leave no trace. A bare
+// season folder ("第一季", "Season 01") is looked up with its series' name.
+func (t *TMDB) Lookup(dir string, names []string) (map[string]*Poster, int) {
 	out := make(map[string]*Poster, len(names))
 	pending := 0
-	if !t.Config().Enabled {
+	if !t.Config().Enabled || !t.Covers(dir) {
 		return out, 0
 	}
-	t.mu.Lock()
-	defer t.mu.Unlock()
-	now := time.Now().Unix()
+	effective := make(map[string]string, len(names)) // shown name -> name to look up
+	present := make(map[string]bool, len(names))
 	for _, name := range names {
-		key := Key(name)
+		if Skip(name) {
+			continue
+		}
+		look := name
+		if query, _, _, _ := CleanName(name); query == "" && SeasonOf(name) > 0 && dir != "/" {
+			look = pathBase(dir) + " " + name
+		}
+		effective[name] = look
+		present[Key(look)] = true
+	}
+	t.mu.Lock()
+	pruned := false
+	for key, entry := range t.entries {
+		if entry.Dir == dir && !entry.Manual && !present[key] {
+			delete(t.entries, key)
+			pruned = true
+		}
+	}
+	now := time.Now().Unix()
+	for name, look := range effective {
+		key := Key(look)
 		entry, ok := t.entries[key]
 		// "Nothing found" is retried after a week (TMDB keeps growing) or when
 		// the name cleaning has improved since.
@@ -454,13 +619,35 @@ func (t *TMDB) Lookup(names []string) (map[string]*Poster, int) {
 		pending++
 		if !t.queued[key] {
 			select {
-			case t.queue <- name:
+			case t.queue <- lookupJob{name: look, dir: dir}:
 				t.queued[key] = true
 			default:
 			}
 		}
 	}
+	t.mu.Unlock()
+	if pruned {
+		t.save()
+	}
 	return out, pending
+}
+
+func pathBase(p string) string {
+	p = strings.TrimRight(p, "/")
+	if i := strings.LastIndex(p, "/"); i >= 0 {
+		return p[i+1:]
+	}
+	return p
+}
+
+// Covers reports whether posters are wanted in this folder (a real path).
+func (t *TMDB) Covers(dir string) bool {
+	for _, root := range t.Config().Paths {
+		if root == "/" || dir == root || strings.HasPrefix(dir, root+"/") {
+			return true
+		}
+	}
+	return false
 }
 
 // Set stores a choice made by a person; it wins over any lookup.
@@ -475,7 +662,8 @@ func (t *TMDB) Set(name string, p *Poster) {
 }
 
 func (t *TMDB) work() {
-	for name := range t.queue {
+	for job := range t.queue {
+		name := job.name
 		key := Key(name)
 		ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 		p, err := t.lookup(ctx, name)
@@ -484,6 +672,7 @@ func (t *TMDB) work() {
 		delete(t.queued, key)
 		if err == nil {
 			p.Name = name
+			p.Dir = job.dir
 			t.entries[key] = p
 		}
 		t.mu.Unlock()
@@ -578,6 +767,8 @@ type PosterConfig struct {
 	Enabled  bool   `json:"enabled"`
 	Language string `json:"language"`
 	Blur     bool   `json:"blur"` // posters follow the cover blur like drive pictures do
+	// Folders (real paths) where posters are looked up, subfolders included.
+	Paths []string `json:"paths"`
 }
 
 var posterLanguages = map[string]bool{"zh-CN": true, "zh-TW": true, "zh-HK": true, "en-US": true, "ja-JP": true, "ko-KR": true}
@@ -587,6 +778,11 @@ func (t *TMDB) Config() PosterConfig {
 		t.cfg = PosterConfig{Enabled: true, Language: "zh-CN"}
 		if raw, err := os.ReadFile(filepath.Join(t.dir, "tmdb.json")); err == nil {
 			_ = json.Unmarshal(raw, &t.cfg)
+			if !strings.Contains(string(raw), `"paths"`) {
+				t.cfg.Paths = []string{"/"} // set before paths existed: keep posters everywhere
+			}
+		} else {
+			t.cfg.Paths = []string{"/"}
 		}
 		if !posterLanguages[t.cfg.Language] {
 			t.cfg.Language = "zh-CN"
@@ -601,6 +797,7 @@ func (t *TMDB) SetConfig(cfg PosterConfig) error {
 	if !posterLanguages[cfg.Language] {
 		return fmt.Errorf("unsupported language %q", cfg.Language)
 	}
+	cfg.Paths = CleanPaths(cfg.Paths)
 	t.Config()
 	t.cfgMu.Lock()
 	changedLanguage := t.cfg.Language != cfg.Language
@@ -664,13 +861,16 @@ type PosterStats struct {
 }
 
 func (t *TMDB) Stats() PosterStats {
-	var st PosterStats
+	st := PosterStats{Unmatched: []string{}}
 	t.mu.Lock()
 	for key, entry := range t.entries {
 		switch {
 		case entry.Manual:
 			st.Manual++
 		case entry.None:
+			if !t.coversLocked(entry.Dir) {
+				continue
+			}
 			st.None++
 			if len(st.Unmatched) < 200 {
 				name := entry.Name
@@ -721,4 +921,48 @@ func (t *TMDB) Reset(scope string) int {
 		t.save()
 	}
 	return n
+}
+
+// CleanPaths normalises a list of folder paths: absolute, no trailing slash,
+// no duplicates, none inside another one of the list.
+func CleanPaths(paths []string) []string {
+	seen := map[string]bool{}
+	var list []string
+	for _, p := range paths {
+		p = strings.TrimSpace(p)
+		if p == "" {
+			continue
+		}
+		p = "/" + strings.Trim(stdpath.Clean("/"+p), "/")
+		if !seen[p] {
+			seen[p] = true
+			list = append(list, p)
+		}
+	}
+	sort.Strings(list)
+	out := []string{}
+	for _, p := range list {
+		inside := false
+		for _, q := range out {
+			if q == "/" || strings.HasPrefix(p, q+"/") {
+				inside = true
+				break
+			}
+		}
+		if !inside {
+			out = append(out, p)
+		}
+	}
+	return out
+}
+
+func (t *TMDB) coversLocked(dir string) bool {
+	t.cfgMu.RLock()
+	defer t.cfgMu.RUnlock()
+	for _, root := range t.cfg.Paths {
+		if root == "/" || dir == root || strings.HasPrefix(dir, root+"/") {
+			return true
+		}
+	}
+	return false
 }
