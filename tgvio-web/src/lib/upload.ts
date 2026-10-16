@@ -27,6 +27,8 @@ export interface UploadOptions {
 }
 
 const MULTIPART_MIN = 16 * 1024 * 1024;
+/** From this size on, chunks wait on the server's disk, so closing the browser loses nothing. */
+export const STAGED_MIN = 32 * 1024 * 1024;
 const PARALLEL = 3;
 
 export class UploadError extends Error {
@@ -167,7 +169,83 @@ async function multipart(options: UploadOptions): Promise<void> {
   throw new UploadError(500, "多次重试后仍未完成");
 }
 
+/** An unfinished staged upload, as /api/fs/staged/list reports it. */
+export interface StagedSnapshot {
+  upload_id: string;
+  name: string;
+  path: string;
+  size: number;
+  modified: number;
+  chunk_size: number;
+  total_chunks: number;
+  received: [number, number][] | null;
+  received_bytes: number;
+  updated: string;
+}
+
+export async function stagedList(): Promise<StagedSnapshot[]> {
+  const result = await xhr<StagedSnapshot[]>("GET", apiUrl("/fs/staged/list"), authHeaders(), null, new AbortController().signal);
+  if (result.code !== 200) throw new UploadError(result.code, result.message);
+  return result.data ?? [];
+}
+
+export async function stagedAbort(id: string): Promise<void> {
+  await xhr<unknown>("POST", apiUrl("/fs/staged/abort"), authHeaders({ "X-Upload-Id": id }), null, new AbortController().signal);
+}
+
+/**
+ * Resumable across closed browsers: the same path, size and modification time
+ * find the session left behind, and only the missing chunks are sent. The
+ * server hands the finished file to an upload task for the drive.
+ */
+async function stagedUpload(options: UploadOptions): Promise<void> {
+  const { file, signal } = options;
+  const total = file.size;
+  const headers = { ...baseHeaders(options), "X-File-Size": String(total) };
+  const init = await xhr<{ resumed: boolean; session: StagedSnapshot }>("POST", apiUrl("/fs/staged/init"), headers, null, signal);
+  if (init.code !== 200) throw new UploadError(init.code, init.message);
+  const session = init.data.session;
+  const id = session.upload_id;
+  const size = session.chunk_size;
+  const queue = missingChunks({ total_chunks: session.total_chunks, received: session.received ?? [] });
+  const inflight = new Map<number, number>();
+  let base = session.received_bytes;
+  const report = (): void => {
+    let sent = base;
+    for (const value of inflight.values()) sent += value;
+    options.onProgress({ phase: "sending", sent: Math.min(sent, total), total });
+  };
+  report();
+  const sendOne = async (index: number): Promise<void> => {
+    const body = file.slice(index * size, Math.min(total, (index + 1) * size));
+    for (let tries = 0; ; tries++) {
+      inflight.set(index, 0);
+      try {
+        const result = await xhr<StagedSnapshot>("PUT", apiUrl("/fs/staged/chunk"),
+          authHeaders({ "X-Upload-Id": id, "X-Chunk-Index": String(index), "Content-Type": "application/octet-stream" }),
+          body, signal, loaded => { inflight.set(index, loaded); report(); });
+        inflight.delete(index);
+        if (result.code === 200) { base += body.size; report(); return; }
+        if (result.code >= 500 && tries < 6) { await sleep(1000 * 2 ** Math.min(tries, 4), signal); continue; }
+        throw new UploadError(result.code, result.message);
+      } catch (error) {
+        inflight.delete(index);
+        if (error instanceof UploadError && error.code === 0 && tries < 8) { await sleep(1000 * 2 ** Math.min(tries, 4), signal); continue; }
+        throw error;
+      }
+    }
+  };
+  const workers = Array.from({ length: Math.min(PARALLEL, queue.length) }, async () => {
+    for (let index = queue.shift(); index !== undefined; index = queue.shift()) await sendOne(index);
+  });
+  await Promise.all(workers);
+  options.onProgress({ phase: "storing", sent: total, total, storage: 0 });
+  const done = await xhr<StagedSnapshot>("POST", apiUrl("/fs/staged/complete"), authHeaders({ "X-Upload-Id": id }), null, signal);
+  if (done.code !== 200) throw new UploadError(done.code, done.message);
+}
+
 export async function upload(options: UploadOptions): Promise<void> {
-  if (options.multipart && options.file.size >= MULTIPART_MIN) await multipart(options);
+  if (options.file.size >= STAGED_MIN) await stagedUpload(options);
+  else if (options.multipart && options.file.size >= MULTIPART_MIN) await multipart(options);
   else await putWhole(options);
 }

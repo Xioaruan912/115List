@@ -17,7 +17,7 @@ export function usePosters(dir: string, items: Obj[]): { items: Record<string, P
   const names = useMemo(() => items.filter(item => item.is_dir || kindOf(item) === "video").map(item => item.name), [items]);
   const query = useQuery({
     queryKey: ["posters", dir, names.length, names[0], names[names.length - 1]],
-    queryFn: () => posters.lookup(names),
+    queryFn: () => posters.lookup(dir, names),
     enabled: names.length > 0 && !!me && !isGuest(me),
     staleTime: 5 * 60_000,
     retry: false,

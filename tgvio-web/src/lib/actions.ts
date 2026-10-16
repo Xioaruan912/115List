@@ -1,4 +1,5 @@
 import * as fs from "../api/fs";
+import { refreshCover } from "../hooks/useCover";
 import { dirKey, fetchDir } from "../hooks/useDir";
 import { toast } from "../stores/toast";
 import { useUi } from "../stores/ui";
@@ -9,11 +10,14 @@ import { queryClient } from "./query";
 import type { FsList, Obj } from "./types";
 
 /** Re-read a directory from the drive (not the server cache) and update every view of it. */
-export async function reload(dir: string, hard = true): Promise<void> {
+export async function reload(dir: string, hard = true, announce = false): Promise<void> {
   try {
     const data = await fetchDir(dir, hard);
     queryClient.setQueryData(dirKey(dir), data);
-  } catch {
+    refreshCover(dir, data);
+    if (announce) toast.success("已重新读取", `${(data.content ?? []).length} 项，和网盘一致`);
+  } catch (error) {
+    if (announce) toast.error("没有读到最新内容", error);
     await queryClient.invalidateQueries({ queryKey: dirKey(dir) });
   }
 }

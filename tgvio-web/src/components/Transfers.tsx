@@ -1,11 +1,12 @@
-import { ArrowClockwiseIcon, CheckCircleIcon, PauseIcon, TrashIcon, WarningCircleIcon, XIcon } from "@phosphor-icons/react";
+import { ArrowClockwiseIcon, CheckCircleIcon, PauseIcon, PlayIcon, TrashIcon, WarningCircleIcon, XIcon } from "@phosphor-icons/react";
 import { useQueries, useQueryClient } from "@tanstack/react-query";
 import { AnimatePresence, motion } from "motion/react";
 import { useState } from "react";
 import { createPortal } from "react-dom";
 import { tasks, TASK_TYPES, type TaskType } from "../api/admin";
 import { useIsMobile } from "../hooks/useMedia";
-import { formatBytes, formatRate } from "../lib/format";
+import { formatBytes, formatDate, formatRate } from "../lib/format";
+import type { StagedSnapshot } from "../lib/upload";
 import { kindOf } from "../lib/kind";
 import { spring } from "../lib/motion";
 import type { TaskInfo } from "../lib/types";
@@ -110,10 +111,64 @@ export function ServerTasks() {
   );
 }
 
+/**
+ * Uploads left unfinished (the browser was closed, the network dropped): the
+ * chunks already sent wait on the server. Picking the same file again sends
+ * only what is missing.
+ */
+function Unfinished() {
+  const list = useUploads(state => state.resumable);
+  const resume = useUploads(state => state.resume);
+  const discard = useUploads(state => state.discard);
+  const [shake, setShake] = useState("");
+  if (!list.length) return null;
+  const pick = (item: StagedSnapshot): void => {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.onchange = () => {
+      const file = input.files?.[0];
+      if (!file) return;
+      if (resume(item, file)) toast.success("接着传", `${item.name}，从 ${formatBytes(item.received_bytes)} 处继续`);
+      else { setShake(item.upload_id); window.setTimeout(() => setShake(""), 500); toast.error("不是同一个文件", `要选「${item.name}」，${formatBytes(item.size)}`); }
+    };
+    input.click();
+  };
+  return (
+    <section className="mb-2">
+      <h3 className="px-2 pb-1 pt-1.5 text-[12px] font-medium text-muted">没传完的</h3>
+      <ul>
+        <AnimatePresence initial={false}>
+          {list.map(item => {
+            const fraction = item.size ? item.received_bytes / item.size : 0;
+            return (
+              <motion.li key={item.upload_id} layout className="flex items-center gap-3 rounded-xl px-2 py-2.5"
+                initial={{ opacity: 0, y: 10 }} animate={shake === item.upload_id ? { x: [0, -8, 7, -4, 0] } : { opacity: 1, y: 0, x: 0 }}
+                exit={{ opacity: 0, x: 40, transition: { duration: 0.2 } }} transition={spring.snappy}>
+                <span className="relative grid size-9 shrink-0 place-items-center rounded-lg bg-accent-soft text-accent-text"><PauseIcon size={16} weight="fill" /></span>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-[13px] font-medium" title={item.path}>{item.name}</p>
+                  <p className="text-[12px] text-muted tabular">{formatBytes(item.received_bytes)} / {formatBytes(item.size)}，{formatDate(item.updated)}</p>
+                  <div className="mt-1.5 h-[3px] overflow-hidden rounded-full bg-[var(--hover)]">
+                    <motion.div className="h-full origin-left rounded-full bg-accent" initial={{ scaleX: 0 }} animate={{ scaleX: fraction }} transition={spring.soft} />
+                  </div>
+                </div>
+                <button className="btn btn-primary h-8 shrink-0 px-3 text-[12.5px]" onClick={() => pick(item)}><PlayIcon size={13} weight="fill" />继续</button>
+                <button className="icon-btn size-8 shrink-0" aria-label="放弃" title="放弃，删掉已传的部分" onClick={() => void discard(item.upload_id)}><XIcon size={14} /></button>
+              </motion.li>
+            );
+          })}
+        </AnimatePresence>
+      </ul>
+      <p className="px-2 pb-2 text-[11.5px] text-faint">已传的部分在服务器上保留 3 天，选同一个文件就从断开处接着传。</p>
+    </section>
+  );
+}
+
 export function Transfers() {
   const open = useUi(state => state.uploads);
   const setOpen = useUi(state => state.setUploads);
   const jobs = useUploads(state => state.jobs);
+  const unfinished = useUploads(state => state.resumable.length);
   const clearFinished = useUploads(state => state.clearFinished);
   const mobile = useIsMobile();
   const [tab, setTab] = useState<"local" | "server">("local");
@@ -133,7 +188,7 @@ export function Transfers() {
             {(["local", "server"] as const).map(key => (
               <button key={key} className={`relative h-8 rounded-lg px-3 text-[13px] font-medium ${tab === key ? "text-ink" : "text-muted"}`} onClick={() => setTab(key)}>
                 {tab === key && <motion.span layoutId="transfer-tab" className="absolute inset-0 rounded-lg bg-[var(--hover)]" transition={spring.snappy} />}
-                <span className="relative">{key === "local" ? `上传${jobs.length ? ` ${jobs.length}` : ""}` : "服务器任务"}</span>
+                <span className="relative">{key === "local" ? `上传${jobs.length + unfinished ? ` ${jobs.length + unfinished}` : ""}` : "服务器任务"}</span>
               </button>
             ))}
             <span className="flex-1" />
@@ -144,8 +199,11 @@ export function Transfers() {
           </header>
           <div className="min-h-0 flex-1 overflow-y-auto p-2">
             {tab === "local" ? (
-              jobs.length ? <ul><AnimatePresence initial={false}>{[...jobs].reverse().map(job => <JobRow key={job.id} job={job} />)}</AnimatePresence></ul>
-                : <p className="px-3 py-10 text-center text-muted">还没有上传。把文件拖进窗口即可开始。</p>
+              <>
+                <Unfinished />
+                {jobs.length ? <ul><AnimatePresence initial={false}>{[...jobs].reverse().map(job => <JobRow key={job.id} job={job} />)}</AnimatePresence></ul>
+                  : !unfinished && <p className="px-3 py-10 text-center text-muted">还没有上传。把文件拖进窗口即可开始。</p>}
+              </>
             ) : <ServerTasks />}
           </div>
         </motion.aside>

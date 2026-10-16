@@ -1,11 +1,13 @@
 import {
-  ArrowsClockwiseIcon, BroomIcon, CheckIcon, FilmSlateIcon, ImageIcon, KeyIcon, MagnifyingGlassIcon, PlugsConnectedIcon, XIcon,
+  ArrowsClockwiseIcon, BroomIcon, CheckIcon, FilmSlateIcon, FolderPlusIcon, FolderSimpleIcon, ImageIcon, KeyIcon, MagnifyingGlassIcon, PlugsConnectedIcon, TextAlignLeftIcon, XIcon,
 } from "@phosphor-icons/react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { AnimatePresence, motion } from "motion/react";
 import { useState, type ReactNode } from "react";
 import { posterAdmin, posters, type PosterLanguage, type PosterSettings as Settings } from "../../api/posters";
+import { FolderPicker } from "../../components/Dialogs";
 import { ErrorState } from "../../components/ErrorState";
+import { Sheet } from "../../components/Sheet";
 import { NumberRoll } from "../../components/NumberRoll";
 import { reason } from "../../lib/errors";
 import { formatBytes } from "../../lib/format";
@@ -62,6 +64,67 @@ function SureButton({ label, sure, icon, onRun, disabled }: { label: string; sur
         </motion.span>
       </AnimatePresence>
     </button>
+  );
+}
+
+/**
+ * Where posters are wanted. Each path covers its subfolders; "/" is everywhere.
+ * Add a folder by browsing to it, drop one with ×, or edit them all as lines.
+ */
+function PathsEditor({ paths, onSave }: { paths: string[]; onSave: (paths: string[]) => Promise<boolean> }) {
+  const [lines, setLines] = useState<string | null>(null);
+  const [picking, setPicking] = useState(false);
+  const [target, setTarget] = useState("/");
+  return (
+    <div className="py-5">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-8">
+        <div className="min-w-0">
+          <p className="text-[14px] font-medium">生效目录</p>
+          <p className="mt-0.5 max-w-[52ch] text-[12.5px] leading-relaxed text-muted">只有这些文件夹（含子文件夹）里会找海报，别的地方保持原样。可以加多个。</p>
+        </div>
+        <div className="flex shrink-0 gap-2">
+          <button className="btn btn-line h-9 px-3.5 text-[13px]" onClick={() => { setTarget("/"); setPicking(true); }}><FolderPlusIcon size={15} />增加目录</button>
+          <button className="btn btn-ghost h-9 px-3 text-[13px]" onClick={() => setLines(lines === null ? paths.join("\n") : null)}><TextAlignLeftIcon size={15} />{lines === null ? "按行编辑" : "收起"}</button>
+        </div>
+      </div>
+      <AnimatePresence initial={false} mode="wait">
+        {lines === null ? (
+          <motion.ul key="chips" className="mt-3 flex flex-wrap gap-2" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+            <AnimatePresence initial={false}>
+              {paths.map(path => (
+                <motion.li key={path} layout initial={{ opacity: 0, scale: 0.7 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.6, transition: { duration: 0.16 } }} transition={spring.bouncy}
+                  className="inline-flex items-center gap-1.5 rounded-full bg-accent-soft py-1.5 pl-3 pr-1.5 text-[13px] font-medium">
+                  <FolderSimpleIcon size={14} weight="fill" className="text-accent-text" />
+                  <span className="font-mono text-[12.5px]">{path === "/" ? "/（全部）" : path}</span>
+                  <button className="grid size-6 place-items-center rounded-full text-muted transition-colors hover:bg-[var(--hover)] hover:text-ink" aria-label={`移除 ${path}`}
+                    onClick={() => void onSave(paths.filter(item => item !== path))}><XIcon size={12} weight="bold" /></button>
+                </motion.li>
+              ))}
+            </AnimatePresence>
+            {!paths.length && <li className="text-[13px] text-danger">没有目录：现在哪里都不会显示海报。</li>}
+          </motion.ul>
+        ) : (
+          <motion.div key="lines" className="mt-3" initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }} transition={spring.soft}>
+            <textarea className="field font-mono text-[12.5px]" rows={Math.min(10, Math.max(3, lines.split("\n").length + 1))} value={lines} spellCheck={false}
+              onChange={event => setLines(event.target.value)} placeholder={"/115/我要看\n/115/剧集"} aria-label="生效目录，一行一个" />
+            <div className="mt-2 flex items-center justify-between gap-3">
+              <span className="text-[12px] text-faint">一行一个路径，子文件夹自动包含。</span>
+              <button className="btn btn-primary h-9 px-4 text-[13px]" onClick={async () => {
+                if (await onSave(lines.split("\n").map(line => line.trim()).filter(Boolean))) setLines(null);
+              }}>保存</button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+      <Sheet open={picking} onClose={() => setPicking(false)} width={520} title="选一个文件夹"
+        footer={<><button className="btn btn-ghost" onClick={() => setPicking(false)}>取消</button>
+          <button className="btn btn-primary" disabled={paths.includes(target)} onClick={async () => { if (await onSave([...paths.filter(path => path !== "/" || target === "/"), target])) setPicking(false); }}>
+            {target === "/" ? "用全部" : "加入这个目录"}
+          </button></>}>
+        <FolderPicker start="/" value={target} onChange={setTarget} />
+        <p className="mt-3 truncate font-mono text-[12.5px] text-muted">{target}</p>
+      </Sheet>
+    </div>
   );
 }
 
@@ -130,6 +193,7 @@ export default function PosterSettings() {
       </AnimatePresence>
 
       <div className="mt-2 divide-y divide-[var(--line)]">
+        <PathsEditor paths={config.paths ?? ["/"]} onSave={paths => save({ config: { ...config, paths } }, "已保存生效目录")} />
         <Row title="TMDB 令牌" hint={data.token_set ? <>已设置，末尾 <span className="font-mono">{data.token_hint}</span>。只存在服务器上，不会再显示。</> : "在 themoviedb.org 的 设置 › API 里申请，填「API 读取访问令牌」或 API 密钥都行。"}>
           <div className="flex flex-wrap items-center gap-2">
             <button className="btn btn-line h-9 px-3.5 text-[13px]" disabled={!data.token_set || test.state === "busy"} onClick={() => void runTest()}>

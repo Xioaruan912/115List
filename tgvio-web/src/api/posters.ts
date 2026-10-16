@@ -13,14 +13,18 @@ export interface Poster {
   overview?: string;
   rating?: number;
   manual?: boolean;
+  season?: number;
 }
+
+export interface SeasonInfo { season: number; name: string; poster?: string; year?: number; episodes: number }
 
 export interface PosterLookup { items: Record<string, Poster>; pending: number; enabled: boolean; blur: boolean }
 
 export const posters = {
-  lookup: (names: string[]) => post<PosterLookup>("/tgvio/posters", { names }),
+  lookup: (dir: string, names: string[]) => post<PosterLookup>("/tgvio/posters", { dir, names }),
+  seasons: (id: number) => get<SeasonInfo[]>("/tgvio/posters/seasons", { id }),
   search: (query: string) => post<{ query: string; results: Poster[] }>("/tgvio/posters/search", { query }),
-  set: (name: string, choice: { kind: string; id: number } | null) =>
+  set: (name: string, choice: { kind: string; id: number; season?: number } | null) =>
     post<{ item: Poster | null }>("/tgvio/posters/set", choice ? { name, ...choice } : { name, none: true }),
 };
 
@@ -33,7 +37,7 @@ export function posterSrc(path: string | undefined, size?: "w185" | "w342" | "w5
 export type PosterLanguage = "zh-CN" | "zh-TW" | "zh-HK" | "en-US" | "ja-JP" | "ko-KR";
 
 export interface PosterSettings {
-  config: { enabled: boolean; language: PosterLanguage; blur: boolean };
+  config: { enabled: boolean; language: PosterLanguage; blur: boolean; paths: string[] };
   token_set: boolean;
   /** The last characters of the token; the token itself never comes back. */
   token_hint: string;

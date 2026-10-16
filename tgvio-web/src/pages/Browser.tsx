@@ -11,7 +11,9 @@ import { Transfers } from "../components/Transfers";
 import { Viewer } from "../components/Viewer";
 import { useDir } from "../hooks/useDir";
 import { encodePath, parent } from "../lib/path";
-import { can, Perm } from "../lib/perm";
+import { can, isGuest, Perm } from "../lib/perm";
+import { useToasts } from "../stores/toast";
+import { useUploads } from "../stores/uploads";
 import { usePrefs } from "../stores/prefs";
 import { useSession } from "../stores/session";
 import { useUi } from "../stores/ui";
@@ -48,9 +50,28 @@ function useShortcuts(path: string) {
   }, [path, list.data, me, navigate]);
 }
 
+/** Uploads left unfinished on an earlier visit: say so once, with a way to them. */
+function useUnfinishedUploads(): void {
+  const me = useSession(state => state.me);
+  useEffect(() => {
+    if (!me || isGuest(me)) return;
+    void useUploads.getState().loadResumable().then(() => {
+      const list = useUploads.getState().resumable;
+      if (!list.length) return;
+      useToasts.getState().push({
+        tone: "info",
+        title: list.length === 1 ? `「${list[0].name}」还没传完` : `${list.length} 个上传还没传完`,
+        detail: "已传的部分在服务器上，选同一个文件就能接着传",
+        action: { label: "查看", run: () => useUi.getState().setUploads(true) },
+      }, 9000);
+    });
+  }, [me]);
+}
+
 export function Browser({ path }: { path: string }) {
   const blur = usePrefs(state => state.blur);
   const me = useSession(state => state.me);
+  useUnfinishedUploads();
   const list = useDir(path);
   useShortcuts(path);
 

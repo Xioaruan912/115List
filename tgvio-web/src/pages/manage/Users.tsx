@@ -1,4 +1,5 @@
-import { PencilSimpleIcon, PlusIcon, ShieldCheckIcon, TrashIcon, UserIcon } from "@phosphor-icons/react";
+import { FolderPlusIcon, PencilSimpleIcon, PlusIcon, ShieldCheckIcon, TrashIcon, UserIcon } from "@phosphor-icons/react";
+import { FolderPicker } from "../../components/Dialogs";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { AnimatePresence, motion } from "motion/react";
 import { useState } from "react";
@@ -17,6 +18,8 @@ function Editor({ user, onClose }: { user: User | null; onClose: () => void }) {
   const client = useQueryClient();
   const [form, setForm] = useState<Partial<User>>(user ?? { username: "", password: "", base_path: "/", role: Role.General, permission: 0, disabled: false, allow_ldap: true });
   const [busy, setBusy] = useState(false);
+  const [picking, setPicking] = useState(false);
+  const [target, setTarget] = useState("/");
   const special = user?.role === Role.Admin || user?.role === Role.Guest;
   const set = (patch: Partial<User>): void => setForm(state => ({ ...state, ...patch }));
   const save = async (): Promise<void> => {
@@ -38,8 +41,15 @@ function Editor({ user, onClose }: { user: User | null; onClose: () => void }) {
         <label><span className="label">用户名</span><input className="field" value={form.username ?? ""} disabled={user?.role === Role.Guest} onChange={event => set({ username: event.target.value })} /></label>
         <label><span className="label">{user ? "新密码" : "密码"}</span><input className="field" type="password" autoComplete="new-password" value={form.password ?? ""} onChange={event => set({ password: event.target.value })} />
           {user && <span className="mt-1.5 block text-[12.5px] text-faint">留空则不修改</span>}</label>
-        <label className="sm:col-span-2"><span className="label">根目录</span><input className="field" value={form.base_path ?? "/"} onChange={event => set({ base_path: event.target.value })} />
-          <span className="mt-1.5 block text-[12.5px] text-faint">用户只能看到这个路径以下的内容</span></label>
+        <div className="sm:col-span-2">
+          <div className="flex items-end justify-between gap-3">
+            <label className="label mb-1.5" htmlFor="u-roots">根目录（一行一个）</label>
+            <button type="button" className="btn btn-ghost mb-1 h-7 px-2 text-[12.5px]" onClick={() => setPicking(true)}><FolderPlusIcon size={14} />增加目录</button>
+          </div>
+          <textarea id="u-roots" className="field font-mono text-[12.5px]" rows={Math.min(6, Math.max(2, (form.base_path ?? "/").split("\n").length))}
+            value={form.base_path ?? "/"} spellCheck={false} onChange={event => set({ base_path: event.target.value })} />
+          <span className="mt-1.5 block text-[12.5px] text-faint">用户只能看到这些文件夹。填多个时，他的首页会把它们并排列成文件夹。</span>
+        </div>
       </div>
       {form.role !== Role.Admin && (
         <section className="mt-6">
@@ -74,6 +84,17 @@ function Editor({ user, onClose }: { user: User | null; onClose: () => void }) {
         </div>
       )}
       {user?.role === Role.Admin && <FolderLock />}
+      <Sheet open={picking} onClose={() => setPicking(false)} width={520} title="加一个根目录"
+        footer={<><button className="btn btn-ghost" onClick={() => setPicking(false)}>取消</button>
+          <button className="btn btn-primary" onClick={() => {
+            const lines = (form.base_path ?? "").split("\n").map(line => line.trim()).filter(line => line && line !== "/");
+            if (!lines.includes(target)) lines.push(target);
+            set({ base_path: target === "/" ? "/" : lines.join("\n") });
+            setPicking(false);
+          }}>加入</button></>}>
+        <FolderPicker start="/" value={target} onChange={setTarget} />
+        <p className="mt-3 truncate font-mono text-[12.5px] text-muted">{target}</p>
+      </Sheet>
     </Sheet>
   );
 }
@@ -125,7 +146,7 @@ export default function Users() {
               </span>
               <div className="min-w-0 flex-1">
                 <p className="truncate font-medium">{user.username}</p>
-                <p className="truncate text-[12.5px] text-muted">{ROLE_LABEL[user.role] ?? user.role}，{user.base_path}{user.disabled ? (user.role === Role.Guest ? "，访客访问已关闭" : "，已停用") : ""}</p>
+                <p className="truncate text-[12.5px] text-muted">{ROLE_LABEL[user.role] ?? user.role}，{user.base_path.split("\n").join("、")}{user.disabled ? (user.role === Role.Guest ? "，访客访问已关闭" : "，已停用") : ""}</p>
               </div>
               <button className="icon-btn" aria-label="编辑" onClick={() => setEditing(user)}><PencilSimpleIcon size={17} /></button>
               {user.role === Role.General && <button className="icon-btn hover:text-danger" aria-label="删除" onClick={() => setConfirm(user)}><TrashIcon size={17} /></button>}
