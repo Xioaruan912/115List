@@ -30,7 +30,7 @@ export function labelFor(name: string): string {
   return LABELS[name] ?? name.replace(/_/g, " ").replace(/^\w/, c => c.toUpperCase());
 }
 
-export function Field({ spec, value, onChange }: { spec: FieldSpec; value: unknown; onChange: (value: unknown) => void }) {
+export function Field({ spec, value, onChange, adornment }: { spec: FieldSpec; value: unknown; onChange: (value: unknown) => void; adornment?: ReactNode }) {
   const id = `f-${spec.name}`;
   const label = spec.label ?? labelFor(spec.name);
   let control: ReactNode;
@@ -68,7 +68,7 @@ export function Field({ spec, value, onChange }: { spec: FieldSpec; value: unkno
   return (
     <div>
       <label className="label" htmlFor={id}>{label}{spec.required && <span className="text-danger"> *</span>}</label>
-      {control}
+      {adornment ? <div className="flex gap-2"><div className="min-w-0 flex-1">{control}</div>{adornment}</div> : control}
       {spec.help && <p className="mt-1.5 max-w-[70ch] text-[12.5px] text-faint">{spec.help}</p>}
     </div>
   );

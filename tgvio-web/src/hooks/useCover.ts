@@ -1,6 +1,8 @@
 import { useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { useEffect, useState, useSyncExternalStore, type RefObject } from "react";
-import { kindOf, type Kind } from "../lib/kind";
+import { posterSrc, posters } from "../api/posters";
+import { isFilm, kindOf, type Kind } from "../lib/kind";
+import { parent } from "../lib/path";
 import type { FsList } from "../lib/types";
 import { dirKey, fetchDir } from "./useDir";
 
@@ -54,6 +56,38 @@ export function coverFrom(list: FsList): Cover {
   return { thumbs, count: content.length, kinds };
 }
 
+/**
+ * A folder holding a single film ("最后孤岛" with "最后孤屋 (2026).mkv") gets that
+ * film's poster: asking about the file lets the server pass its match on to the
+ * folder, and the parent's posters are read again a moment later. No drive call.
+ */
+function adoptFilm(path: string, list: FsList, client: QueryClient): void {
+  const films = (list.content ?? []).filter(item => !item.is_dir && isFilm(item));
+  if (films.length !== 1 || (list.content ?? []).some(item => item.is_dir)) return;
+  void posters.lookup(path, [films[0].name]).then(() => {
+    window.setTimeout(() => void client.invalidateQueries({ queryKey: ["posters", parent(path)] }), 4000);
+  }, () => undefined);
+}
+
+/**
+ * A folder of films with no pictures of its own ("[周星驰] [原盘电影集]" holding
+ * one folder per film) is covered with the posters of what it holds. Asks the
+ * poster store only, once more a few seconds later if it was still looking.
+ */
+async function posterMosaic(path: string, list: FsList, cover: Cover): Promise<void> {
+  const names = (list.content ?? []).filter(item => item.is_dir || isFilm(item)).map(item => item.name).slice(0, 2000); // all of them: the server forgets names it is not sent
+  if (!names.length) return;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const found = await posters.lookup(path, names);
+      const thumbs = names.map(name => found.items[name]?.poster).filter((src): src is string => !!src).slice(0, 4).map(src => posterSrc(src, "w185"));
+      if (thumbs.length) { remember(path, { ...cover, thumbs }); return; }
+      if (!found.pending) return;
+    } catch { return; }
+    await new Promise(resolve => setTimeout(resolve, 5000));
+  }
+}
+
 const queue: { path: string; client: QueryClient }[] = [];
 const queued = new Set<string>();
 let running = false;
@@ -69,7 +103,10 @@ async function pump(): Promise<void> {
       const cached = job.client.getQueryData<FsList>(dirKey(job.path));
       const list = cached ?? await fetchDir(job.path);
       if (!cached) job.client.setQueryData(dirKey(job.path), list);
-      remember(job.path, coverFrom(list));
+      const cover = coverFrom(list);
+      remember(job.path, cover);
+      adoptFilm(job.path, list, job.client);
+      if (!cover.thumbs.length) void posterMosaic(job.path, list, cover);
       if (!cached) await new Promise(resolve => setTimeout(resolve, 140));
     } catch {
       failed.add(job.path); // password-protected or unreadable: keep the plain folder

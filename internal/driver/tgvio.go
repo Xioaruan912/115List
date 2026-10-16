@@ -22,3 +22,9 @@ type RecycleBin interface {
 	// password is the account's security key, when the drive asks for one (115: six digits).
 	RecycleClean(ctx context.Context, ids []string, password string) error
 }
+
+// FolderBrowser lists the folders under a drive folder id, so an admin can pick
+// a mount root by clicking instead of looking up its id.
+type FolderBrowser interface {
+	DriveFolders(ctx context.Context, id string) ([]tgvio.DriveFolder, error)
+}

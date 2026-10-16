@@ -37,3 +37,8 @@ export function previewable(kind: Kind): boolean {
 export function galleryKind(kind: Kind): "media" | "other" {
   return kind === "image" || kind === "video" ? "media" : "other";
 }
+
+/** Videos and disc images: what a film or series poster can stand for. */
+export function isFilm(obj: Obj): boolean {
+  return kindOf(obj) === "video" || /\.iso$/i.test(obj.name);
+}

@@ -1,12 +1,12 @@
 import {
   ArrowSquareOutIcon, ArrowsLeftRightIcon, CheckSquareIcon, CopyIcon, DownloadSimpleIcon, FolderPlusIcon, InfoIcon,
-  FilmSlateIcon, LinkIcon, PencilSimpleIcon, ShareNetworkIcon, TrashIcon, UploadSimpleIcon, ArrowClockwiseIcon,
+  FilmSlateIcon, LinkIcon, TextAaIcon, PencilSimpleIcon, ShareNetworkIcon, TrashIcon, UploadSimpleIcon, ArrowClockwiseIcon,
 } from "@phosphor-icons/react";
 import { useLocation } from "wouter";
 import { useDir } from "../hooks/useDir";
 import * as actions from "../lib/actions";
 import { encodePath, join } from "../lib/path";
-import { kindOf } from "../lib/kind";
+import { isFilm } from "../lib/kind";
 import { can, isGuest, Perm } from "../lib/perm";
 import { useSession } from "../stores/session";
 import { useUi } from "../stores/ui";
@@ -39,6 +39,7 @@ export function ContextMenu() {
           "divider" as const,
         ] : []),
         { label: "刷新", icon: <ArrowClockwiseIcon size={15} />, run: () => void actions.reload(dir, true, true) },
+        ...(dir !== "/" && can(me, Perm.Rename) && !isGuest(me) ? [{ label: "按 TMDB 整理命名", icon: <TextAaIcon size={15} />, run: () => ui().openDialog({ kind: "tmdb-rename", path: dir }) }] : []),
         { label: "全选", icon: <CheckSquareIcon size={15} />, hint: "Ctrl A", run: () => ui().select(dir, items.map(item => item.name)) },
       ];
     } else if (batch) {
@@ -66,7 +67,8 @@ export function ContextMenu() {
           { label: "复制链接", icon: <LinkIcon size={15} />, run: () => void actions.copyLinks(dir, [obj]) },
         ] : []),
         ...(can(me, Perm.Share) ? [{ label: "分享", icon: <ShareNetworkIcon size={15} />, run: () => ui().openDialog({ kind: "share", dir, names: [obj.name] }) }] : []),
-        ...((obj.is_dir || kindOf(obj) === "video") && !isGuest(me) ? [{ label: "更换封面", icon: <FilmSlateIcon size={15} />, run: () => ui().openDialog({ kind: "poster", name: obj.name }) }] : []),
+        ...((obj.is_dir || isFilm(obj)) && !isGuest(me) ? [{ label: "更换封面", icon: <FilmSlateIcon size={15} />, run: () => ui().openDialog({ kind: "poster", name: obj.name }) }] : []),
+        ...(obj.is_dir && can(me, Perm.Rename) && !isGuest(me) ? [{ label: "按 TMDB 整理命名", icon: <TextAaIcon size={15} />, run: () => ui().openDialog({ kind: "tmdb-rename", path }) }] : []),
         { label: "选择", icon: <CheckSquareIcon size={15} />, run: () => ui().toggle(dir, obj.name) },
         "divider",
         { label: "重命名", icon: <PencilSimpleIcon size={15} />, hint: "F2", disabled: !can(me, Perm.Rename), run: () => ui().openDialog({ kind: "rename", dir, obj }) },

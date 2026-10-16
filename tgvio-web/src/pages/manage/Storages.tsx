@@ -1,4 +1,4 @@
-import { ArrowClockwiseIcon, HardDrivesIcon, MagnifyingGlassIcon, PencilSimpleIcon, PlusIcon, TrashIcon, WarningCircleIcon } from "@phosphor-icons/react";
+import { ArrowClockwiseIcon, CursorClickIcon, FolderSimplePlusIcon, HardDrivesIcon, MagnifyingGlassIcon, PencilSimpleIcon, PlusIcon, TrashIcon, WarningCircleIcon } from "@phosphor-icons/react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { AnimatePresence, motion } from "motion/react";
 import { useMemo, useState } from "react";
@@ -11,6 +11,7 @@ import { toast } from "../../stores/toast";
 import { coerce, Field, PageHeader, type FieldSpec } from "./Form";
 import { ErrorState } from "../../components/ErrorState";
 import { reason } from "../../lib/errors";
+import { Mount115Sheet, PickRoot115 } from "./Mount115";
 
 type Values = Record<string, unknown>;
 
@@ -33,6 +34,7 @@ function Editor({ storage, onClose }: { storage: Storage | null; onClose: () => 
   const info = driver ? list.data?.[driver] : undefined;
   const [values, setValues] = useState<{ common: Values; addition: Values } | null>(null);
   const [busy, setBusy] = useState(false);
+  const [picking, setPicking] = useState(false);
   const current = values ?? (info ? initialValues(info, storage) : null);
 
   const pick = (name: string): void => {
@@ -111,11 +113,20 @@ function Editor({ storage, onClose }: { storage: Storage | null; onClose: () => 
                 <h3 className="text-[13px] font-semibold text-muted">{driver} 选项</h3>
                 {info.additional.map(item => (
                   <Field key={item.name} spec={item as FieldSpec} value={current.addition[item.name]}
-                    onChange={value => setValues({ ...current, addition: { ...current.addition, [item.name]: value } })} />
+                    onChange={value => setValues({ ...current, addition: { ...current.addition, [item.name]: value } })}
+                    adornment={driver === "115 Cloud" && item.name === "root_folder_id" ? (
+                      <button type="button" className="btn btn-line shrink-0" onClick={() => setPicking(true)}><CursorClickIcon size={15} />在网盘里选</button>
+                    ) : undefined} />
                 ))}
               </section>
             )}
           </motion.div>
+        )}
+      </AnimatePresence>
+      <AnimatePresence>
+        {picking && current && (
+          <PickRoot115 key="pick-root" prefer={storage?.id} onClose={() => setPicking(false)}
+            onPick={id => setValues({ ...current, addition: { ...current.addition, root_folder_id: id } })} />
         )}
       </AnimatePresence>
     </Sheet>
@@ -139,6 +150,7 @@ export default function Storages() {
   const [editing, setEditing] = useState<Storage | null | "new">(null);
   const [confirm, setConfirm] = useState<Storage | null>(null);
   const [reloading, setReloading] = useState(false);
+  const [mounting, setMounting] = useState(false);
   const list = useMemo(() => [...(query.data?.content ?? [])].sort((a, b) => a.order - b.order || a.mount_path.localeCompare(b.mount_path)), [query.data]);
 
   const toggle = async (storage: Storage): Promise<void> => {
@@ -159,6 +171,9 @@ export default function Storages() {
           setReloading(false);
           void client.invalidateQueries({ queryKey: ["storages"] });
         }}><ArrowClockwiseIcon size={16} className={reloading ? "spin" : ""} />重新加载</button>
+        {list.some(item => item.driver === "115 Cloud") && (
+          <button className="btn btn-line" onClick={() => setMounting(true)}><FolderSimplePlusIcon size={16} />挂载 115 文件夹</button>
+        )}
         <button className="btn btn-primary" onClick={() => setEditing("new")}><PlusIcon size={16} weight="bold" />添加</button>
       </PageHeader>
 
@@ -194,6 +209,7 @@ export default function Storages() {
 
       <AnimatePresence>
         {editing && <Editor key="editor" storage={editing === "new" ? null : editing} onClose={() => setEditing(null)} />}
+        {mounting && <Mount115Sheet key="mount115" onClose={() => setMounting(false)} />}
         {confirm && (
           <Sheet key="confirm" open onClose={() => setConfirm(null)} title="删除这个存储？"
             footer={<><button className="btn btn-ghost" onClick={() => setConfirm(null)}>取消</button>

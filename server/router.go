@@ -122,6 +122,8 @@ func Init(e *gin.Engine) {
 	auth.POST("/tgvio/posters/search", middlewares.AuthNotGuest, handles.TgvioPosterSearch)
 	auth.POST("/tgvio/posters/set", middlewares.AuthNotGuest, handles.TgvioPosterSet)
 	auth.GET("/tgvio/posters/seasons", middlewares.AuthNotGuest, handles.TgvioPosterSeasons)
+	auth.POST("/tgvio/rename/plan", middlewares.AuthNotGuest, handles.TgvioRenamePlan)
+	auth.POST("/tgvio/rename/apply", middlewares.AuthNotGuest, handles.TgvioRenameApply)
 	g.GET("/tgvio/poster/:size/:file", handles.TgvioPosterImage)
 	if flags.Debug || flags.Dev {
 		debug(g.Group("/debug"))
@@ -142,6 +144,9 @@ func admin(g *gin.RouterGroup) {
 	tgvioAdmin.Any("/posters", handles.TgvioPosterSettings)
 	tgvioAdmin.POST("/posters/test", handles.TgvioPosterTest)
 	tgvioAdmin.POST("/posters/reset", handles.TgvioPosterReset)
+	tgvioAdmin.GET("/115/sources", handles.TgvioMountSources)
+	tgvioAdmin.GET("/115/folders", handles.TgvioMountFolders)
+	tgvioAdmin.POST("/115/mount", handles.TgvioMount)
 
 	meta := g.Group("/meta")
 	meta.GET("/list", handles.ListMetas)
