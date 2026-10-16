@@ -112,3 +112,14 @@ export async function copyLinks(dir: string, objs: Obj[]): Promise<void> {
     toast.error("复制失败", error);
   }
 }
+
+/**
+ * What "按 TMDB 整理命名" works on for a selection in `dir`: each chosen folder
+ * whole, and the chosen files of `dir` itself (its own name left alone).
+ */
+export function tmdbTargets(dir: string, chosen: Obj[]): { path: string; only?: string[] }[] {
+  const targets: { path: string; only?: string[] }[] = chosen.filter(item => item.is_dir).map(item => ({ path: join(dir, item.name) }));
+  const files = chosen.filter(item => !item.is_dir).map(item => item.name);
+  if (files.length && dir !== "/") targets.unshift({ path: dir, only: files });
+  return targets;
+}

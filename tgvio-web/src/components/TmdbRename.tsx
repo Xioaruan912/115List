@@ -1,10 +1,10 @@
 import { CheckIcon, FilmSlateIcon, SealCheckIcon, SubtitlesIcon, FolderSimpleIcon, FilmStripIcon, WarningIcon } from "@phosphor-icons/react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQueryClient } from "@tanstack/react-query";
 import { AnimatePresence, motion } from "motion/react";
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useLocation } from "wouter";
 import { posterSrc } from "../api/posters";
-import { tmdbRename, type RenameItem } from "../api/rename";
+import { tmdbRename, type RenameItem, type RenamePlan } from "../api/rename";
 import { passwordFor } from "../hooks/useDir";
 import * as actions from "../lib/actions";
 import { reason } from "../lib/errors";
@@ -19,38 +19,86 @@ import { Sheet } from "./Sheet";
  * Rename a folder's videos after TMDB. The plan arrives as a departures board:
  * each row shows the name on the drive and the name it would get. People keep
  * or drop rows; applying renames one row at a time and each new name flips into
- * place as the drive confirms it. Nothing changes before "整理".
+ * place as the drive confirms it. Nothing changes before "整理". Several folders
+ * (a multi-selection) are planned one after another, each under its own poster.
  */
 const WHY: Record<NonNullable<RenameItem["reason"]>, string> = {
   same: "已经是规整的名字",
   "no-episode": "认不出是第几集",
   several: "文件夹里有好几部，分不清",
   conflict: "会和别的文件重名",
+  unknown: "TMDB 上没认出来",
 };
 
 type RowState = { status: "busy" } | { status: "done" } | { status: "error"; message: string };
 
-export function TmdbRename({ path, onClose }: { path: string; onClose: () => void }) {
-  const password = passwordFor(path);
+/** A folder to plan; `only` limits it to chosen files (and their subtitles), leaving the folder's name alone. */
+export interface RenameTarget { path: string; only?: string[] }
+
+type Loaded = { status: "loading" } | { status: "ok"; plan: RenamePlan } | { status: "error"; error: unknown };
+
+const rowKey = (path: string, name: string): string => `${path}\n${name}`;
+
+/** The rows of one plan this sheet shows: chosen files and the subtitles that follow them. */
+function filesOf(plan: RenamePlan, only?: string[]): RenameItem[] {
+  const files = plan.items.filter(item => item.kind !== "folder");
+  if (!only) return files;
+  const picked = new Set(only);
+  const bases = only.map(name => name.replace(/\.[^.]+$/, "") + ".");
+  return files.filter(item => picked.has(item.old) || (item.kind === "subtitle" && bases.some(base => item.old.startsWith(base))));
+}
+
+export function TmdbRename({ targets, onClose }: { targets: RenameTarget[]; onClose: () => void }) {
   const client = useQueryClient();
   const [location, navigate] = useLocation();
-  const plan = useQuery({ queryKey: ["tmdb-rename", path], queryFn: () => tmdbRename.plan(path, password), retry: false, staleTime: 0, gcTime: 0 });
-  const files = useMemo(() => (plan.data?.items ?? []).filter(item => item.kind !== "folder"), [plan.data]);
-  const folder = plan.data?.items.find(item => item.kind === "folder");
-  const proposals = files.filter(item => item.new);
+  const [loaded, setLoaded] = useState<Record<string, Loaded>>({});
   const [off, setOff] = useState<Set<string>>(new Set());
-  const [folderOn, setFolderOn] = useState(true);
   const [rows, setRows] = useState<Record<string, RowState>>({});
   const [running, setRunning] = useState(false);
   const [finished, setFinished] = useState(false);
+  const multi = targets.length > 1;
+  const folderCount = targets.filter(target => !target.only).length;
+  const fileCount = targets.reduce((sum, target) => sum + (target.only?.length ?? 0), 0);
+  const title = !multi && folderCount ? "按 TMDB 整理命名"
+    : `按 TMDB 整理${[folderCount ? ` ${folderCount} 个文件夹` : "", fileCount ? ` ${fileCount} 个文件` : ""].filter(Boolean).join(" 和")}`;
 
-  const chosen = proposals.filter(item => !off.has(item.old));
-  const renameFolder = !!folder?.new && folderOn;
-  const count = chosen.length + (renameFolder ? 1 : 0);
+  // Plans load one folder after another: TMDB is asked a few times per folder.
+  const load = useCallback(async (list: RenameTarget[], alive: () => boolean): Promise<void> => {
+    for (const target of list) {
+      if (!alive()) return;
+      setLoaded(prev => ({ ...prev, [target.path]: { status: "loading" } }));
+      try {
+        const plan = await tmdbRename.plan(target.path, passwordFor(target.path), target.only);
+        if (alive()) setLoaded(prev => ({ ...prev, [target.path]: { status: "ok", plan } }));
+      } catch (error) {
+        if (alive()) setLoaded(prev => ({ ...prev, [target.path]: { status: "error", error } }));
+      }
+    }
+  }, []);
+  useEffect(() => {
+    let alive = true;
+    void load(targets, () => alive);
+    return () => { alive = false; };
+  }, [targets, load]);
 
-  const toggle = (name: string): void => setOff(prev => {
+  const sections = targets.map(target => {
+    const state = loaded[target.path];
+    const plan = state?.status === "ok" ? state.plan : null;
+    const files = plan ? filesOf(plan, target.only) : [];
+    const folder = plan && !target.only ? plan.items.find(item => item.kind === "folder" && item.new) : undefined;
+    return { target, state, plan, files, folder };
+  });
+  const keys = sections.flatMap(({ target, files, folder }) => [
+    ...(folder ? [rowKey(target.path, folder.old)] : []),
+    ...files.filter(item => item.new).map(item => rowKey(target.path, item.old)),
+  ]);
+  const count = keys.filter(key => !off.has(key)).length;
+  const ready = sections.filter(section => section.state && section.state.status !== "loading").length;
+  const anything = keys.length > 0;
+
+  const toggle = (key: string): void => setOff(prev => {
     const next = new Set(prev);
-    if (next.has(name)) next.delete(name); else next.add(name);
+    if (next.has(key)) next.delete(key); else next.add(key);
     return next;
   });
 
@@ -58,110 +106,163 @@ export function TmdbRename({ path, onClose }: { path: string; onClose: () => voi
     setRunning(true);
     let done = 0;
     let failed = 0;
-    for (const item of chosen) {
-      setRows(prev => ({ ...prev, [item.old]: { status: "busy" } }));
-      try {
-        const { results } = await tmdbRename.apply(path, password, [{ old: item.old, new: item.new! }]);
-        const error = results[0]?.error;
-        if (error) throw new Error(error);
-        done++;
-        setRows(prev => ({ ...prev, [item.old]: { status: "done" } }));
-      } catch (error) {
-        failed++;
-        setRows(prev => ({ ...prev, [item.old]: { status: "error", message: reason(error) } }));
+    let here = decodeURIComponent(location);
+    const touched = new Set<string>();
+    for (const { target, files, folder } of sections) {
+      const password = passwordFor(target.path);
+      for (const item of files) {
+        const key = rowKey(target.path, item.old);
+        if (!item.new || off.has(key)) continue;
+        setRows(prev => ({ ...prev, [key]: { status: "busy" } }));
+        try {
+          const { results } = await tmdbRename.apply(target.path, password, [{ old: item.old, new: item.new }]);
+          if (results[0]?.error) throw new Error(results[0].error);
+          done++;
+          touched.add(target.path);
+          setRows(prev => ({ ...prev, [key]: { status: "done" } }));
+        } catch (error) {
+          failed++;
+          setRows(prev => ({ ...prev, [key]: { status: "error", message: reason(error) } }));
+        }
       }
-    }
-    let finalPath = path;
-    if (renameFolder && folder?.new) {
-      setRows(prev => ({ ...prev, [folder.old]: { status: "busy" } }));
-      try {
-        const out = await tmdbRename.apply(path, password, [], folder.new);
-        const error = out.results[0]?.error;
-        if (error) throw new Error(error);
-        done++;
-        finalPath = out.path || join(parent(path), folder.new);
-        setRows(prev => ({ ...prev, [folder.old]: { status: "done" } }));
-      } catch (error) {
-        failed++;
-        setRows(prev => ({ ...prev, [folder.old]: { status: "error", message: reason(error) } }));
+      const folderKey = folder ? rowKey(target.path, folder.old) : "";
+      if (folder?.new && !off.has(folderKey)) {
+        setRows(prev => ({ ...prev, [folderKey]: { status: "busy" } }));
+        try {
+          const out = await tmdbRename.apply(target.path, password, [], folder.new);
+          if (out.results[0]?.error) throw new Error(out.results[0].error);
+          done++;
+          const moved = out.path || join(parent(target.path), folder.new);
+          touched.delete(target.path);
+          touched.add(moved);
+          touched.add(parent(target.path));
+          if (here === target.path || here.startsWith(target.path + "/")) {
+            here = moved + here.slice(target.path.length);
+            navigate(encodePath(here), { replace: true });
+          }
+          setRows(prev => ({ ...prev, [folderKey]: { status: "done" } }));
+        } catch (error) {
+          failed++;
+          setRows(prev => ({ ...prev, [folderKey]: { status: "error", message: reason(error) } }));
+        }
       }
     }
     setRunning(false);
     setFinished(true);
-    void actions.reload(finalPath, false);
-    if (finalPath !== path) {
-      void actions.reload(parent(path), false);
-      const here = decodeURIComponent(location);
-      if (here === path || here.startsWith(path + "/")) navigate(encodePath(finalPath + here.slice(path.length)), { replace: true });
-    }
+    for (const path of touched) void actions.reload(path, false);
     void client.invalidateQueries({ queryKey: ["posters"] });
     if (failed === 0) toast.success("已按 TMDB 整理", `改好了 ${done} 个名字`);
     else toast.error(`有 ${failed} 个没改成`, new Error(`${done} renamed, ${failed} failed`));
   };
 
-  const subject = plan.data?.subject;
-  const footer = plan.data && !plan.data.reason && (proposals.length > 0 || folder?.new) ? (
+  const single = !multi ? sections[0] : null;
+  const footer = (multi ? ready > 0 : single?.plan && !single.plan.reason) && (anything || finished) ? (
     <>
-      {!finished && proposals.length > 1 && (
+      {!finished && keys.length > 1 && (
         <button className="btn btn-ghost mr-auto" disabled={running}
-          onClick={() => setOff(off.size ? new Set() : new Set(proposals.map(item => item.old)))}>
+          onClick={() => setOff(off.size ? new Set() : new Set(keys))}>
           {off.size ? "全选" : "全不选"}
         </button>
       )}
       <button className="btn btn-ghost" onClick={onClose}>{finished ? "完成" : "取消"}</button>
       {!finished && (
-        <button className="btn btn-primary" disabled={running || count === 0} onClick={() => void apply()}>
-          {running ? "正在改名…" : `整理 ${count} 项`}
+        <button className="btn btn-primary" disabled={running || count === 0 || ready < targets.length} onClick={() => void apply()}>
+          {running ? "正在改名…" : ready < targets.length ? `查询中 ${ready}/${targets.length}` : `整理 ${count} 项`}
         </button>
       )}
     </>
   ) : undefined;
 
   return (
-    <Sheet open onClose={running ? () => undefined : onClose} title="按 TMDB 整理命名" width={640} footer={footer}>
-      {plan.isPending && <PlanSkeleton />}
-      {plan.isError && <ErrorState compact error={plan.error} onRetry={() => plan.refetch()} />}
-      {plan.data?.reason === "no-match" && (
-        <div className="grid place-items-center py-10 text-center">
-          <FilmSlateIcon size={36} className="text-faint" />
-          <p className="mt-3 text-[15px] font-medium">TMDB 上没认出这部片子</p>
-          <p className="mt-1 max-w-[34ch] text-[13px] text-muted">先用「更换封面」选对它是哪一部，再回来整理，名字就有据可依了。</p>
-          <button className="btn btn-line mt-5" onClick={() => useUi.getState().openDialog({ kind: "poster", name: basename(path) })}>
-            <FilmSlateIcon size={15} />更换封面
-          </button>
-        </div>
+    <Sheet open onClose={running ? () => undefined : onClose} title={title} width={640} footer={footer}>
+      {multi && (
+        <p className="mb-4 flex items-center gap-2 text-[12.5px] text-faint">
+          {ready < targets.length && <span className="loader-bars -my-2 scale-50" aria-hidden><i /><i /><i /><i /></span>}
+          {ready < targets.length ? `正在向 TMDB 查询，${ready}/${targets.length}` : "名字来自 TMDB。逐条看一眼，不要的点掉。"}
+        </p>
       )}
-      {plan.data && !plan.data.reason && subject && (
-        <>
-          <motion.div className="flex items-center gap-4" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={spring.soft}>
-            <div className="relative h-[84px] w-[56px] shrink-0 overflow-hidden rounded-[10px] bg-surface hairline">
-              {subject.poster && <img src={posterSrc(subject.poster, "w185")} alt="" className="size-full object-cover" />}
-            </div>
-            <div className="min-w-0">
-              <p className="truncate text-[16px] font-semibold tracking-tight">{subject.title}</p>
-              <p className="mt-0.5 text-[13px] text-muted">
-                {subject.kind === "tv" ? "剧集" : "电影"}{subject.year ? ` · ${subject.year}` : ""}{subject.season ? ` · 第 ${subject.season} 季` : ""}
-              </p>
-              <p className="mt-1.5 text-[12.5px] text-faint">名字来自 TMDB。逐条看一眼，不要的点掉。</p>
-            </div>
-          </motion.div>
-          {proposals.length === 0 && !folder?.new ? (
-            <div className="mt-6 flex items-center gap-2.5 rounded-[14px] bg-surface px-4 py-3.5 text-[13.5px] hairline">
-              <SealCheckIcon size={18} className="text-accent-text" weight="fill" />这里的名字已经很规整了
-            </div>
-          ) : (
-            <ul className="mt-5 divide-y divide-line">
-              {folder?.new && (
-                <Row item={folder} on={folderOn} state={rows[folder.old]} index={0} locked={running || finished} onToggle={() => setFolderOn(on => !on)} />
-              )}
-              {files.map((item, index) => (
-                <Row key={item.old} item={item} on={!!item.new && !off.has(item.old)} state={rows[item.old]} index={index + 1}
-                  locked={running || finished || !item.new} onToggle={() => toggle(item.old)} />
-              ))}
-            </ul>
-          )}
-        </>
-      )}
+      <div className={multi ? "flex flex-col gap-7" : ""}>
+        {sections.map(({ target, state, plan, files, folder }, sectionIndex) => (
+          <section key={target.path}>
+            {(!state || state.status === "loading") && <PlanSkeleton compact={multi} />}
+            {state?.status === "error" && (
+              <ErrorState compact error={state.error} onRetry={() => void load([target], () => true)} />
+            )}
+            {plan?.reason === "no-match" && (multi ? (
+              <div className="flex items-center gap-3 rounded-[14px] bg-surface px-4 py-3 hairline">
+                <FilmSlateIcon size={20} className="shrink-0 text-faint" />
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-[13.5px] font-medium">{basename(target.path)}</p>
+                  <p className="text-[12.5px] text-faint">TMDB 上没认出来，先「更换封面」选对再整理</p>
+                </div>
+              </div>
+            ) : (
+              <div className="grid place-items-center py-10 text-center">
+                <FilmSlateIcon size={36} className="text-faint" />
+                <p className="mt-3 text-[15px] font-medium">TMDB 上没认出这部片子</p>
+                <p className="mt-1 max-w-[34ch] text-[13px] text-muted">先用「更换封面」选对它是哪一部，再回来整理，名字就有据可依了。</p>
+                <button className="btn btn-line mt-5" onClick={() => useUi.getState().openDialog({ kind: "poster", name: basename(target.path) })}>
+                  <FilmSlateIcon size={15} />更换封面
+                </button>
+              </div>
+            ))}
+            {plan && !plan.reason && !plan.subject && (
+              <>
+                <motion.p className="flex items-center gap-2 text-[13.5px] font-medium" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={spring.soft}>
+                  <FilmStripIcon size={16} className="text-muted" />「{basename(target.path)}」里选中的文件
+                  <span className="text-[12.5px] font-normal text-faint">每个文件按自己的片名或集数</span>
+                </motion.p>
+                <ul className="mt-2 divide-y divide-line">
+                  {files.map((item, index) => {
+                    const key = rowKey(target.path, item.old);
+                    return (
+                      <Row key={item.old} item={item} on={!!item.new && !off.has(key)} state={rows[key]} index={index}
+                        locked={running || finished || !item.new} onToggle={() => toggle(key)} />
+                    );
+                  })}
+                </ul>
+              </>
+            )}
+            {plan && !plan.reason && plan.subject && (
+              <>
+                <motion.div className="flex items-center gap-4" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
+                  transition={{ ...spring.soft, delay: multi ? Math.min(sectionIndex, 6) * 0.04 : 0 }}>
+                  <div className={`relative shrink-0 overflow-hidden rounded-[10px] bg-surface hairline ${multi ? "h-[54px] w-[36px]" : "h-[84px] w-[56px]"}`}>
+                    {plan.subject.poster && <img src={posterSrc(plan.subject.poster, "w185")} alt="" className="size-full object-cover" />}
+                  </div>
+                  <div className="min-w-0">
+                    <p className={`truncate font-semibold tracking-tight ${multi ? "text-[14.5px]" : "text-[16px]"}`}>{plan.subject.title}</p>
+                    <p className="mt-0.5 truncate text-[12.5px] text-muted">
+                      {plan.subject.kind === "tv" ? "剧集" : "电影"}{plan.subject.year ? ` · ${plan.subject.year}` : ""}{plan.subject.season ? ` · 第 ${plan.subject.season} 季` : ""}
+                      {multi && <span className="text-faint"> · {basename(target.path)}</span>}
+                    </p>
+                    {!multi && <p className="mt-1.5 text-[12.5px] text-faint">名字来自 TMDB。逐条看一眼，不要的点掉。</p>}
+                  </div>
+                </motion.div>
+                {!files.some(item => item.new) && !folder ? (
+                  <div className={`${multi ? "mt-3" : "mt-6"} flex items-center gap-2.5 rounded-[14px] bg-surface px-4 py-3 text-[13.5px] hairline`}>
+                    <SealCheckIcon size={18} className="text-accent-text" weight="fill" />这里的名字已经很规整了
+                  </div>
+                ) : (
+                  <ul className={`${multi ? "mt-2" : "mt-5"} divide-y divide-line`}>
+                    {folder && (
+                      <Row item={folder} on={!off.has(rowKey(target.path, folder.old))} state={rows[rowKey(target.path, folder.old)]} index={0}
+                        locked={running || finished} onToggle={() => toggle(rowKey(target.path, folder.old))} />
+                    )}
+                    {files.map((item, index) => {
+                      const key = rowKey(target.path, item.old);
+                      return (
+                        <Row key={item.old} item={item} on={!!item.new && !off.has(key)} state={rows[key]} index={index + 1}
+                          locked={running || finished || !item.new} onToggle={() => toggle(key)} />
+                      );
+                    })}
+                  </ul>
+                )}
+              </>
+            )}
+          </section>
+        ))}
+      </div>
     </Sheet>
   );
 }
@@ -218,15 +319,15 @@ function Row({ item, on, state, index, locked, onToggle }: { item: RenameItem; o
   );
 }
 
-function PlanSkeleton() {
+function PlanSkeleton({ compact = false }: { compact?: boolean }) {
   return (
     <div aria-label="正在向 TMDB 查询">
       <div className="flex items-center gap-4">
-        <div className="skeleton h-[84px] w-[56px] rounded-[10px]" />
+        <div className={`skeleton rounded-[10px] ${compact ? "h-[54px] w-[36px]" : "h-[84px] w-[56px]"}`} />
         <div className="flex-1 space-y-2"><div className="skeleton h-4 w-40 rounded-[6px]" /><div className="skeleton h-3 w-24 rounded-[6px]" /></div>
       </div>
       <div className="mt-6 space-y-4">
-        {Array.from({ length: 5 }, (_, i) => (
+        {Array.from({ length: compact ? 2 : 5 }, (_, i) => (
           <div key={i} className="flex items-start gap-3">
             <div className="skeleton size-[18px] rounded-full" />
             <div className="flex-1 space-y-1.5"><div className="skeleton h-3.5 rounded-[6px]" style={{ width: `${70 - i * 7}%` }} /><div className="skeleton h-3 w-1/2 rounded-[6px]" /></div>

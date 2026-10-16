@@ -22,8 +22,9 @@ import (
 // fs.Rename as the rename button, and the poster store follows the new names.
 
 type renamePlanReq struct {
-	Path     string `json:"path"`
-	Password string `json:"password"`
+	Path     string   `json:"path"`
+	Password string   `json:"password"`
+	Only     []string `json:"only"` // chosen files: each named by its own match, folder name kept
 }
 
 // renameFolder checks that the user may rename inside a folder and returns its
@@ -76,7 +77,12 @@ func TgvioRenamePlan(c *gin.Context) {
 	for _, obj := range objs {
 		entries = append(entries, tgvio.RenameEntry{Name: obj.GetName(), IsDir: obj.IsDir()})
 	}
-	plan, err := posters().PlanRename(c.Request.Context(), reqPath, entries)
+	var plan *tgvio.RenamePlan
+	if len(req.Only) > 0 {
+		plan, err = posters().PlanFiles(c.Request.Context(), reqPath, entries, req.Only)
+	} else {
+		plan, err = posters().PlanRename(c.Request.Context(), reqPath, entries)
+	}
 	if err != nil {
 		common.ErrorResp(c, err, 500)
 		return

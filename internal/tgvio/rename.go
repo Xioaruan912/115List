@@ -457,3 +457,83 @@ func (t *TMDB) Renamed(dir, oldName, newName, newDir string) {
 		t.save()
 	}
 }
+
+// PlanFiles proposes names for chosen files of a folder, each by its own match:
+// a folder of different films ("电影/阿凡达.mkv, 盗梦空间.mkv") names every film
+// after itself. Episode files, which name no film, fall back to the folder's plan.
+// The folder's own name is left alone.
+func (t *TMDB) PlanFiles(ctx context.Context, dir string, entries []RenameEntry, only []string) (*RenamePlan, error) {
+	if !t.Enabled() {
+		return nil, errors.New("TMDB is not configured")
+	}
+	ctx, cancel := context.WithTimeout(ctx, 2*time.Minute)
+	defer cancel()
+	picked := map[string]bool{}
+	for _, name := range only {
+		picked[name] = true
+	}
+	plan := &RenamePlan{Items: []RenameItem{}}
+	var folderPlan *RenamePlan
+	fromFolder := func(v string) (RenameItem, error) {
+		if folderPlan == nil {
+			p, err := t.PlanRename(ctx, dir, entries)
+			if err != nil {
+				return RenameItem{}, err
+			}
+			folderPlan = p
+		}
+		for _, item := range folderPlan.Items {
+			if item.Old == v && item.Kind == "video" {
+				return item, nil
+			}
+		}
+		return RenameItem{Old: v, Kind: "video", Reason: "unknown"}, nil
+	}
+	newBase := map[string]string{}
+	asked := 0
+	for _, e := range entries {
+		if e.IsDir || !picked[e.Name] || !mediaExt.MatchString(e.Name) {
+			continue
+		}
+		item := RenameItem{Old: e.Name, Kind: "video"}
+		if !Skip(e.Name) && asked < 60 {
+			asked++
+			fp, err := t.resolve(ctx, e.Name, dir)
+			if err != nil {
+				return nil, err
+			}
+			if !fp.None && fp.Kind == "movie" {
+				item.New = titleYear(SafeName(fp.Title), fp.Year) + extOf(e.Name)
+			}
+		}
+		if item.New == "" {
+			var err error
+			if item, err = fromFolder(e.Name); err != nil {
+				return nil, err
+			}
+		}
+		if item.New == item.Old {
+			item.New, item.Reason = "", "same"
+		}
+		if item.New != "" {
+			newBase[strings.TrimSuffix(e.Name, stdpath.Ext(e.Name))] = strings.TrimSuffix(item.New, extOf(e.Name))
+		}
+		plan.Items = append(plan.Items, item)
+	}
+	for _, e := range entries {
+		if e.IsDir || !subtitleExt.MatchString(e.Name) {
+			continue
+		}
+		best := ""
+		for old := range newBase {
+			if strings.HasPrefix(e.Name, old+".") && len(old) > len(best) {
+				best = old
+			}
+		}
+		if best != "" {
+			plan.Items = append(plan.Items, RenameItem{Old: e.Name, New: newBase[best] + e.Name[len(best):], Kind: "subtitle"})
+		}
+	}
+	markConflicts(plan, entries)
+	return plan, nil
+}

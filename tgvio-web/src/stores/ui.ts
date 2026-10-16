@@ -12,7 +12,7 @@ export type Dialog =
   | { kind: "share"; dir: string; names: string[] }
   | { kind: "shares" }
   | { kind: "poster"; name: string }
-  | { kind: "tmdb-rename"; path: string }
+  | { kind: "tmdb-rename"; targets: { path: string; only?: string[] }[] }
   | { kind: "account" };
 
 export interface Rect { x: number; y: number; width: number; height: number }
