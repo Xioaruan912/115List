@@ -208,6 +208,10 @@
 .cover-blur img.thumb { filter: blur(18px) saturate(0.7); transform: scale(1.12); transition: filter 420ms var(--ease-expo), transform 520ms var(--ease-expo); }
 @media (hover: hover) { .cover-blur .tile:hover img.thumb { filter: none; transform: scale(1.04); } }
 .cover-blur .tile.reveal img.thumb { filter: none; transform: none; }
+/* TMDB episode stills are public pictures, not the library: blurred only with the poster blur setting. */
+.cover-blur img.thumb[src*="/tgvio/poster/"] { filter: none; transform: none; }
+.cover-blur [data-poster-blur] img.thumb[src*="/tgvio/poster/"] { filter: blur(18px) saturate(0.7); transform: scale(1.12); }
+@media (hover: hover) { .cover-blur [data-poster-blur] .tile:hover img.thumb[src*="/tgvio/poster/"] { filter: none; transform: scale(1.04); } }
 
 ::view-transition-old(root), ::view-transition-new(root) { animation: none; mix-blend-mode: normal; }
 

@@ -6,6 +6,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, typ
 import { useLocation } from "wouter";
 import { dirKey, needsPassword, prefetchDir, rememberPassword, useDir } from "../hooks/useDir";
 import { usePosters } from "../hooks/usePosters";
+import { useThumbs } from "../hooks/useThumbs";
 import { useIsMobile } from "../hooks/useMedia";
 import { useWidth } from "../hooks/useSize";
 import * as actions from "../lib/actions";
@@ -141,6 +142,14 @@ export function DirectoryView({ path }: { path: string }) {
   const items = useMemo(() => sortObjs(query.data?.content ?? [], sortKey, sortDesc), [query.data, sortKey, sortDesc]);
   const writable = can(me, Perm.Write, query.data?.write);
   const { items: posterMap, blur: posterBlur } = usePosters(path, items);
+  const thumbMap = useThumbs(path, items);
+  // Videos the drive lists without a picture get the one made for them; only
+  // those objects change, so the other tiles keep their memo.
+  const withThumbs = useMemo(() => {
+    const out = new Map<string, Obj>();
+    for (const item of items) if (!item.thumb && thumbMap[item.name]) out.set(item.name, { ...item, thumb: thumbMap[item.name] });
+    return out;
+  }, [items, thumbMap]);
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
@@ -454,7 +463,7 @@ export function DirectoryView({ path }: { path: string }) {
                   density={density}
                   dir={path}
                   poster={posterMap[obj.name]}
-                  obj={obj}
+                  obj={withThumbs.get(obj.name) ?? obj}
                   index={virtual.index * Math.min(per, 4) + offset}
                   selected={selected.has(obj.name)}
                   selecting={selecting}
