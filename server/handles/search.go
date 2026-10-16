@@ -44,7 +44,7 @@ func Search(c *gin.Context) {
 		return
 	}
 	nodes, total, err := search.SearchFiltered(c, req.SearchReq, func(node model.SearchNode) bool {
-		if !utils.IsSubPath(user.BasePath, node.Parent) {
+		if !user.Sees(node.Parent) {
 			return false
 		}
 		meta, err := op.GetNearestMeta(node.Parent)
@@ -58,7 +58,13 @@ func Search(c *gin.Context) {
 		return
 	}
 	common.SuccessResp(c, common.PageResp{
-		Content: utils.MustSliceConvert(nodes, nodeToSearchResp),
+		// Parents as the user sees them (their roots), not the drive's real paths.
+		Content: utils.MustSliceConvert(nodes, func(node model.SearchNode) SearchResp {
+			if shown, ok := user.ShowPath(node.Parent); ok {
+				node.Parent = shown
+			}
+			return nodeToSearchResp(node)
+		}),
 		Total:   total,
 	})
 }

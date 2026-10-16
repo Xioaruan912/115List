@@ -38,7 +38,7 @@ export function ContextMenu() {
           { label: "上传文件", icon: <UploadSimpleIcon size={15} />, run: () => pickFiles(files => useUploads.getState().add(dir, files)) },
           "divider" as const,
         ] : []),
-        { label: "刷新", icon: <ArrowClockwiseIcon size={15} />, run: () => void actions.reload(dir) },
+        { label: "刷新", icon: <ArrowClockwiseIcon size={15} />, run: () => void actions.reload(dir, true, true) },
         { label: "全选", icon: <CheckSquareIcon size={15} />, hint: "Ctrl A", run: () => ui().select(dir, items.map(item => item.name)) },
       ];
     } else if (batch) {
@@ -60,6 +60,7 @@ export function ContextMenu() {
         obj.is_dir
           ? { label: "打开", icon: <ArrowSquareOutIcon size={15} />, run: () => navigate(encodePath(path)) }
           : { label: "预览", icon: <ArrowSquareOutIcon size={15} />, run: () => ui().openViewer(dir, obj.name, null) },
+        ...(obj.is_dir && !isGuest(me) ? [{ label: "强制刷新", icon: <ArrowClockwiseIcon size={15} />, hint: "重读网盘", run: () => void actions.reload(path, true, true) }] : []),
         ...(!obj.is_dir ? [
           { label: "下载", icon: <DownloadSimpleIcon size={15} />, run: () => actions.download(dir, obj) },
           { label: "复制链接", icon: <LinkIcon size={15} />, run: () => void actions.copyLinks(dir, [obj]) },

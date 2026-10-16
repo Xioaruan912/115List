@@ -1,7 +1,11 @@
 package handles
 
 import (
+	"strconv"
+
 	"errors"
+	"github.com/OpenListTeam/OpenList/v4/internal/conf"
+	"github.com/OpenListTeam/OpenList/v4/internal/model"
 	"io"
 	"net/http"
 	"strings"
@@ -25,6 +29,7 @@ type posterOut struct {
 	Overview string  `json:"overview,omitempty"`
 	Rating   float64 `json:"rating,omitempty"`
 	Manual   bool    `json:"manual,omitempty"`
+	Season   int     `json:"season,omitempty"`
 }
 
 func posterURL(size, file string) string {
@@ -39,12 +44,13 @@ func toPosterOut(p *tgvio.Poster) *posterOut {
 		return nil
 	}
 	return &posterOut{Kind: p.Kind, ID: p.ID, Title: p.Title, Original: p.Original, Year: p.Year,
-		Poster: posterURL("w342", p.Poster), Backdrop: posterURL("w1280", p.Backdrop), Overview: p.Overview, Rating: p.Rating, Manual: p.Manual}
+		Poster: posterURL("w342", p.Poster), Backdrop: posterURL("w1280", p.Backdrop), Overview: p.Overview, Rating: p.Rating, Manual: p.Manual, Season: p.Season}
 }
 
 func posters() *tgvio.TMDB { return tgvio.Posters(flags.DataDir) }
 
 type postersReq struct {
+	Dir   string   `json:"dir"` // the folder the names are in, as the user sees it
 	Names []string `json:"names"`
 }
 
@@ -57,7 +63,13 @@ func TgvioPosters(c *gin.Context) {
 		common.ErrorStrResp(c, "give up to 2000 names", 400)
 		return
 	}
-	found, pending := posters().Lookup(req.Names)
+	user := c.Request.Context().Value(conf.UserKey).(*model.User)
+	dir, err := user.JoinPath(req.Dir)
+	if err != nil {
+		common.ErrorResp(c, err, 403)
+		return
+	}
+	found, pending := posters().Lookup(dir, req.Names)
 	items := make(map[string]*posterOut, len(found))
 	for name, p := range found {
 		if out := toPosterOut(p); out != nil {
@@ -105,10 +117,11 @@ func TgvioPosterSearch(c *gin.Context) {
 }
 
 type posterSetReq struct {
-	Name string `json:"name"`
-	Kind string `json:"kind"`
-	ID   int    `json:"id"`
-	None bool   `json:"none"`
+	Name   string `json:"name"`
+	Kind   string `json:"kind"`
+	ID     int    `json:"id"`
+	Season int    `json:"season"`
+	None   bool   `json:"none"`
 }
 
 // TgvioPosterSet: POST /api/tgvio/posters/set {name, kind, id} or {name, none: true}
@@ -132,8 +145,29 @@ func TgvioPosterSet(c *gin.Context) {
 		common.ErrorResp(c, err, 502)
 		return
 	}
+	if req.Kind == "tv" && req.Season > 0 {
+		posters().ApplySeason(c.Request.Context(), p, req.Season)
+	}
 	posters().Set(req.Name, p)
 	common.SuccessResp(c, gin.H{"item": toPosterOut(p)})
+}
+
+// TgvioPosterSeasons: GET /api/tgvio/posters/seasons?id= (a TMDB series id)
+func TgvioPosterSeasons(c *gin.Context) {
+	id, err := strconv.Atoi(c.Query("id"))
+	if err != nil || id <= 0 {
+		common.ErrorStrResp(c, "id is required", 400)
+		return
+	}
+	seasons, err := posters().Seasons(c.Request.Context(), id)
+	if err != nil {
+		common.ErrorResp(c, err, 502)
+		return
+	}
+	for i := range seasons {
+		seasons[i].Poster = posterURL("w342", seasons[i].Poster)
+	}
+	common.SuccessResp(c, seasons)
 }
 
 // TgvioPosterImage: GET /tgvio/poster/:size/:file

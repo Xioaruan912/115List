@@ -77,7 +77,7 @@ function DeleteDialog({ dir, names, onClose }: { dir: string; names: string[]; o
   );
 }
 
-function FolderPicker({ start, value, onChange }: { start: string; value: string; onChange: (path: string) => void }) {
+export function FolderPicker({ start, value, onChange }: { start: string; value: string; onChange: (path: string) => void }) {
   const dirs = useQuery({ queryKey: ["dirs", value], queryFn: () => fs.dirs(value, passwordFor(value)), staleTime: 20_000 });
   const parts = segments(value);
   useEffect(() => { onChange(start); }, [start]); // eslint-disable-line react-hooks/exhaustive-deps

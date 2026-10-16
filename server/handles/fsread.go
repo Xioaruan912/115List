@@ -1,6 +1,7 @@
 package handles
 
 import (
+	"context"
 	"fmt"
 	stdpath "path"
 	"strings"
@@ -78,6 +79,11 @@ func FsListSplit(c *gin.Context) {
 }
 
 func FsList(c *gin.Context, req *ListReq, user *model.User) {
+	if virtualRoot(user, req.Path) {
+		roots := rootObjs(user)
+		common.SuccessResp(c, FsListResp{Content: roots, Total: int64(len(roots)), Provider: "virtual"})
+		return
+	}
 	reqPath, err := user.JoinPath(req.Path)
 	if err != nil {
 		common.ErrorResp(c, err, 403)
@@ -94,9 +100,15 @@ func FsList(c *gin.Context, req *ListReq, user *model.User) {
 		return
 	}
 	canWriteContentAtPath := common.CanWrite(user, meta, reqPath) && (user.CanWriteContent() || common.CanWriteContentBypassUserPerms(meta, reqPath))
-	if req.Refresh && !canWriteContentAtPath {
+	// TGVIO: any signed-in reader may force a re-read of a folder they know
+	// changed on the drive; guests may not. Each folder at most every 5 s,
+	// so a stuck key cannot hammer the drive.
+	if req.Refresh && !canWriteContentAtPath && user.IsGuest() {
 		common.ErrorStrResp(c, "Refresh without permission", 403)
 		return
+	}
+	if req.Refresh && !refreshAllowed(reqPath) {
+		req.Refresh = false
 	}
 	objs, err := fs.List(c.Request.Context(), reqPath, &fs.ListArgs{
 		Refresh:            req.Refresh,
@@ -139,6 +151,13 @@ func FsDirs(c *gin.Context) {
 			common.ErrorStrResp(c, "Permission denied", 403)
 			return
 		}
+	} else if virtualRoot(user, req.Path) {
+		out := []DirResp{}
+		for _, root := range rootObjs(user) {
+			out = append(out, DirResp{Name: root.Name, Modified: root.Modified})
+		}
+		common.SuccessResp(c, out)
+		return
 	} else {
 		tmp, err := user.JoinPath(req.Path)
 		if err != nil {
@@ -281,6 +300,10 @@ func FsGetSplit(c *gin.Context) {
 }
 
 func FsGet(c *gin.Context, req *FsGetReq, user *model.User) {
+	if virtualRoot(user, req.Path) {
+		common.SuccessResp(c, FsGetResp{ObjResp: ObjResp{Name: "/", IsDir: true, Type: 1}, Provider: "virtual"})
+		return
+	}
 	reqPath, err := user.JoinPath(req.Path)
 	if err != nil {
 		common.ErrorResp(c, err, 403)
@@ -426,4 +449,22 @@ func FsOther(c *gin.Context) {
 		return
 	}
 	common.SuccessResp(c, res)
+}
+
+// virtualRoot: "/" of a user with several root folders (see model/tgvio_roots.go).
+func virtualRoot(user *model.User, reqPath string) bool {
+	return user.MultiRoot() && utils.FixAndCleanPath(reqPath) == "/"
+}
+
+// rootObjs lists a multi-root user's roots as the folders of their "/".
+func rootObjs(user *model.User) []ObjResp {
+	out := []ObjResp{}
+	for _, root := range user.Roots() {
+		obj := ObjResp{Name: model.RootName(root), IsDir: true, Type: 1}
+		if st, err := fs.Get(context.Background(), root, &fs.GetArgs{NoLog: true}); err == nil {
+			obj.Modified = st.ModTime()
+		}
+		out = append(out, obj)
+	}
+	return out
 }

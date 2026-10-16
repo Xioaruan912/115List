@@ -1,6 +1,6 @@
 import { create } from "zustand";
-import { join } from "../lib/path";
-import { upload, UploadError, type UploadProgress } from "../lib/upload";
+import { basename, join, parent } from "../lib/path";
+import { stagedAbort, stagedList, upload, UploadError, type StagedSnapshot, type UploadProgress } from "../lib/upload";
 
 export type JobState = "queued" | "running" | "done" | "error" | "canceled";
 
@@ -27,6 +27,12 @@ interface UploadState {
   cancel: (id: number) => void;
   retry: (id: number, overwrite?: boolean) => void;
   clearFinished: () => void;
+  /** Staged uploads left unfinished, possibly by an earlier visit or another device. */
+  resumable: StagedSnapshot[];
+  loadResumable: () => Promise<void>;
+  /** Continue one with the file picked again; false when it is not the same file. */
+  resume: (snapshot: StagedSnapshot, file: File) => boolean;
+  discard: (id: string) => Promise<void>;
 }
 
 const CONCURRENCY = 2;
@@ -104,6 +110,7 @@ export const useUploads = create<UploadState>((set, getState) => {
       }
     } finally {
       pump();
+      void getState().loadResumable();
     }
   };
 
@@ -131,6 +138,23 @@ export const useUploads = create<UploadState>((set, getState) => {
       if (overwrite !== undefined) entry.overwrite = overwrite;
       patch(id, { state: "queued", error: "", exists: false });
       pump();
+    },
+    resumable: [],
+    async loadResumable() {
+      try { set({ resumable: await stagedList() }); } catch { /* not signed in, or an older server */ }
+    },
+    resume(snapshot, file) {
+      if (file.size !== snapshot.size || (snapshot.modified && file.lastModified !== snapshot.modified)) return false;
+      const id = nextId++;
+      entries.set(id, { file, overwrite: true });
+      const job: UploadJob = { id, name: basename(snapshot.path), dir: parent(snapshot.path), size: file.size, sent: snapshot.received_bytes, phase: "sending", storage: 0, rate: 0, state: "queued", error: "", exists: false };
+      set(state => ({ jobs: [...state.jobs, job], resumable: state.resumable.filter(item => item.upload_id !== snapshot.upload_id) }));
+      pump();
+      return true;
+    },
+    async discard(id) {
+      set(state => ({ resumable: state.resumable.filter(item => item.upload_id !== id) }));
+      await stagedAbort(id).catch(() => undefined);
     },
     clearFinished() {
       set(state => ({ jobs: state.jobs.filter(job => {

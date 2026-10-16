@@ -105,7 +105,7 @@ export function Dock({ path }: { path: string }) {
       <DockButton label="刷新" mouseX={mouseX} magnify={magnify} onClick={event => {
         const icon = event.currentTarget.querySelector("svg");
         icon?.animate([{ transform: "rotate(0)" }, { transform: "rotate(360deg)" }], { duration: 700, easing: "cubic-bezier(0.16,1,0.3,1)" });
-        void actions.reload(path);
+        void actions.reload(path, true, true);
       }}>
         <ArrowClockwiseIcon size={20} />
       </DockButton>

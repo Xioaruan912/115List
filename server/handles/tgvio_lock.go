@@ -1,6 +1,9 @@
 package handles
 
 import (
+	"sync"
+	"time"
+
 	"github.com/OpenListTeam/OpenList/v4/internal/conf"
 	"github.com/OpenListTeam/OpenList/v4/internal/model"
 	"github.com/OpenListTeam/OpenList/v4/internal/op"
@@ -15,6 +18,18 @@ import (
 // the web API alone asks the admin for folder passwords like anyone else.
 
 const noPasswordBit = 1
+
+var lastRefresh sync.Map // path -> time.Time
+
+// refreshAllowed lets one forced re-read of a folder through every 5 seconds.
+func refreshAllowed(path string) bool {
+	now := time.Now()
+	if last, ok := lastRefresh.Load(path); ok && now.Sub(last.(time.Time)) < 5*time.Second {
+		return false
+	}
+	lastRefresh.Store(path, now)
+	return true
+}
 
 // webCanAccess is common.CanAccess for the web front end's endpoints.
 func webCanAccess(user *model.User, meta *model.Meta, reqPath string, password string) bool {

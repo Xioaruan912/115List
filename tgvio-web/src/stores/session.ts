@@ -2,6 +2,7 @@ import { create } from "zustand";
 import * as auth from "../api/auth";
 import { applyTouchIcon } from "../lib/brand";
 import { onUnauthorized, setToken } from "../lib/api";
+import { queryClient } from "../lib/query";
 import type { Me, Settings } from "../lib/types";
 import { reason } from "../lib/errors";
 
@@ -39,12 +40,15 @@ export const useSession = create<SessionState>((set, getState) => ({
   async signIn(username, password, otp) {
     const token = await auth.login(username, password, otp);
     setToken(token);
+    // A guest's "/" is the guest's base folder: nothing seen before may be reused.
+    queryClient.clear();
     const me = await auth.me();
     set({ me, status: "ready", error: "" });
   },
   async signOut() {
     await auth.logout();
     setToken("");
+    queryClient.clear();
     set({ me: null, status: "login" });
   },
 }));
