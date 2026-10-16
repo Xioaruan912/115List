@@ -38,6 +38,7 @@ type RenameItem struct {
 // RenamePlan is what the person reviews.
 type RenamePlan struct {
 	Subject *Poster      `json:"subject,omitempty"`
+	Season  int          `json:"season,omitempty"` // the season the episodes were named under
 	Items   []RenameItem `json:"items"`
 	Reason  string       `json:"reason,omitempty"` // the whole folder could not be planned
 }
@@ -228,7 +229,9 @@ func (t *TMDB) subjectOf(ctx context.Context, dir string, entries []RenameEntry)
 
 // PlanRename proposes TMDB names for a folder's videos, their subtitles and the
 // folder itself. dir is the folder's real path; entries are its contents.
-func (t *TMDB) PlanRename(ctx context.Context, dir string, entries []RenameEntry) (*RenamePlan, error) {
+// season > 0 names the season by hand (the plan's season picker); 0 reads it
+// from the folder's poster or name.
+func (t *TMDB) PlanRename(ctx context.Context, dir string, entries []RenameEntry, season int) (*RenamePlan, error) {
 	if !t.Enabled() {
 		return nil, errors.New("TMDB is not configured")
 	}
@@ -274,15 +277,20 @@ func (t *TMDB) PlanRename(ctx context.Context, dir string, entries []RenameEntry
 	folderSeason, seasonYear := 0, 0
 	if subject.Kind == "tv" {
 		folderSeason = subject.Season
+		if season > 0 {
+			folderSeason = season
+		}
 		if folderSeason == 0 {
 			folderSeason = SeasonOf(folder)
 		}
+		// A folder that is one season decides the season, even over "S01E05" in
+		// a file name: names given under a wrong season must be fixable.
 		seasonOf := func(s int) int {
 			switch {
-			case s > 0:
-				return s
 			case folderSeason > 0:
 				return folderSeason
+			case s > 0:
+				return s
 			}
 			return 1
 		}
@@ -386,6 +394,7 @@ func (t *TMDB) PlanRename(ctx context.Context, dir string, entries []RenameEntry
 		add(RenameItem{Old: folder, New: folderName, Kind: "folder"})
 	}
 
+	plan.Season = folderSeason
 	markConflicts(plan, entries)
 	return plan, nil
 }
@@ -462,7 +471,7 @@ func (t *TMDB) Renamed(dir, oldName, newName, newDir string) {
 // a folder of different films ("电影/阿凡达.mkv, 盗梦空间.mkv") names every film
 // after itself. Episode files, which name no film, fall back to the folder's plan.
 // The folder's own name is left alone.
-func (t *TMDB) PlanFiles(ctx context.Context, dir string, entries []RenameEntry, only []string) (*RenamePlan, error) {
+func (t *TMDB) PlanFiles(ctx context.Context, dir string, entries []RenameEntry, only []string, season int) (*RenamePlan, error) {
 	if !t.Enabled() {
 		return nil, errors.New("TMDB is not configured")
 	}
@@ -476,7 +485,7 @@ func (t *TMDB) PlanFiles(ctx context.Context, dir string, entries []RenameEntry,
 	var folderPlan *RenamePlan
 	fromFolder := func(v string) (RenameItem, error) {
 		if folderPlan == nil {
-			p, err := t.PlanRename(ctx, dir, entries)
+			p, err := t.PlanRename(ctx, dir, entries, season)
 			if err != nil {
 				return RenameItem{}, err
 			}
@@ -533,6 +542,9 @@ func (t *TMDB) PlanFiles(ctx context.Context, dir string, entries []RenameEntry,
 		if best != "" {
 			plan.Items = append(plan.Items, RenameItem{Old: e.Name, New: newBase[best] + e.Name[len(best):], Kind: "subtitle"})
 		}
+	}
+	if folderPlan != nil {
+		plan.Subject, plan.Season = folderPlan.Subject, folderPlan.Season
 	}
 	markConflicts(plan, entries)
 	return plan, nil

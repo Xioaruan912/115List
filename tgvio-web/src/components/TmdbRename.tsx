@@ -1,9 +1,9 @@
 import { CheckIcon, FilmSlateIcon, SealCheckIcon, SubtitlesIcon, FolderSimpleIcon, FilmStripIcon, WarningIcon } from "@phosphor-icons/react";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { AnimatePresence, motion } from "motion/react";
 import { useCallback, useEffect, useState } from "react";
 import { useLocation } from "wouter";
-import { posterSrc } from "../api/posters";
+import { posters, posterSrc } from "../api/posters";
 import { tmdbRename, type RenameItem, type RenamePlan } from "../api/rename";
 import { passwordFor } from "../hooks/useDir";
 import * as actions from "../lib/actions";
@@ -63,12 +63,12 @@ export function TmdbRename({ targets, onClose }: { targets: RenameTarget[]; onCl
     : `按 TMDB 整理${[folderCount ? ` ${folderCount} 个文件夹` : "", fileCount ? ` ${fileCount} 个文件` : ""].filter(Boolean).join(" 和")}`;
 
   // Plans load one folder after another: TMDB is asked a few times per folder.
-  const load = useCallback(async (list: RenameTarget[], alive: () => boolean): Promise<void> => {
+  const load = useCallback(async (list: RenameTarget[], alive: () => boolean, season?: number): Promise<void> => {
     for (const target of list) {
       if (!alive()) return;
       setLoaded(prev => ({ ...prev, [target.path]: { status: "loading" } }));
       try {
-        const plan = await tmdbRename.plan(target.path, passwordFor(target.path), target.only);
+        const plan = await tmdbRename.plan(target.path, passwordFor(target.path), target.only, season);
         if (alive()) setLoaded(prev => ({ ...prev, [target.path]: { status: "ok", plan } }));
       } catch (error) {
         if (alive()) setLoaded(prev => ({ ...prev, [target.path]: { status: "error", error } }));
@@ -206,7 +206,14 @@ export function TmdbRename({ targets, onClose }: { targets: RenameTarget[]; onCl
                 </button>
               </div>
             ))}
-            {plan && !plan.reason && !plan.subject && (
+            {plan && !plan.reason && plan.subject?.kind === "tv" && (
+              <SeasonPicker id={plan.subject.id} current={plan.season ?? 0} disabled={running || finished}
+                onPick={season => {
+                  setOff(prev => new Set([...prev].filter(key => !key.startsWith(target.path + "\n"))));
+                  void load([target], () => true, season);
+                }} />
+            )}
+            {plan && !plan.reason && (!plan.subject || target.only) && (
               <>
                 <motion.p className="flex items-center gap-2 text-[13.5px] font-medium" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={spring.soft}>
                   <FilmStripIcon size={16} className="text-muted" />「{basename(target.path)}」里选中的文件
@@ -223,7 +230,7 @@ export function TmdbRename({ targets, onClose }: { targets: RenameTarget[]; onCl
                 </ul>
               </>
             )}
-            {plan && !plan.reason && plan.subject && (
+            {plan && !plan.reason && plan.subject && !target.only && (
               <>
                 <motion.div className="flex items-center gap-4" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
                   transition={{ ...spring.soft, delay: multi ? Math.min(sectionIndex, 6) * 0.04 : 0 }}>
@@ -264,6 +271,32 @@ export function TmdbRename({ targets, onClose }: { targets: RenameTarget[]; onCl
         ))}
       </div>
     </Sheet>
+  );
+}
+
+/**
+ * Which season the episodes belong to. Read from the folder (its poster or its
+ * name) by default; a wrong guess, or names given under a wrong season before,
+ * are put right by choosing another one here, which plans the folder again.
+ */
+function SeasonPicker({ id, current, disabled, onPick }: { id: number; current: number; disabled: boolean; onPick: (season: number) => void }) {
+  const seasons = useQuery({ queryKey: ["poster-seasons", id], queryFn: () => posters.seasons(id), staleTime: 10 * 60_000, retry: false });
+  const list = (seasons.data ?? []).filter(item => item.season > 0);
+  if (list.length < 2) return null;
+  return (
+    <div className="order-first mb-3 flex flex-wrap items-center gap-1.5 text-[12.5px]">
+      <span className="mr-1 text-faint">按哪一季命名</span>
+      {list.map(item => {
+        const on = item.season === current;
+        return (
+          <motion.button key={item.season} type="button" disabled={disabled || on} onClick={() => onPick(item.season)}
+            whileTap={{ scale: 0.94 }} transition={spring.snappy}
+            className={`tabular rounded-full px-2.5 py-1 transition-colors ${on ? "bg-accent font-medium text-accent-ink" : "text-muted hairline hover:text-ink"}`}>
+            第 {item.season} 季{item.episodes ? <span className={on ? "opacity-70" : "text-faint"}> · {item.episodes}</span> : null}
+          </motion.button>
+        );
+      })}
+    </div>
   );
 }
 
