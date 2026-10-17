@@ -1,4 +1,4 @@
-import { FolderSimpleIcon, InfoIcon, PlayIcon, ShuffleIcon, StarIcon } from "@phosphor-icons/react";
+import { CheckIcon, FolderSimpleIcon, InfoIcon, PlayIcon, ShuffleIcon, StarIcon } from "@phosphor-icons/react";
 import { posterSrc, type Poster as Art } from "../api/posters";
 import { AnimatePresence, motion, useMotionTemplate, useMotionValue, useReducedMotion, useSpring, useTransform } from "motion/react";
 import { memo, useEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type MouseEvent } from "react";
@@ -127,7 +127,12 @@ const Poster = memo(function Poster({ dir, obj, art, index, handlers, onFocus }:
         <span className="absolute left-2 top-2 grid size-7 place-items-center rounded-full bg-black/45 text-white opacity-0 backdrop-blur-md transition duration-300 group-hover/poster:opacity-100 [@media(hover:none)]:opacity-100">
           {obj.is_dir ? <FolderSimpleIcon size={13} weight="fill" /> : kind === "video" ? <PlayIcon size={12} weight="fill" /> : <KindIcon kind={kind} size={13} weight="bold" />}
         </span>
-        {seen > 0 && (
+        {seen >= 1 && (
+          <span className="absolute right-2 top-2 inline-flex items-center gap-1 rounded-full bg-black/55 py-0.5 pl-1.5 pr-2 text-[11px] font-medium text-white backdrop-blur-md">
+            <CheckIcon size={11} weight="bold" className="text-accent" />已看完
+          </span>
+        )}
+        {seen > 0 && seen < 1 && (
           <span className="absolute inset-x-2 bottom-2 h-[3px] overflow-hidden rounded-full bg-black/40">
             <motion.span className="block h-full origin-left rounded-full bg-accent" initial={{ scaleX: 0 }} animate={{ scaleX: seen }} transition={{ ...spring.soft, delay: 0.3 }} />
           </span>
