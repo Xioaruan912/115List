@@ -12,6 +12,9 @@ import (
 // what a fresh install (or one never customised) has in the favicon and logo settings.
 const MarkPath = "/tgvio/mark.svg"
 
+// IconPath prefixes the PNG renderings of the mark (MarkPNG): 192.png, 512.png, maskable.png, apple-touch-icon.png.
+const IconPath = "/tgvio/icon/"
+
 // IsStockLogo reports whether a favicon/logo setting is still OpenList's default.
 func IsStockLogo(url string) bool {
 	url = strings.TrimSpace(url)

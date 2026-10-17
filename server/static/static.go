@@ -20,17 +20,21 @@ import (
 )
 
 type ManifestIcon struct {
-	Src   string `json:"src"`
-	Sizes string `json:"sizes"`
-	Type  string `json:"type"`
+	Src     string `json:"src"`
+	Sizes   string `json:"sizes"`
+	Type    string `json:"type"`
+	Purpose string `json:"purpose,omitempty"`
 }
 
 type Manifest struct {
-	Display  string         `json:"display"`
-	Scope    string         `json:"scope"`
-	StartURL string         `json:"start_url"`
-	Name     string         `json:"name"`
-	Icons    []ManifestIcon `json:"icons"`
+	Display         string         `json:"display"`
+	Scope           string         `json:"scope"`
+	StartURL        string         `json:"start_url"`
+	Name            string         `json:"name"`
+	ShortName       string         `json:"short_name,omitempty"`
+	ThemeColor      string         `json:"theme_color,omitempty"`
+	BackgroundColor string         `json:"background_color,omitempty"`
+	Icons           []ManifestIcon `json:"icons"`
 }
 
 var static fs.FS
@@ -102,6 +106,8 @@ func initIndex(siteConfig SiteConfig) {
 		"cdn: undefined":        fmt.Sprintf("cdn: '%s'", siteConfig.Cdn),
 		"base_path: undefined":  fmt.Sprintf("base_path: '%s'", siteConfig.BasePath),
 		`href="/manifest.json"`: fmt.Sprintf(`href="%s"`, manifestPath),
+		// tgvio-web's home-screen icon, under the base path like the manifest.
+		`href="/tgvio/icon/apple-touch-icon.png"`: fmt.Sprintf(`href="%s"`, strings.TrimSuffix(manifestPath, "/manifest.json")+tgvio.IconPath+"apple-touch-icon.png"),
 	}
 	conf.RawIndexHtml = replaceStrings(conf.RawIndexHtml, replaceMap)
 	UpdateIndex()
@@ -143,9 +149,16 @@ func ManifestJSON(c *gin.Context) {
 	// Get logo from settings, use the first line (light theme logo)
 	logoSetting := setting.GetStr(conf.Logo)
 	logoUrl := strings.Split(logoSetting, "\n")[0]
-	icon := ManifestIcon{Src: logoUrl, Sizes: "512x512", Type: "image/png"}
+	icons := []ManifestIcon{{Src: logoUrl, Sizes: "512x512", Type: "image/png"}}
 	if tgvio.IsStockLogo(logoUrl) {
-		icon = ManifestIcon{Src: markURL(), Sizes: "any", Type: "image/svg+xml"}
+		// The site mark, as PNG too: home screens (Android installs, iOS) want raster icons.
+		icon := iconURL()
+		icons = []ManifestIcon{
+			{Src: markURL(), Sizes: "any", Type: "image/svg+xml"},
+			{Src: icon + "192.png", Sizes: "192x192", Type: "image/png"},
+			{Src: icon + "512.png", Sizes: "512x512", Type: "image/png"},
+			{Src: icon + "maskable.png", Sizes: "512x512", Type: "image/png", Purpose: "maskable"},
+		}
 	}
 
 	// Use base path from site config for consistency
@@ -162,7 +175,9 @@ func ManifestJSON(c *gin.Context) {
 		Scope:    scope,
 		StartURL: startURL,
 		Name:     siteTitle,
-		Icons:    []ManifestIcon{icon},
+		Icons:    icons,
+		// The app opens on the dark stage it starts on.
+		ShortName: siteTitle, ThemeColor: "#0c0c0d", BackgroundColor: "#0c0c0d",
 	}
 
 	c.Header("Content-Type", "application/json")
@@ -210,6 +225,7 @@ func Static(r *gin.RouterGroup, noRoute func(handlers ...gin.HandlerFunc)) {
 	}
 
 	r.GET(tgvio.MarkPath, Mark)
+	r.GET(tgvio.IconPath+":file", MarkIcon)
 
 	utils.Log.Debug("Setting up catch-all route...")
 	noRoute(func(c *gin.Context) {

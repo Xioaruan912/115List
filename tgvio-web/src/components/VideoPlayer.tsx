@@ -1,6 +1,6 @@
 import {
   ArrowClockwiseIcon, CornersInIcon, CornersOutIcon, PauseIcon, PictureInPictureIcon, PlayIcon, SpeakerHighIcon,
-  SkipForwardIcon, SpeakerLowIcon, SpeakerSlashIcon,
+  ScreencastIcon, SkipForwardIcon, SpeakerLowIcon, SpeakerSlashIcon,
 } from "@phosphor-icons/react";
 import { AnimatePresence, motion } from "motion/react";
 import { useCallback, useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
@@ -11,6 +11,7 @@ import { spring } from "../lib/motion";
 import { formatClock, resumeAt, saveProgress } from "../lib/progress";
 import { setSubtitlesOff, subtitlesOff, takePreferred, type SubtitleTrack } from "../lib/subtitles";
 import { NextUp, type NextEpisode } from "./NextUp";
+import { useCast, useMediaSession, type SessionMeta } from "../hooks/useMediaSession";
 import { SubtitleLayer, SubtitleMenu } from "./Subtitles";
 import { useUi } from "../stores/ui";
 
@@ -146,8 +147,10 @@ function Scrubber({ video, time, duration, buffered, onSeek, onScrub }: {
 // Moving on to the next episode replaces the player; a fullscreen one asks the next to go fullscreen too.
 let carryFullscreen = false;
 
-export function VideoPlayer({ path, src, fallback, thumb, chrome, cloud, subtitles, next, onSearchSubtitles, onAspect, onDownload, onCopy }: {
+export function VideoPlayer({ path, src, fallback, thumb, chrome, cloud, subtitles, next, onSearchSubtitles, meta, onAspect, onDownload, onCopy }: {
   path: string;
+  /** What the lock screen and notifications show. */
+  meta?: SessionMeta;
   /** Subtitle files beside the video and how to read one. */
   subtitles?: { tracks: SubtitleTrack[]; urlOf: (name: string) => string };
   /** The next episode of the folder, offered when this one ends. */
@@ -225,6 +228,9 @@ export function VideoPlayer({ path, src, fallback, thumb, chrome, cloud, subtitl
     carryFullscreen = !!document.fullscreenElement;
     next.play();
   };
+  const [element, setElement] = useState<HTMLVideoElement | null>(null);
+  useMediaSession(element, meta ?? { title: path.split("/").pop() ?? "", artwork: thumb }, playing, next ? playNext : undefined);
+  const cast = useCast(element);
   const latest = useRef({ playNext, tracks });
   latest.current = { playNext, tracks };
   useEffect(() => {
@@ -440,7 +446,8 @@ export function VideoPlayer({ path, src, fallback, thumb, chrome, cloud, subtitl
   return (
     <div ref={root} className={`video-player absolute inset-0 overflow-hidden bg-stage-deep ${visible ? "" : "cursor-none"}`}>
       <video
-        ref={ref}
+        ref={node => { ref.current = node; setElement(node); }}
+        {...{ "x-webkit-airplay": "allow" }}
         playsInline
         preload="metadata"
         className="absolute inset-0 size-full object-contain"
@@ -699,6 +706,12 @@ export function VideoPlayer({ path, src, fallback, thumb, chrome, cloud, subtitl
                 onSearchSubtitles();
               } : undefined} />
             {next && <IconButton label="下一集" onClick={playNext}><SkipForwardIcon size={19} weight="fill" /></IconButton>}
+            {cast.available && (
+              <IconButton label="投屏" onClick={() => void cast.cast().catch((error: unknown) => {
+                if (error instanceof DOMException && error.name === "NotSupportedError") setNotice(source?.kind === "cloud" ? "云端转码不能投屏，切到原画再试" : "这个视频不能投屏");
+                else if (!(error instanceof DOMException && error.name === "NotAllowedError")) setNotice("没有投屏成功");
+              })}><ScreencastIcon size={19} /></IconButton>
+            )}
             {pip && <IconButton label="画中画" onClick={() => { const v = video(); if (v) void (document.pictureInPictureElement ? document.exitPictureInPicture() : v.requestPictureInPicture()).catch(() => undefined); }}><PictureInPictureIcon size={19} /></IconButton>}
             <IconButton label={fullscreen ? "退出全屏" : "全屏"} onClick={toggleFullscreen}>{fullscreen ? <CornersInIcon size={19} /> : <CornersOutIcon size={19} />}</IconButton>
           </div>
