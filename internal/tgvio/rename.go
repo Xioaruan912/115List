@@ -156,9 +156,13 @@ func extOf(name string) string {
 // ---------------------------------------------------------------- TMDB side
 
 type tmdbEpisode struct {
-	EpisodeNumber int    `json:"episode_number"`
-	Name          string `json:"name"`
-	StillPath     string `json:"still_path"`
+	EpisodeNumber int     `json:"episode_number"`
+	Name          string  `json:"name"`
+	StillPath     string  `json:"still_path"`
+	Overview      string  `json:"overview"`
+	AirDate       string  `json:"air_date"`
+	Runtime       int     `json:"runtime"`
+	VoteAverage   float64 `json:"vote_average"`
 }
 
 var genericEpisode = regexp.MustCompile(`(?i)^(第\s*\d+\s*[集话話]|episode\s*\d+|エピソード\s*\d+|\d+)$`)
@@ -167,6 +171,8 @@ type seasonEpisodes struct {
 	at     time.Time
 	titles map[int]string
 	stills map[int]string
+	list   []tmdbEpisode // the whole season, for the series page
+	ok     bool          // TMDB answered
 }
 
 // seasonCache keeps one season's episode names and stills for half a day:
@@ -185,6 +191,7 @@ func (t *TMDB) episodes(ctx context.Context, id, season int) *seasonEpisodes {
 	if err := t.get(ctx, "tv/"+strconv.Itoa(id)+"/season/"+strconv.Itoa(season), url.Values{}, &s); err != nil {
 		return out // not cached: asked again next time
 	}
+	out.list, out.ok = s.Episodes, true
 	for _, e := range s.Episodes {
 		if name := strings.TrimSpace(e.Name); name != "" && !genericEpisode.MatchString(name) {
 			out.titles[e.EpisodeNumber] = name

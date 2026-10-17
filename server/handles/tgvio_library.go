@@ -28,6 +28,9 @@ type libraryItem struct {
 	File    bool   `json:"file,omitempty"`    // a video file, not a folder
 	Seasons int    `json:"seasons,omitempty"` // season folders found for a series
 	At      int64  `json:"at"`
+	// Places: every folder or file the title was found as (season folders
+	// elsewhere, a copy of the film), so a video can be traced to its title.
+	Places []string `json:"places,omitempty"`
 }
 
 const libraryLimit = 5000
@@ -44,6 +47,7 @@ func TgvioLibrary(c *gin.Context) {
 		file    bool
 		seasons map[int]bool
 		first   int64
+		places  []string
 	}
 	picks := map[string]*pick{}
 	type placed struct{ path, key string }
@@ -97,6 +101,9 @@ func TgvioLibrary(c *gin.Context) {
 		if entry.Season > 0 {
 			cur.seasons[entry.Season] = true
 		}
+		if len(cur.places) < 40 {
+			cur.places = append(cur.places, shown)
+		}
 		if entry.At < cur.first {
 			cur.first = entry.At
 		}
@@ -126,7 +133,7 @@ func TgvioLibrary(c *gin.Context) {
 			}
 			entry.Season = 0
 		}
-		items = append(items, libraryItem{posterOut: toPosterOut(&entry), Path: p.path, File: p.file, Seasons: len(p.seasons), At: p.first})
+		items = append(items, libraryItem{posterOut: toPosterOut(&entry), Path: p.path, File: p.file, Seasons: len(p.seasons), At: p.first, Places: p.places})
 	}
 	sort.Slice(items, func(i, j int) bool { return items[i].At > items[j].At })
 	if len(items) > libraryLimit {

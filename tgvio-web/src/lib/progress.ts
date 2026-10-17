@@ -163,3 +163,12 @@ export function syncProgress(account: string | null): void {
   });
   window.addEventListener("pagehide", flushOnExit);
 }
+
+/** Videos started and not finished anywhere, most recent first. */
+export function recentProgress(limit = 16): { path: string; progress: Progress }[] {
+  return Object.entries(store)
+    .filter(([, progress]) => !progress.done)
+    .sort((a, b) => b[1].at - a[1].at)
+    .slice(0, limit)
+    .map(([path, progress]) => ({ path, progress }));
+}

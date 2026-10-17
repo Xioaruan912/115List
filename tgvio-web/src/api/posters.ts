@@ -48,6 +48,8 @@ export interface LibraryItem extends Poster {
   seasons?: number;
   /** When it was first matched (ms). */
   at: number;
+  /** Every folder or file it was found as. */
+  places?: string[];
 }
 
 export const library = () => get<{ items: LibraryItem[]; blur: boolean }>("/tgvio/library");
