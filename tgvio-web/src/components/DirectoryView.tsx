@@ -8,6 +8,7 @@ import { dirKey, needsPassword, prefetchDir, rememberPassword, useDir } from "..
 import { usePosters } from "../hooks/usePosters";
 import { categoryCounts, categoryOf, type Category } from "../api/posters";
 import { CategoryFilter } from "./CategoryFilter";
+import { SeriesPanel } from "./SeriesPanel";
 import { useThumbs } from "../hooks/useThumbs";
 import { useIsMobile } from "../hooks/useMedia";
 import { useWidth } from "../hooks/useSize";
@@ -538,6 +539,7 @@ export function DirectoryView({ path }: { path: string }) {
             </div>
           </div>
         </motion.header>
+        {view !== "cinema" && query.data && <SeriesPanel path={path} items={listed} />}
         <div ref={listRef}>{body}</div>
       </div>
       {query.data && <Readme dir={path} readme={query.data.readme} items={items} />}

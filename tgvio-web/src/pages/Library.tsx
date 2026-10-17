@@ -9,7 +9,7 @@ import { ErrorState } from "../components/ErrorState";
 import { Mark } from "../components/Mark";
 import { spring } from "../lib/motion";
 import { basename, encodePath, parent } from "../lib/path";
-import { subscribeProgress, watched } from "../lib/progress";
+import { formatClock, recentProgress, subscribeProgress, watched } from "../lib/progress";
 import { usePrefs } from "../stores/prefs";
 import { useSession } from "../stores/session";
 import { useUi } from "../stores/ui";
@@ -80,6 +80,53 @@ const Card = memo(function Card({ item, index, onOpen }: { item: LibraryItem; in
   );
 });
 
+const EPISODE = /S(\d{1,2})\s*E(\d{1,4})/i;
+
+/**
+ * 继续观看 across every folder: the videos started and not finished (on any
+ * device, the progress is synced), each under its film's or series' art.
+ */
+function ContinueRow({ items, onPlay }: { items: LibraryItem[]; onPlay: (path: string) => void }) {
+  useProgressTick();
+  const rows = recentProgress(16).map(({ path, progress }) => {
+    // The film itself, or the series whose folder holds the episode.
+    let owner: LibraryItem | undefined;
+    let depth = -1;
+    for (const item of items) {
+      for (const place of item.places ?? [item.path]) {
+        if ((place === path || path.startsWith(place + "/")) && place.length > depth) { owner = item; depth = place.length; }
+      }
+    }
+    const match = EPISODE.exec(basename(path));
+    return { path, progress, owner, episode: match ? `S${match[1].padStart(2, "0")}E${match[2].padStart(2, "0")}` : "" };
+  });
+  if (!rows.length) return null;
+  return (
+    <section className="mt-8">
+      <h2 className="mb-3 px-2 text-[17px] font-semibold tracking-tight sm:px-0">继续观看</h2>
+      <div className="-mx-3 flex snap-x gap-3 overflow-x-auto px-3 pb-2 [scrollbar-width:none] sm:-mx-8 sm:px-8">
+        {rows.map(({ path, progress, owner, episode }, index) => {
+          const art = owner?.backdrop || owner?.poster;
+          return (
+            <motion.button key={path} className="tile group/cont w-[min(72vw,300px)] shrink-0 snap-start text-left" onClick={() => onPlay(path)}
+              initial={{ opacity: 0, x: 30 }} animate={{ opacity: 1, x: 0 }} transition={{ ...spring.soft, delay: index * 0.04 }}>
+              <div className="relative aspect-video overflow-hidden rounded-[12px] bg-surface" style={{ boxShadow: "inset 0 0 0 1px var(--line)" }}>
+                {art ? <img src={posterSrc(art, owner?.backdrop ? undefined : "w342")} alt="" loading="lazy" className="thumb size-full object-cover transition-transform duration-700 ease-[var(--ease-expo)] group-hover/cont:scale-105" />
+                  : <span className="grid size-full place-items-center text-faint"><FilmSlateIcon size={28} /></span>}
+                <span className="absolute inset-x-0 bottom-0 h-1 bg-black/45">
+                  <span className="block h-full origin-left bg-accent" style={{ transform: `scaleX(${Math.min(1, progress.time / progress.duration)})` }} />
+                </span>
+              </div>
+              <p className="mt-2 truncate text-[13px] font-medium">{owner?.title ?? basename(path)}{episode && <span className="ml-1.5 font-mono text-[12px] text-muted">{episode}</span>}</p>
+              <p className="text-[12px] text-muted tabular">还剩 {formatClock(progress.duration - progress.time)}</p>
+            </motion.button>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
 export default function Library() {
   const [, navigate] = useLocation();
   const blur = usePrefs(state => state.blur);
@@ -144,6 +191,11 @@ export default function Library() {
             </div>
           </div>
         </div>
+
+        {query.data && !deferred && <ContinueRow items={all} onPlay={path => {
+          navigate(encodePath(parent(path)));
+          useUi.getState().openViewer(parent(path), basename(path), null);
+        }} />}
 
         {query.isPending && (
           <div className="mt-8 grid grid-cols-3 gap-x-2.5 gap-y-5 sm:grid-cols-[repeat(auto-fill,minmax(150px,1fr))] sm:gap-x-5 sm:gap-y-7">
