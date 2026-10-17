@@ -175,6 +175,8 @@ type renameApplyReq struct {
 	Password string            `json:"password"`
 	Items    []renameApplyItem `json:"items"`
 	Folder   string            `json:"folder"` // the folder's new name, empty to keep it
+	// Subject: what the plan named the folder after, so its new name gets that poster.
+	Subject *tgvio.RenameInherit `json:"subject"`
 }
 
 type renameResult struct {
@@ -237,7 +239,11 @@ func TgvioRenameApply(c *gin.Context) {
 			result.Error = err.Error()
 		} else {
 			finalPath = stdpath.Join(parent, folder)
-			store.Renamed(parent, stdpath.Base(reqPath), folder, parent)
+			if req.Subject != nil && req.Subject.ID > 0 && (req.Subject.Kind == "tv" || req.Subject.Kind == "movie") {
+				store.RenamedAs(ctx, parent, stdpath.Base(reqPath), folder, parent, *req.Subject)
+			} else {
+				store.Renamed(parent, stdpath.Base(reqPath), folder, parent)
+			}
 			store.RenamedDir(reqPath, finalPath)
 		}
 		results = append(results, result)

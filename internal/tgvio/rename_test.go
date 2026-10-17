@@ -63,18 +63,22 @@ func TestMarkConflicts(t *testing.T) {
 
 func TestPlaceEpisode(t *testing.T) {
 	frieren := map[int]int{1: 38, 0: 26}
-	if s, e := placeEpisode(frieren, 1, 2, 29); s != 1 || e != 29 {
+	if s, e := placeEpisode(frieren, 1, 2, 29, false); s != 1 || e != 29 {
 		t.Errorf("frieren S2 29 -> S%dE%d", s, e)
 	}
 	twoSeasons := map[int]int{1: 28, 2: 12}
-	if s, e := placeEpisode(twoSeasons, 2, 2, 31); s != 2 || e != 3 {
+	if s, e := placeEpisode(twoSeasons, 2, 2, 31, false); s != 2 || e != 3 {
 		t.Errorf("absolute 31 -> S%dE%d", s, e)
 	}
-	if s, e := placeEpisode(twoSeasons, 2, 2, 5); s != 2 || e != 5 {
+	if s, e := placeEpisode(twoSeasons, 2, 2, 5, false); s != 2 || e != 5 {
 		t.Errorf("S2 5 -> S%dE%d", s, e)
 	}
-	if s, e := placeEpisode(map[int]int{}, 0, 3, 7); s != 3 || e != 7 {
+	if s, e := placeEpisode(map[int]int{}, 0, 3, 7, false); s != 3 || e != 7 {
 		t.Errorf("no seasons -> S%dE%d", s, e)
+	}
+	friends := map[int]int{1: 24, 2: 24, 3: 25, 4: 23}
+	if s, e := placeEpisode(friends, 4, 4, 24, true); s != 4 || e != 24 {
+		t.Errorf("Friends.S04E24 -> S%dE%d", s, e)
 	}
 }
 

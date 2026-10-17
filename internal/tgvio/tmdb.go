@@ -71,7 +71,7 @@ var (
 
 // cleanerRev changes whenever CleanName gets better: names that found nothing
 // under an older revision are looked up again.
-const cleanerRev = 4
+const cleanerRev = 5
 
 // CleanName reads a file or folder name for what a film database can search.
 func CleanName(name string) (query string, year int, tmdbID int, imdbID string) {

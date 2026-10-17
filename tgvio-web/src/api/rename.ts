@@ -35,6 +35,7 @@ export const tmdbRename = {
     post<RenamePlan>("/tgvio/rename/plan", { path, password, only, season, inherit }),
   /** The folder and its subfolders holding videos or subtitles, parents first. */
   tree: (path: string, password: string) => post<{ folders: { path: string; depth: number }[] }>("/tgvio/rename/tree", { path, password }),
-  apply: (path: string, password: string, items: { old: string; new: string }[], folder = "") =>
-    post<{ results: RenameResult[]; path: string }>("/tgvio/rename/apply", { path, password, items, folder }),
+  /** `subject`: what the plan named the folder after, so its new name gets that poster at once. */
+  apply: (path: string, password: string, items: { old: string; new: string }[], folder = "", subject?: RenameInherit) =>
+    post<{ results: RenameResult[]; path: string }>("/tgvio/rename/apply", { path, password, items, folder, subject }),
 };

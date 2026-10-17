@@ -246,13 +246,14 @@ func (t *TMDB) EpisodeStills(ctx context.Context, dir string, names []string) ma
 		if ep == 0 {
 			continue
 		}
+		explicit := s > 0
 		switch {
 		case folderSeason > 0:
 			s = folderSeason
 		case s == 0:
 			s = 1
 		}
-		s, ep = placeEpisode(counts, last, s, ep)
+		s, ep = placeEpisode(counts, last, s, ep, explicit)
 		if still := t.episodes(ctx, entry.ID, s).stills[ep]; still != "" {
 			out[name] = still
 		}
@@ -464,7 +465,7 @@ func (t *TMDB) PlanRenameIn(ctx context.Context, dir string, entries []RenameEnt
 				add(RenameItem{Old: v, Kind: "video", Reason: "no-episode"})
 				continue
 			}
-			s, ep = placeEpisode(counts, last, seasonOf(s), ep)
+			s, ep = placeEpisode(counts, last, seasonOf(s), ep, s > 0)
 			if titles[s] == nil {
 				titles[s] = t.episodeTitles(ctx, subject.ID, s)
 			}
@@ -602,6 +603,7 @@ func seasonsWithEpisodes(counts map[int]int) int {
 
 // placeEpisodeIn places a subtitle's episode like the videos of the folder.
 func placeEpisodeIn(subject *Poster, folderSeason, s, ep int, ctx context.Context, t *TMDB) (int, int) {
+	explicit := s > 0
 	if folderSeason > 0 {
 		s = folderSeason
 	} else if s == 0 {
@@ -616,7 +618,7 @@ func placeEpisodeIn(subject *Poster, folderSeason, s, ep int, ctx context.Contex
 			}
 		}
 	}
-	return placeEpisode(counts, last, s, ep)
+	return placeEpisode(counts, last, s, ep, explicit)
 }
 
 // subtitleTail is what a subtitle keeps after its new name: a short language
@@ -637,7 +639,13 @@ func subtitleTail(name string) string {
 // on from earlier seasons (S2 starting at 29), and TMDB sometimes files a new
 // "season" under the old one (Frieren's second cour is S01E29-38), so a number
 // that does not fit the named season is read as counted from the first one.
-func placeEpisode(counts map[int]int, last, season, ep int) (int, int) {
+func placeEpisode(counts map[int]int, last, season, ep int, explicit bool) (int, int) {
+	// A name that says its season and episode ("Friends.S04E24") means them,
+	// even past the season's count on TMDB (which merges some two-part
+	// episodes): only bare numbers are read as counted from the first season.
+	if explicit {
+		return season, ep
+	}
 	if n, ok := counts[season]; ok && (n == 0 || ep <= n) {
 		return season, ep
 	}
@@ -685,10 +693,41 @@ func markConflicts(plan *RenamePlan, entries []RenameEntry) {
 
 // Renamed carries a poster entry to an object's new name, so a renamed folder or
 // video keeps its poster (and a choice made by hand) without a new lookup.
+// RenamedAs records what a folder renamed after a plan is: the plan's film or
+// series (one season's poster for a season folder), so the new name never waits
+// for a lookup, nor keeps a "nothing found" from its old, messy name. A poster
+// chosen by hand for the same title stays as chosen.
+func (t *TMDB) RenamedAs(ctx context.Context, dir, oldName, newName, newDir string, as RenameInherit) {
+	t.mu.Lock()
+	old := t.entries[Key(oldName)]
+	t.mu.Unlock()
+	if old != nil && old.Manual && !old.None && old.Kind == as.Kind && old.ID == as.ID {
+		t.Renamed(dir, oldName, newName, newDir)
+		return
+	}
+	p, err := t.Details(ctx, as.Kind, as.ID)
+	if err != nil || p == nil || p.None {
+		t.Renamed(dir, oldName, newName, newDir)
+		return
+	}
+	if as.Kind == "tv" && as.Season > 0 {
+		t.ApplySeason(ctx, p, as.Season)
+	}
+	p.Name, p.Dir, p.At = newName, newDir, time.Now().Unix()
+	t.mu.Lock()
+	delete(t.entries, Key(oldName))
+	t.entries[Key(newName)] = p
+	t.mu.Unlock()
+	t.save()
+}
+
 func (t *TMDB) Renamed(dir, oldName, newName, newDir string) {
 	t.mu.Lock()
 	entry, ok := t.entries[Key(oldName)]
-	if ok && entry.Dir == dir {
+	if ok && entry.None && !entry.Manual {
+		// "Nothing found" was about the old name; the new one gets its own look.
+		delete(t.entries, Key(oldName))
+	} else if ok && entry.Dir == dir {
 		moved := *entry
 		moved.Name = newName
 		moved.Dir = newDir
