@@ -1,4 +1,4 @@
-import { ArrowUUpLeftIcon, FilmSlateIcon, CaretRightIcon, GearIcon, ListBulletsIcon, MagnifyingGlassIcon, MoonIcon, ShareNetworkIcon, SignOutIcon, SquaresFourIcon, SunIcon, UserIcon, HouseIcon, DesktopIcon } from "@phosphor-icons/react";
+import { ArrowUUpLeftIcon, FilmReelIcon, FilmSlateIcon, CaretRightIcon, GearIcon, ListBulletsIcon, MagnifyingGlassIcon, MoonIcon, ShareNetworkIcon, SignOutIcon, SquaresFourIcon, SunIcon, UserIcon, HouseIcon, DesktopIcon } from "@phosphor-icons/react";
 import { AnimatePresence, motion } from "motion/react";
 import { useState, type DragEvent } from "react";
 import { useLocation } from "wouter";
@@ -192,6 +192,9 @@ export function TopBar({ path }: { path: string }) {
           </motion.button>
         )}
         {palette && <span className="h-9 sm:w-60" />}
+        <motion.button className="icon-btn" aria-label="片库" title="片库" onClick={() => navigate("/@library")} whileTap={{ scale: 0.9 }}>
+          <FilmReelIcon size={18} />
+        </motion.button>
         <div className="hidden sm:block"><ViewToggle /></div>
         <div className="max-sm:hidden"><ThemeButton /></div>
         <Account />

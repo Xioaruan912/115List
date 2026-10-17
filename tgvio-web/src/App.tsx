@@ -18,6 +18,7 @@ import { useSession } from "./stores/session";
 import { onUploadFinished, useUploads } from "./stores/uploads";
 
 const Manage = lazy(() => import("./pages/manage/Manage"));
+const Library = lazy(() => import("./pages/Library"));
 
 onUploadFinished(dir => {
   // Batch: many small files finishing together refresh the folder once.
@@ -47,6 +48,7 @@ function Routes() {
     return status === "ready" && !isGuest(me) ? <Redirect to="/" replace /> : <Login />;
   }
   if (status !== "ready") return <Redirect to={`/@login?redirect=${encodeURIComponent(location)}`} replace />;
+  if (location === "/@library" || location.startsWith("/@library?")) return <Suspense fallback={<Splash />}><Library /></Suspense>;
   if (location.startsWith("/@manage")) {
     if (!isAdmin(me)) return <Redirect to="/" replace />;
     return <Suspense fallback={<Splash />}><Manage /></Suspense>;
