@@ -27,6 +27,12 @@ export function copy(srcDir: string, dstDir: string, names: string[], options: T
   return post("/fs/copy", { src_dir: srcDir, dst_dir: dstDir, names, ...options });
 }
 
+/** A hit of the site's own search: a name in a folder someone has opened, or a TMDB title. */
+export interface SiteHit { parent: string; name: string; is_dir: boolean; size?: number; poster?: import("./posters").Poster }
+
+/** Search names and TMDB titles without OpenList's drive index. `folders`: how many folders it knows. */
+export const siteSearch = (q: string, limit = 40) => get<{ items: SiteHit[]; folders: number }>("/tgvio/search", { q, limit });
+
 export function search(parent: string, keywords: string, scope = 0, perPage = 100, password = ""): Promise<Page<SearchNode>> {
   return post("/fs/search", { parent, keywords, scope, page: 1, per_page: perPage, password });
 }
