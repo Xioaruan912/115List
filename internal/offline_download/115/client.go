@@ -2,7 +2,9 @@ package _115
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"sync"
 
 	"github.com/OpenListTeam/OpenList/v4/internal/conf"
 	"github.com/OpenListTeam/OpenList/v4/internal/setting"
@@ -16,7 +18,11 @@ import (
 
 type Cloud115 struct {
 	refreshTaskCache bool
+	// misses counts polls that did not find a task in 115's list, which can lag a few seconds behind adding it.
+	misses sync.Map
 }
+
+const missesBeforeGone = 4
 
 func (p *Cloud115) Name() string {
 	return "115 Cloud"
@@ -120,18 +126,27 @@ func (p *Cloud115) Status(task *tool.DownloadTask) (*tool.Status, error) {
 	}
 	for _, t := range tasks {
 		if t.InfoHash == task.GID {
+			p.misses.Delete(task.GID)
 			s.Progress = t.Percent
 			s.Status = t.GetStatus()
 			s.Completed = t.IsDone()
 			s.TotalBytes = t.Size
 			if t.IsFailed() {
-				s.Err = fmt.Errorf(t.GetStatus())
+				s.Err = errors.New(t.GetStatus())
 			}
 			return s, nil
 		}
 	}
-	s.Err = fmt.Errorf("the task has been deleted")
-	return nil, nil
+	// Not in 115's list: refused, or removed in 115 by hand. Say so instead of ending silently.
+	n, _ := p.misses.LoadOrStore(task.GID, new(int))
+	*n.(*int)++
+	if *n.(*int) < missesBeforeGone {
+		s.Status = "waiting for 115 to list the task"
+		return s, nil
+	}
+	p.misses.Delete(task.GID)
+	s.Err = errors.New("the task is not in 115's offline list (refused by 115, or deleted there)")
+	return s, nil
 }
 
 var _ tool.Tool = (*Cloud115)(nil)
