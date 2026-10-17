@@ -221,13 +221,19 @@ func joinDir(dir, name string) string {
 	return dir + "/" + name
 }
 
+// save writes the index at most every 30 s. Listings arrive every few seconds
+// while a WebDAV client walks the drive, so a debounce would never fire: a
+// write already planned covers the changes after it.
 func (n *NameIndex) save() {
 	n.mu.Lock()
 	defer n.mu.Unlock()
 	if n.saveAt != nil {
-		n.saveAt.Stop()
+		return
 	}
 	n.saveAt = time.AfterFunc(30*time.Second, func() {
+		n.mu.Lock()
+		n.saveAt = nil
+		n.mu.Unlock()
 		_ = os.MkdirAll(filepath.Dir(n.path), 0o700)
 		tmp := n.path + ".tmp"
 		f, err := os.OpenFile(tmp, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o600)
