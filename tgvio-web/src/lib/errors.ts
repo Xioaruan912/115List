@@ -53,6 +53,10 @@ export function rawMessage(error: unknown): string {
 export function explain(error: unknown): Explained {
   const raw = rawMessage(error);
   const text = raw.toLowerCase();
+  // 115's own words for a refused offline link are already Chinese and say exactly what is wrong.
+  const refused = /115 offline download: (.+?) \(code (-?\d+)\)/.exec(raw);
+  if (refused) return { title: `115 没接受：${refused[1]}`, hint: "换一个链接，或在 115 的云下载里直接添加看看。", retry: false, raw };
+  if (/not in 115's offline list/.test(text)) return { title: "115 的云下载里找不到这个任务", hint: "可能被 115 拒绝了，或在 115 里被删掉了。", retry: true, raw };
   for (const [pattern, title, hint, retry] of RULES) {
     if (pattern.test(text)) return { title, hint, retry, raw };
   }
