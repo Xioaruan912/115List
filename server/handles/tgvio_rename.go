@@ -78,7 +78,7 @@ func TgvioRenamePlan(c *gin.Context) {
 	}
 	entries := make([]tgvio.RenameEntry, 0, len(objs))
 	for _, obj := range objs {
-		entries = append(entries, tgvio.RenameEntry{Name: obj.GetName(), IsDir: obj.IsDir()})
+		entries = append(entries, tgvio.RenameEntry{Name: obj.GetName(), IsDir: obj.IsDir(), Size: obj.GetSize()})
 	}
 	var plan *tgvio.RenamePlan
 	if len(req.Only) > 0 {
