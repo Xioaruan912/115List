@@ -35,7 +35,11 @@ export function offlineDownload(path: string, urls: string[], tool: string, dele
   return post("/fs/add_offline_download", { path, urls, tool, delete_policy: deletePolicy });
 }
 
-export const offlineTools = () => get<string[]>("/public/offline_download_tools");
+/** Tools usable for a destination folder, including the folder's own drive (115, PikPak, …) even without a temporary path. */
+export const offlineTools = (path: string) => get<string[]>("/public/offline_download_tools", { path });
+
+/** Offline download built into a drive: files land in the drive directly, nothing passes through the server. */
+export const nativeOfflineTools = ["115 Cloud", "115 Open", "123Pan", "123 Open", "PikPak", "Thunder", "ThunderX", "ThunderBrowser", "GuangYaPan"];
 
 export interface ArchiveNode extends Obj { children: ArchiveNode[] | null }
 export interface ArchiveMeta {

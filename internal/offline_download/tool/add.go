@@ -70,6 +70,14 @@ func AddURL(ctx context.Context, args *AddURLArgs) (task.TaskExtensionInfo, erro
 		}
 	}
 	// try putting url
+	if args.Tool == "SimpleHttp" && !isEd2kURL(args.URL) && isSimpleHttpSchemeUnsupported(args.URL) {
+		// Magnet and other non-HTTP links go to the destination drive's own offline download when it has one.
+		if name := toolNameForStorage(storage); name != "" {
+			if _, err := Tools.Get(name); err == nil {
+				args.Tool = name
+			}
+		}
+	}
 	if args.Tool == "SimpleHttp" && !isEd2kURL(args.URL) {
 		if isSimpleHttpSchemeUnsupported(args.URL) {
 			return nil, fmt.Errorf("SimpleHttp tool does not support this URL scheme, please use aria2 or other tools for magnet/ed2k links")
