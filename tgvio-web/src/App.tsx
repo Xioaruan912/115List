@@ -7,6 +7,7 @@ import { Toaster } from "./components/Toaster";
 import * as actions from "./lib/actions";
 import { basePath } from "./lib/config";
 import { decodePath } from "./lib/path";
+import { syncProgress } from "./lib/progress";
 import { isAdmin, isGuest } from "./lib/perm";
 import { queryClient } from "./lib/query";
 import { Browser } from "./pages/Browser";
@@ -56,9 +57,12 @@ function Routes() {
 export function App() {
   const boot = useSession(state => state.boot);
   const settings = useSession(state => state.settings);
+  const me = useSession(state => state.me);
   const theme = usePrefs(state => state.theme);
+  const account = me && !isGuest(me) ? `${me.id}:${me.username}` : null;
 
   useEffect(() => { void boot(); }, [boot]);
+  useEffect(() => { syncProgress(account); }, [account]);
   useEffect(() => { useUploads.setState({ multipart: settings.multipart_enabled !== "false" }); }, [settings.multipart_enabled]);
   useEffect(() => {
     applyTheme(theme);
