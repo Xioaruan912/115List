@@ -1,6 +1,6 @@
 import {
   ArrowClockwiseIcon, CornersInIcon, CornersOutIcon, PauseIcon, PictureInPictureIcon, PlayIcon, SpeakerHighIcon,
-  SpeakerLowIcon, SpeakerSlashIcon,
+  SkipForwardIcon, SpeakerLowIcon, SpeakerSlashIcon,
 } from "@phosphor-icons/react";
 import { AnimatePresence, motion } from "motion/react";
 import { useCallback, useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
@@ -9,6 +9,9 @@ import { apiBase } from "../lib/config";
 import { absolute } from "../lib/links";
 import { spring } from "../lib/motion";
 import { formatClock, resumeAt, saveProgress } from "../lib/progress";
+import { setSubtitlesOff, subtitlesOff, type SubtitleTrack } from "../lib/subtitles";
+import { NextUp, type NextEpisode } from "./NextUp";
+import { SubtitleLayer, SubtitleMenu } from "./Subtitles";
 import { useUi } from "../stores/ui";
 
 /**
@@ -140,8 +143,15 @@ function Scrubber({ video, time, duration, buffered, onSeek, onScrub }: {
   );
 }
 
-export function VideoPlayer({ path, src, fallback, thumb, chrome, cloud, onAspect, onDownload, onCopy }: {
+// Moving on to the next episode replaces the player; a fullscreen one asks the next to go fullscreen too.
+let carryFullscreen = false;
+
+export function VideoPlayer({ path, src, fallback, thumb, chrome, cloud, subtitles, next, onAspect, onDownload, onCopy }: {
   path: string;
+  /** Subtitle files beside the video and how to read one. */
+  subtitles?: { tracks: SubtitleTrack[]; urlOf: (name: string) => string };
+  /** The next episode of the folder, offered when this one ends. */
+  next?: NextEpisode;
   /** Asks for the drive's own transcodes (115); absent for other storages. */
   cloud?: () => Promise<CloudVideo>;
   src: string;
@@ -196,6 +206,24 @@ export function VideoPlayer({ path, src, fallback, thumb, chrome, cloud, onAspec
   const [qualityMenu, setQualityMenu] = useState(false);
   const [notice, setNotice] = useState("");
   const pendingSeek = useRef<{ time: number } | null>(null);
+  const tracks = subtitles?.tracks ?? [];
+  const [trackName, setTrackName] = useState<string | null>(() => (subtitlesOff() ? null : tracks[0]?.name ?? null));
+  const track = tracks.find(item => item.name === trackName) ?? null;
+  const [subDelay, setSubDelay] = useState(0);
+  const [subMenu, setSubMenu] = useState(false);
+  const [ended, setEnded] = useState(false);
+  const playNext = (): void => {
+    if (!next) return;
+    carryFullscreen = !!document.fullscreenElement;
+    next.play();
+  };
+  const latest = useRef({ playNext, tracks });
+  latest.current = { playNext, tracks };
+  useEffect(() => {
+    if (!carryFullscreen) return;
+    carryFullscreen = false;
+    void root.current?.requestFullscreen?.().catch(() => setNotice("已到下一集 · 按 F 回到全屏"));
+  }, []);
   const hlsRef = useRef<{ destroy: () => void } | null>(null);
 
   // Ask which cloud versions exist before loading anything: a 4K original would
@@ -360,6 +388,11 @@ export function VideoPlayer({ path, src, fallback, thumb, chrome, cloud, onAspec
       else if (key === "l") { handled(); seekBy(10); }
       else if (key === "m") { handled(); setVolume({ muted: !element.muted }); }
       else if (key === "f") { handled(); toggleFullscreen(); }
+      else if (key === "n" && event.shiftKey) { handled(); latest.current.playNext(); }
+      else if (key === "c" && latest.current.tracks.length) {
+        handled();
+        setTrackName(name => { const on = name ? null : latest.current.tracks[0].name; setSubtitlesOff(!on); return on; });
+      }
       else if (key === "arrowup") { handled(); setVolume({ volume: Math.min(1, element.volume + 0.1), muted: false }); }
       else if (key === "arrowdown") { handled(); setVolume({ volume: Math.max(0, element.volume - 0.1) }); }
     };
@@ -389,7 +422,7 @@ export function VideoPlayer({ path, src, fallback, thumb, chrome, cloud, onAspec
     if (state.shown) state.timer = window.setTimeout(toggle, 280); // controls were hidden: this tap only brings them back
   };
 
-  const visible = (chrome ?? active) || !playing || scrubbing || speedMenu || qualityMenu;
+  const visible = (chrome ?? active) || !playing || scrubbing || speedMenu || qualityMenu || subMenu;
   const visibleRef = useRef(visible);
   visibleRef.current = visible;
   const players = externalPlayers(absolute(src));
@@ -415,7 +448,7 @@ export function VideoPlayer({ path, src, fallback, thumb, chrome, cloud, onAspec
           progressAt.current = performance.now();
         }}
         onDurationChange={event => setDuration(event.currentTarget.duration || 0)}
-        onPlay={() => setPlaying(true)}
+        onPlay={() => { setPlaying(true); setEnded(false); }}
         onPause={event => { setPlaying(false); saveProgress(path, event.currentTarget.currentTime, event.currentTarget.duration); }}
         onPlaying={event => {
           setWaiting(false); setStuck(false);
@@ -439,7 +472,7 @@ export function VideoPlayer({ path, src, fallback, thumb, chrome, cloud, onAspec
           saveProgress(path, v.currentTime, v.duration);
         }}
         onRateChange={event => setSpeed(event.currentTarget.playbackRate)}
-        onEnded={event => { setPlaying(false); saveProgress(path, event.currentTarget.duration, event.currentTarget.duration); }}
+        onEnded={event => { setPlaying(false); setEnded(true); saveProgress(path, event.currentTarget.duration, event.currentTarget.duration); }}
         onError={() => {
           if (source?.kind !== "origin") { if (!hlsRef.current) setPhase("failed"); return; } // hls.js reports its own errors
           if (cloudInfo) { originFailed(); return; }
@@ -447,6 +480,11 @@ export function VideoPlayer({ path, src, fallback, thumb, chrome, cloud, onAspec
           else setPhase("failed");
         }}
       />
+
+      {track && subtitles && phase === "ready" && (
+        <SubtitleLayer key={track.name} video={ref.current} track={track} url={subtitles.urlOf(track.name)} delay={subDelay} lifted={visible}
+          onFailed={() => { setNotice(`字幕「${track.label}」读不出来`); setTrackName(null); }} />
+      )}
 
       {/* Poster and loading: the thumbnail, blurred, until the first frame. */}
       <AnimatePresence>
@@ -557,6 +595,10 @@ export function VideoPlayer({ path, src, fallback, thumb, chrome, cloud, onAspec
         )}
       </AnimatePresence>
 
+      <AnimatePresence>
+        {ended && next && phase === "ready" && !subMenu && !speedMenu && !qualityMenu && <NextUp key="next" next={next} onPlay={playNext} onCancel={() => setEnded(false)} />}
+      </AnimatePresence>
+
       {/* Control bar: a floating glass strip, scrubber on top. */}
       {phase !== "failed" && phase !== "blocked" && (
         <motion.div
@@ -589,7 +631,7 @@ export function VideoPlayer({ path, src, fallback, thumb, chrome, cloud, onAspec
             <span className="flex-1" />
             {cloudInfo ? (
               <div className="relative">
-                <motion.button type="button" whileTap={{ scale: 0.9 }} onClick={() => { setQualityMenu(open => !open); setSpeedMenu(false); }} aria-label="清晰度"
+                <motion.button type="button" whileTap={{ scale: 0.9 }} onClick={() => { setQualityMenu(open => !open); setSpeedMenu(false); setSubMenu(false); }} aria-label="清晰度"
                   className="flex h-9 items-center gap-1.5 rounded-full px-2.5 text-[12.5px] font-medium text-white transition-colors hover:bg-white/12">
                   {source?.kind === "cloud" && <span className="size-1.5 rounded-full bg-accent" aria-hidden />}
                   {source?.kind === "cloud" ? source.quality.name : "原画"}
@@ -619,7 +661,7 @@ export function VideoPlayer({ path, src, fallback, thumb, chrome, cloud, onAspec
               </div>
             ) : size ? <span className="mr-1 rounded-md bg-white/10 px-1.5 py-0.5 font-mono text-[10.5px] text-white/70 max-sm:hidden">{size.split("×")[1]}p</span> : null}
             <div className="relative">
-              <motion.button type="button" whileTap={{ scale: 0.9 }} onClick={() => { setSpeedMenu(open => !open); setQualityMenu(false); }} aria-label="播放速度"
+              <motion.button type="button" whileTap={{ scale: 0.9 }} onClick={() => { setSpeedMenu(open => !open); setQualityMenu(false); setSubMenu(false); }} aria-label="播放速度"
                 className={`h-9 rounded-full px-2.5 font-mono text-[12.5px] font-medium transition-colors hover:bg-white/12 ${speed !== 1 ? "text-accent" : "text-white"}`}>
                 {speed}×
               </motion.button>
@@ -637,6 +679,11 @@ export function VideoPlayer({ path, src, fallback, thumb, chrome, cloud, onAspec
                 )}
               </AnimatePresence>
             </div>
+            <SubtitleMenu tracks={tracks} current={track} delay={subDelay} open={subMenu}
+              onOpen={open => { setSubMenu(open); if (open) { setSpeedMenu(false); setQualityMenu(false); } }}
+              onPick={picked => { setTrackName(picked?.name ?? null); setSubtitlesOff(!picked); setSubMenu(false); }}
+              onDelay={value => setSubDelay(Math.round(value * 10) / 10)} />
+            {next && <IconButton label="下一集" onClick={playNext}><SkipForwardIcon size={19} weight="fill" /></IconButton>}
             {pip && <IconButton label="画中画" onClick={() => { const v = video(); if (v) void (document.pictureInPictureElement ? document.exitPictureInPicture() : v.requestPictureInPicture()).catch(() => undefined); }}><PictureInPictureIcon size={19} /></IconButton>}
             <IconButton label={fullscreen ? "退出全屏" : "全屏"} onClick={toggleFullscreen}>{fullscreen ? <CornersInIcon size={19} /> : <CornersOutIcon size={19} />}</IconButton>
           </div>
