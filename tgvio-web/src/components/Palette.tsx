@@ -7,12 +7,13 @@ import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { useLocation } from "wouter";
-import { search } from "../api/fs";
+import { search, siteSearch } from "../api/fs";
 import { passwordFor, useDir } from "../hooks/useDir";
 import { kindOf } from "../lib/kind";
 import { spring } from "../lib/motion";
 import { encodePath, join } from "../lib/path";
-import { can, isAdmin, Perm } from "../lib/perm";
+import { can, isAdmin, isGuest, Perm } from "../lib/perm";
+import { posterSrc } from "../api/posters";
 import { usePrefs } from "../stores/prefs";
 import { useSession } from "../stores/session";
 import { useUi } from "../stores/ui";
@@ -86,6 +87,15 @@ function PaletteBody({ path }: { path: string }) {
     staleTime: 30_000,
     retry: false,
   });
+  // Without OpenList's index (115 would have to be crawled): names of folders
+  // already opened, and TMDB titles, from the server.
+  const site = useQuery({
+    queryKey: ["site-search", debounced],
+    queryFn: () => siteSearch(debounced),
+    enabled: !indexed && !isGuest(me) && debounced.length >= 1,
+    staleTime: 30_000,
+    retry: false,
+  });
 
   const close = (): void => setPalette(false);
 
@@ -106,6 +116,23 @@ function PaletteBody({ path }: { path: string }) {
           close();
           if (item.is_dir) navigate(encodePath(join(path, item.name)));
           else useUi.getState().openViewer(path, item.name, null);
+        },
+      });
+    }
+    for (const hit of site.data?.items ?? []) {
+      const full = join(hit.parent, hit.name);
+      out.push({
+        id: `site:${full}`,
+        section: "全站搜索",
+        label: hit.poster ? `${hit.poster.title}${hit.poster.year ? ` (${hit.poster.year})` : ""}` : hit.name,
+        detail: hit.poster ? full : hit.parent,
+        icon: hit.poster?.poster
+          ? <img src={posterSrc(hit.poster.poster, "w185")} alt="" className="h-[22px] w-[15px] rounded-[3px] object-cover" />
+          : <KindIcon kind={kindOf({ name: hit.name, is_dir: hit.is_dir, type: 0 })} size={16} weight={hit.is_dir ? "duotone" : "regular"} />,
+        run: () => {
+          close();
+          if (hit.is_dir) navigate(encodePath(full));
+          else { navigate(encodePath(hit.parent)); setTimeout(() => useUi.getState().openViewer(hit.parent, hit.name, null), 450); }
         },
       });
     }
@@ -151,7 +178,7 @@ function PaletteBody({ path }: { path: string }) {
     }
     out.push(...matched.map(command => ({ ...command, section: "命令" })));
     return out;
-  }, [query, list.data, remote.data, me, path, view, blur, navigate]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [query, list.data, remote.data, site.data, me, path, view, blur, navigate]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => { setActive(0); }, [query]);
   useEffect(() => {
@@ -182,11 +209,11 @@ function PaletteBody({ path }: { path: string }) {
             autoFocus
             value={query}
             onChange={event => setQuery(event.target.value)}
-            placeholder={indexed ? "搜索文件，或输入命令" : "筛选当前文件夹，或输入命令"}
+            placeholder="搜索文件、片名，或输入命令"
             className="h-14 min-w-0 flex-1 bg-transparent text-[15px] outline-none placeholder:text-faint"
             aria-label="搜索"
           />
-          {remote.isFetching && <span className="spin size-4 rounded-full border-2 border-line-strong border-t-accent" />}
+          {(remote.isFetching || site.isFetching) && <span className="spin size-4 rounded-full border-2 border-line-strong border-t-accent" />}
           <kbd className="rounded-md px-1.5 py-0.5 font-mono text-[11px] text-faint hairline">Esc</kbd>
         </motion.div>
         <div ref={listRef} className="min-h-0 overflow-y-auto p-2" role="listbox">
@@ -214,6 +241,9 @@ function PaletteBody({ path }: { path: string }) {
               </div>
             );
           })}
+          {site.data && query.trim() && (
+            <p className="px-3 pb-1 pt-3 text-[11.5px] text-faint tabular">全站搜索覆盖打开过的 {site.data.folders} 个文件夹和 TMDB 片名；没打开过的文件夹，进去一次就能搜到</p>
+          )}
         </div>
       </motion.div>
     </div>
