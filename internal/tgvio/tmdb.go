@@ -47,8 +47,12 @@ type Poster struct {
 	Rev      int     `json:"rev,omitempty"`  // name-cleaning revision that produced a "none"
 	Dir      string  `json:"dir,omitempty"`  // the folder the name was seen in (real path)
 	Season   int     `json:"season,omitempty"`
-	None     bool    `json:"none,omitempty"` // looked up, nothing fits (or the user said no poster)
-	At       int64   `json:"at"`
+	// Cat is what it is for browsing: "movie", "tv", "anime", "variety" (综艺)
+	// or "documentary", from TMDB's genres. Empty for entries made before it
+	// existed; those are filled in in the background.
+	Cat  string `json:"cat,omitempty"`
+	None bool   `json:"none,omitempty"` // looked up, nothing fits (or the user said no poster)
+	At   int64  `json:"at"`
 }
 
 // ---------------------------------------------------------------- names
@@ -219,6 +223,9 @@ type TMDB struct {
 	saveAt  *time.Timer
 	queue   chan lookupJob
 	queued  map[string]bool
+	// Entries without a category, filled in from TMDB's details one at a time.
+	enrich   chan [2]string // kind, id
+	enriched map[string]bool
 }
 
 var (
@@ -237,13 +244,15 @@ func Posters(dataDir string) *TMDB {
 			}
 		}
 		t := &TMDB{
-			dir:     dir,
-			token:   token,
-			http:    &http.Client{Timeout: 20 * time.Second},
-			limiter: rate.NewLimiter(4, 4),
-			entries: map[string]*Poster{},
-			queue:   make(chan lookupJob, 4096),
-			queued:  map[string]bool{},
+			dir:      dir,
+			token:    token,
+			http:     &http.Client{Timeout: 20 * time.Second},
+			limiter:  rate.NewLimiter(4, 4),
+			entries:  map[string]*Poster{},
+			queue:    make(chan lookupJob, 4096),
+			queued:   map[string]bool{},
+			enrich:   make(chan [2]string, 4096),
+			enriched: map[string]bool{},
 		}
 		if raw, err := os.ReadFile(filepath.Join(dir, "posters.json")); err == nil {
 			_ = json.Unmarshal(raw, &t.entries)
@@ -257,6 +266,7 @@ func Posters(dataDir string) *TMDB {
 			}
 		}
 		go t.work()
+		go t.enrichWork()
 		tmdbInstance = t
 	})
 	return tmdbInstance
@@ -327,6 +337,38 @@ type tmdbItem struct {
 	Overview      string  `json:"overview"`
 	VoteAverage   float64 `json:"vote_average"`
 	Popularity    float64 `json:"popularity"`
+	GenreIDs      []int   `json:"genre_ids"` // in search results
+	Genres        []struct {
+		ID int `json:"id"`
+	} `json:"genres"` // in details
+}
+
+// TMDB genre ids that decide a category.
+const (
+	genreAnimation   = 16
+	genreDocumentary = 99
+	genreNews        = 10763
+	genreReality     = 10764
+	genreTalk        = 10767
+)
+
+// CategoryOf names what a film or series is for browsing (see Poster.Cat).
+func CategoryOf(kind string, genres []int) string {
+	has := map[int]bool{}
+	for _, g := range genres {
+		has[g] = true
+	}
+	switch {
+	case has[genreAnimation]:
+		return "anime"
+	case kind == "tv" && (has[genreReality] || has[genreTalk] || has[genreNews]):
+		return "variety"
+	case has[genreDocumentary]:
+		return "documentary"
+	case kind == "tv":
+		return "tv"
+	}
+	return "movie"
 }
 
 func (i tmdbItem) poster(kind string) *Poster {
@@ -344,8 +386,12 @@ func (i tmdbItem) poster(kind string) *Poster {
 	if original == title {
 		original = ""
 	}
+	genres := i.GenreIDs
+	for _, g := range i.Genres {
+		genres = append(genres, g.ID)
+	}
 	return &Poster{Kind: kind, ID: i.ID, Title: title, Original: original, Year: year, Poster: i.PosterPath,
-		Backdrop: i.BackdropPath, Overview: i.Overview, Rating: i.VoteAverage, At: time.Now().Unix()}
+		Backdrop: i.BackdropPath, Overview: i.Overview, Rating: i.VoteAverage, Cat: CategoryOf(kind, genres), At: time.Now().Unix()}
 }
 
 type searchResult struct {
@@ -655,6 +701,9 @@ func (t *TMDB) Lookup(dir string, names []string) (map[string]*Poster, int) {
 		// the name cleaning has improved since.
 		if ok && (!entry.None || entry.Manual || (now-entry.At < 7*24*3600 && entry.Rev >= cleanerRev)) {
 			out[name] = entry
+			if t.wantCategoryLocked(entry) {
+				pending++ // asked again shortly, with its category
+			}
 			if name == solo && t.inheritLocked(dir, entry) {
 				pruned = true
 			}
@@ -742,6 +791,51 @@ func (t *TMDB) Set(name string, p *Poster) {
 	t.entries[Key(name)] = p
 	t.mu.Unlock()
 	t.save()
+}
+
+// wantCategoryLocked queues an entry made before categories for a details
+// call, reporting whether its category is on the way.
+func (t *TMDB) wantCategoryLocked(entry *Poster) bool {
+	if entry.None || entry.Cat != "" || entry.ID == 0 || (entry.Kind != "movie" && entry.Kind != "tv") {
+		return false
+	}
+	key := entry.Kind + "/" + strconv.Itoa(entry.ID)
+	if t.enriched[key] {
+		return true
+	}
+	select {
+	case t.enrich <- [2]string{entry.Kind, strconv.Itoa(entry.ID)}:
+		t.enriched[key] = true
+		return true
+	default:
+		return false
+	}
+}
+
+func (t *TMDB) enrichWork() {
+	for job := range t.enrich {
+		id, _ := strconv.Atoi(job[1])
+		ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+		p, err := t.Details(ctx, job[0], id)
+		cancel()
+		if err != nil || p == nil {
+			t.mu.Lock()
+			delete(t.enriched, job[0]+"/"+job[1]) // asked again next time it is seen
+			t.mu.Unlock()
+			time.Sleep(5 * time.Second)
+			continue
+		}
+		t.mu.Lock()
+		for key, entry := range t.entries {
+			if entry.Kind == job[0] && entry.ID == id && entry.Cat == "" {
+				filled := *entry // entries are shared read-only once stored
+				filled.Cat = p.Cat
+				t.entries[key] = &filled
+			}
+		}
+		t.mu.Unlock()
+		t.save()
+	}
 }
 
 func (t *TMDB) work() {

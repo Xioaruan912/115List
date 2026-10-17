@@ -2,7 +2,8 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 
 export type ViewMode = "grid" | "list" | "cinema";
-export type SortKey = "name" | "size" | "modified";
+/** "rating" and "year" go by TMDB (the poster store); things it does not know come last. */
+export type SortKey = "name" | "size" | "modified" | "rating" | "year";
 export type Theme = "system" | "dark" | "light";
 
 interface Prefs {

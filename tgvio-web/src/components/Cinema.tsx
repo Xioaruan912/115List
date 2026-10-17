@@ -1,4 +1,4 @@
-import { FolderSimpleIcon, InfoIcon, PlayIcon, StarIcon } from "@phosphor-icons/react";
+import { FolderSimpleIcon, InfoIcon, PlayIcon, ShuffleIcon, StarIcon } from "@phosphor-icons/react";
 import { posterSrc, type Poster as Art } from "../api/posters";
 import { AnimatePresence, motion, useMotionTemplate, useMotionValue, useReducedMotion, useSpring, useTransform } from "motion/react";
 import { memo, useEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type MouseEvent } from "react";
@@ -15,13 +15,15 @@ import { NamedPoster } from "./PosterWall";
 import type { TileHandlers } from "./Tile";
 
 /**
- * Cinema mode: the folder as a media library. A billboard up top shows whatever
- * the pointer rests on, a row picks up unfinished videos, and the rest is a wall
+ * Cinema mode: the folder as a media library. A billboard up top recommends
+ * something at random (a new pick on every visit, then every few seconds), or
+ * whatever the pointer rests on, a row picks up unfinished videos, and the rest is a wall
  * of posters that tilt toward the pointer. Pictures come from thumbnails, folder
  * covers, or a generated poster carrying the real title.
  */
 
 const PAGE = 240;
+const ROTATE = 12_000;
 
 function titleOf(obj: Obj): string {
   if (obj.is_dir) return obj.name;
@@ -139,7 +141,13 @@ const Poster = memo(function Poster({ dir, obj, art, index, handlers, onFocus }:
 
 /* -------------------------------------------------------------- billboard */
 
-function Billboard({ dir, obj, art, handlers }: { dir: string; obj: Obj; art?: Art; handlers: TileHandlers }) {
+function Billboard({ dir, obj, art, handlers, onShuffle, onHold }: {
+  dir: string; obj: Obj; art?: Art; handlers: TileHandlers;
+  /** Another random pick; absent when there is nothing else to pick. */
+  onShuffle?: () => void;
+  /** The pointer is over the billboard: the rotation waits. */
+  onHold: (hold: boolean) => void;
+}) {
   const reduced = useReducedMotion();
   const ref = useRef<HTMLDivElement>(null);
   const own = usePicture(dir, obj, ref, !art);
@@ -153,7 +161,7 @@ function Billboard({ dir, obj, art, handlers }: { dir: string; obj: Obj; art?: A
     ? [art.year ? String(art.year) : "", art.kind === "tv" ? "剧集" : "电影", obj.is_dir ? "" : formatBytes(obj.size)].filter(Boolean)
     : [obj.is_dir ? "文件夹" : extname(obj.name).toUpperCase(), obj.is_dir ? "" : formatBytes(obj.size), formatDate(obj.modified)].filter(Boolean);
   return (
-    <div ref={ref} className="relative mb-8 h-[min(46vh,400px)] min-h-[280px] sm:h-[min(56vh,520px)] overflow-hidden rounded-[var(--radius-sheet)] bg-[#0b0b0c] text-white" style={{ boxShadow: "inset 0 0 0 1px var(--line)" }}>
+    <div ref={ref} onPointerEnter={() => onHold(true)} onPointerLeave={() => onHold(false)} className="relative mb-8 h-[min(46vh,400px)] min-h-[280px] sm:h-[min(56vh,520px)] overflow-hidden rounded-[var(--radius-sheet)] bg-[#0b0b0c] text-white" style={{ boxShadow: "inset 0 0 0 1px var(--line)" }}>
       <AnimatePresence initial={false}>
         <motion.div key={obj.name} className="absolute inset-0" initial={{ opacity: 0, scale: 1.06 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0 }}
           transition={{ duration: 0.9, ease: [0.16, 1, 0.3, 1] }}>
@@ -191,6 +199,12 @@ function Billboard({ dir, obj, art, handlers }: { dir: string; obj: Obj; art?: A
               <button className="btn h-11 bg-white/12 px-4 text-white backdrop-blur-md hover:bg-white/20" onClick={() => useUi.getState().openDialog({ kind: "info", dir, obj })}>
                 <InfoIcon size={17} />详细信息
               </button>
+              {onShuffle && (
+                <motion.button className="btn h-11 bg-white/12 px-4 text-white backdrop-blur-md hover:bg-white/20" whileTap={{ scale: 0.95 }} transition={spring.snappy}
+                  onClick={onShuffle} aria-label="换一部">
+                  <ShuffleIcon size={17} />换一部
+                </motion.button>
+              )}
             </div>
           </motion.div>
         </AnimatePresence>
@@ -238,15 +252,45 @@ function ContinueRow({ dir, items, handlers }: { dir: string; items: Obj[]; hand
 export function Cinema({ dir, items, handlers, posters = {} }: { dir: string; items: Obj[]; handlers: TileHandlers; posters?: Record<string, Art> }) {
   const [shown, setShown] = useState(PAGE);
   const [focused, setFocused] = useState<Obj | null>(null);
+  // Random recommendations: things with TMDB art (a backdrop if any have one),
+  // else videos, else anything. A new pick on every visit and every ROTATE ms.
+  const pool = useMemo(() => {
+    const backdrops = items.filter(item => posters[item.name]?.backdrop);
+    if (backdrops.length) return backdrops;
+    const art = items.filter(item => posters[item.name]?.poster);
+    if (art.length) return art;
+    const videos = items.filter(item => kindOf(item) === "video");
+    return videos.length ? videos : items;
+  }, [items, posters]);
+  const [seed, setSeed] = useState(() => Math.random());
+  const [held, setHeld] = useState(false);
+  const reduced = useReducedMotion();
+  const shuffle = (): void => {
+    setFocused(null);
+    // Never the same one twice in a row.
+    setSeed(prev => {
+      if (pool.length < 2) return prev;
+      const current = Math.floor(prev * pool.length);
+      const next = (current + 1 + Math.floor(Math.random() * (pool.length - 1))) % pool.length;
+      return (next + Math.random() * 0.999) / pool.length;
+    });
+  };
+  const shuffleRef = useRef(shuffle);
+  shuffleRef.current = shuffle;
+  useEffect(() => {
+    if (held || focused || reduced || pool.length < 2) return;
+    const timer = window.setInterval(() => { if (!document.hidden) shuffleRef.current(); }, ROTATE);
+    return () => clearInterval(timer);
+  }, [held, focused, reduced, pool.length]);
   const featured = useMemo(() => {
     if (focused && items.some(item => item.name === focused.name)) return focused;
-    const recent = inProgress(dir).map(entry => items.find(item => item.name === entry.name)).find(Boolean);
-    return recent ?? items.find(item => posters[item.name]?.backdrop) ?? items.find(item => kindOf(item) === "video" && item.thumb) ?? items.find(item => kindOf(item) === "video") ?? items.find(item => item.is_dir) ?? items[0];
-  }, [focused, items, dir, posters]);
+    return pool[Math.min(pool.length - 1, Math.floor(seed * pool.length))];
+  }, [focused, items, pool, seed]);
 
   return (
     <div>
-      {featured && <Billboard dir={dir} obj={featured} art={posters[featured.name]} handlers={handlers} />}
+      {featured && <Billboard dir={dir} obj={featured} art={posters[featured.name]} handlers={handlers}
+        onShuffle={pool.length > 1 ? shuffle : undefined} onHold={setHeld} />}
       <ContinueRow dir={dir} items={items} handlers={handlers} />
       <section>
         <h3 className="mb-3 text-[17px] font-semibold tracking-tight">全部 <span className="ml-1 text-[13px] font-normal text-muted tabular">{items.length}</span></h3>

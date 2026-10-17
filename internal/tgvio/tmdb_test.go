@@ -54,3 +54,25 @@ func TestCleanPaths(t *testing.T) {
 		t.Fatalf("root swallows the rest: %v", got)
 	}
 }
+
+func TestCategoryOf(t *testing.T) {
+	cases := []struct {
+		kind   string
+		genres []int
+		want   string
+	}{
+		{"movie", []int{28, 12}, "movie"},
+		{"tv", []int{18}, "tv"},
+		{"tv", []int{16, 10759}, "anime"},
+		{"movie", []int{16, 10751}, "anime"},
+		{"tv", []int{10764}, "variety"},
+		{"tv", []int{10767, 35}, "variety"},
+		{"movie", []int{99}, "documentary"},
+		{"tv", []int{99}, "documentary"},
+	}
+	for _, c := range cases {
+		if got := CategoryOf(c.kind, c.genres); got != c.want {
+			t.Errorf("CategoryOf(%s, %v) = %s, want %s", c.kind, c.genres, got, c.want)
+		}
+	}
+}
