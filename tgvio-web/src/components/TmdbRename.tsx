@@ -156,7 +156,7 @@ export function TmdbRename({ targets: chosen, onClose }: { targets: RenameTarget
     const touched = new Set<string>();
     // Deepest folders first: renaming a folder moves everything below it.
     const order = [...sections].sort((a, b) => b.target.depth - a.target.depth);
-    for (const { target, files, folder } of order) {
+    for (const { target, files, folder, plan } of order) {
       const password = passwordFor(target.path);
       for (const item of files) {
         const key = rowKey(target.path, item.old);
@@ -177,7 +177,8 @@ export function TmdbRename({ targets: chosen, onClose }: { targets: RenameTarget
       if (folder?.new && !off.has(folderKey)) {
         setRows(prev => ({ ...prev, [folderKey]: { status: "busy" } }));
         try {
-          const out = await tmdbRename.apply(target.path, password, [], folder.new);
+          const subject = plan?.subject ? { kind: plan.subject.kind, id: plan.subject.id, season: plan.season || undefined } : undefined;
+          const out = await tmdbRename.apply(target.path, password, [], folder.new, subject);
           if (out.results[0]?.error) throw new Error(out.results[0].error);
           done++;
           const moved = out.path || join(parent(target.path), folder.new);
