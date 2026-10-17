@@ -24,8 +24,10 @@ import (
 type renamePlanReq struct {
 	Path     string   `json:"path"`
 	Password string   `json:"password"`
-	Only     []string `json:"only"` // chosen files: each named by its own match, folder name kept
+	Only     []string `json:"only"`   // chosen files: each named by its own match, folder name kept
 	Season   int      `json:"season"` // name episodes under this season (0: from the folder)
+	// Inherit: the folder above was planned as this (a subfolder of a series or film being renamed whole).
+	Inherit *tgvio.RenameInherit `json:"inherit"`
 }
 
 // renameFolder checks that the user may rename inside a folder and returns its
@@ -82,13 +84,85 @@ func TgvioRenamePlan(c *gin.Context) {
 	if len(req.Only) > 0 {
 		plan, err = posters().PlanFiles(c.Request.Context(), reqPath, entries, req.Only, req.Season)
 	} else {
-		plan, err = posters().PlanRename(c.Request.Context(), reqPath, entries, req.Season)
+		plan, err = posters().PlanRenameIn(c.Request.Context(), reqPath, entries, req.Season, req.Inherit)
 	}
 	if err != nil {
 		common.ErrorResp(c, err, 500)
 		return
 	}
-	common.SuccessResp(c, gin.H{"subject": toPosterOut(plan.Subject), "season": plan.Season, "items": plan.Items, "reason": plan.Reason})
+	common.SuccessResp(c, gin.H{"subject": toPosterOut(plan.Subject), "season": plan.Season, "items": plan.Items, "reason": plan.Reason,
+		"need": plan.Need, "inherited": plan.Inherited})
+}
+
+type renameTreeReq struct {
+	Path     string `json:"path"`
+	Password string `json:"password"`
+}
+
+type renameTreeFolder struct {
+	Path  string `json:"path"`
+	Depth int    `json:"depth"`
+}
+
+const (
+	renameTreeDepth   = 4
+	renameTreeFolders = 80
+)
+
+// TgvioRenameTree: POST /api/tgvio/rename/tree {path} lists the folder and the
+// subfolders below it that hold videos or subtitles (a series' seasons, a
+// "Subs" folder), parents first, up to four levels and 80 folders. Listings
+// are the cached ones the browser uses.
+func TgvioRenameTree(c *gin.Context) {
+	var req renameTreeReq
+	if err := c.ShouldBindJSON(&req); err != nil {
+		common.ErrorResp(c, err, 400)
+		return
+	}
+	reqPath, ok := renameFolder(c, req.Path, req.Password)
+	if !ok {
+		return
+	}
+	user := c.Request.Context().Value(conf.UserKey).(*model.User)
+	shown := func(p string) string {
+		out, _ := user.ShowPath(p)
+		return out
+	}
+	folders := []renameTreeFolder{{Path: shown(reqPath), Depth: 0}}
+	type level struct {
+		path  string
+		depth int
+	}
+	queue := []level{{reqPath, 0}}
+	for len(queue) > 0 && len(folders) < renameTreeFolders {
+		here := queue[0]
+		queue = queue[1:]
+		objs, err := fs.List(c.Request.Context(), here.path, &fs.ListArgs{})
+		if err != nil {
+			if here.depth == 0 {
+				common.ErrorResp(c, err, 500)
+				return
+			}
+			continue
+		}
+		for _, obj := range objs {
+			if !obj.IsDir() || here.depth+1 > renameTreeDepth || tgvio.Skip(obj.GetName()) {
+				continue
+			}
+			sub := stdpath.Join(here.path, obj.GetName())
+			queue = append(queue, level{sub, here.depth + 1})
+		}
+		if here.depth == 0 {
+			continue
+		}
+		for _, obj := range objs {
+			if !obj.IsDir() && tgvio.RenameWorthy(obj.GetName()) {
+				folders = append(folders, renameTreeFolder{Path: shown(here.path), Depth: here.depth})
+				break
+			}
+		}
+	}
+	common.SuccessResp(c, gin.H{"folders": folders})
 }
 
 type renameApplyItem struct {

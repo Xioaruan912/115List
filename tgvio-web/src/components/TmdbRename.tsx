@@ -1,10 +1,10 @@
 import { CheckIcon, FilmSlateIcon, SealCheckIcon, SubtitlesIcon, FolderSimpleIcon, FilmStripIcon, WarningIcon } from "@phosphor-icons/react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { AnimatePresence, motion } from "motion/react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
 import { posters, posterSrc } from "../api/posters";
-import { tmdbRename, type RenameItem, type RenamePlan } from "../api/rename";
+import { tmdbRename, type RenameInherit, type RenameItem, type RenamePlan } from "../api/rename";
 import { passwordFor } from "../hooks/useDir";
 import * as actions from "../lib/actions";
 import { reason } from "../lib/errors";
@@ -21,6 +21,9 @@ import { Sheet } from "./Sheet";
  * or drop rows; applying renames one row at a time and each new name flips into
  * place as the drive confirms it. Nothing changes before "整理". Several folders
  * (a multi-selection) are planned one after another, each under its own poster.
+ * A folder brings its subfolders along (a series' seasons, a "Subs" folder):
+ * they are planned after it and, when they name nothing themselves, after it.
+ * A season nothing pins down waits for the person to pick it.
  */
 const WHY: Record<NonNullable<RenameItem["reason"]>, string> = {
   same: "已经是规整的名字",
@@ -28,12 +31,17 @@ const WHY: Record<NonNullable<RenameItem["reason"]>, string> = {
   several: "文件夹里有好几部，分不清",
   conflict: "会和别的文件重名",
   unknown: "TMDB 上没认出来",
+  "pick-season": "先在上面选是第几季",
+  inner: "子文件夹，名字保留",
 };
 
 type RowState = { status: "busy" } | { status: "done" } | { status: "error"; message: string };
 
 /** A folder to plan; `only` limits it to chosen files (and their subtitles), leaving the folder's name alone. */
 export interface RenameTarget { path: string; only?: string[] }
+
+/** A folder of the sheet: a target, or a subfolder found below one (depth > 0). */
+interface Entry extends RenameTarget { depth: number }
 
 type Loaded = { status: "loading" } | { status: "ok"; plan: RenamePlan } | { status: "error"; error: unknown };
 
@@ -48,38 +56,75 @@ function filesOf(plan: RenamePlan, only?: string[]): RenameItem[] {
   return files.filter(item => picked.has(item.old) || (item.kind === "subtitle" && bases.some(base => item.old.startsWith(base))));
 }
 
-export function TmdbRename({ targets, onClose }: { targets: RenameTarget[]; onClose: () => void }) {
+/** The nearest folder above `path` in the sheet that found a film or series. */
+function inheritFor(path: string, list: Entry[], plans: Record<string, Loaded>): RenameInherit | undefined {
+  let best: { at: string; plan: RenamePlan } | undefined;
+  for (const entry of list) {
+    const state = plans[entry.path];
+    if (entry.only || !path.startsWith(entry.path + "/") || state?.status !== "ok") continue;
+    if (!state.plan.subject || state.plan.reason) continue;
+    if (!best || entry.path.length > best.at.length) best = { at: entry.path, plan: state.plan };
+  }
+  return best?.plan.subject ? { kind: best.plan.subject.kind, id: best.plan.subject.id, season: best.plan.season || undefined } : undefined;
+}
+
+export function TmdbRename({ targets: chosen, onClose }: { targets: RenameTarget[]; onClose: () => void }) {
   const client = useQueryClient();
   const [location, navigate] = useLocation();
-  const [loaded, setLoaded] = useState<Record<string, Loaded>>({});
+  const [targets, setTargets] = useState<Entry[]>([]);
+  const [expanding, setExpanding] = useState(true);
+  const [loaded, setLoadedState] = useState<Record<string, Loaded>>({});
+  const plansRef = useRef<Record<string, Loaded>>({});
+  const setLoaded = useCallback((update: (prev: Record<string, Loaded>) => Record<string, Loaded>): void => {
+    plansRef.current = update(plansRef.current);
+    setLoadedState(plansRef.current);
+  }, []);
   const [off, setOff] = useState<Set<string>>(new Set());
   const [rows, setRows] = useState<Record<string, RowState>>({});
   const [running, setRunning] = useState(false);
   const [finished, setFinished] = useState(false);
-  const multi = targets.length > 1;
+  const multi = targets.length > 1 || chosen.length > 1;
   const folderCount = targets.filter(target => !target.only).length;
   const fileCount = targets.reduce((sum, target) => sum + (target.only?.length ?? 0), 0);
   const title = !multi && folderCount ? "按 TMDB 整理命名"
     : `按 TMDB 整理${[folderCount ? ` ${folderCount} 个文件夹` : "", fileCount ? ` ${fileCount} 个文件` : ""].filter(Boolean).join(" 和")}`;
 
-  // Plans load one folder after another: TMDB is asked a few times per folder.
-  const load = useCallback(async (list: RenameTarget[], alive: () => boolean, season?: number): Promise<void> => {
+  // Plans load one folder after another, parents before their subfolders:
+  // TMDB is asked a few times per folder, and a subfolder goes by its parent.
+  const load = useCallback(async (list: Entry[], all: Entry[], alive: () => boolean, season?: number): Promise<void> => {
     for (const target of list) {
       if (!alive()) return;
       setLoaded(prev => ({ ...prev, [target.path]: { status: "loading" } }));
       try {
-        const plan = await tmdbRename.plan(target.path, passwordFor(target.path), target.only, season);
+        const inherit = target.depth > 0 ? inheritFor(target.path, all, plansRef.current) : undefined;
+        const plan = await tmdbRename.plan(target.path, passwordFor(target.path), target.only, season, inherit);
         if (alive()) setLoaded(prev => ({ ...prev, [target.path]: { status: "ok", plan } }));
       } catch (error) {
         if (alive()) setLoaded(prev => ({ ...prev, [target.path]: { status: "error", error } }));
       }
     }
-  }, []);
+  }, [setLoaded]);
   useEffect(() => {
     let alive = true;
-    void load(targets, () => alive);
+    void (async () => {
+      const all: Entry[] = [];
+      for (const target of chosen) {
+        if (target.only) { all.push({ ...target, depth: 0 }); continue; }
+        try {
+          const { folders } = await tmdbRename.tree(target.path, passwordFor(target.path));
+          const seen = new Set(all.map(entry => entry.path));
+          for (const folder of folders) if (!seen.has(folder.path)) all.push({ path: folder.path, depth: folder.depth });
+        } catch {
+          all.push({ ...target, depth: 0 });
+        }
+      }
+      if (!alive) return;
+      setTargets(all);
+      setExpanding(false);
+      await load(all, all, () => alive);
+    })();
     return () => { alive = false; };
-  }, [targets, load]);
+  }, [chosen, load]);
 
   const sections = targets.map(target => {
     const state = loaded[target.path];
@@ -93,7 +138,8 @@ export function TmdbRename({ targets, onClose }: { targets: RenameTarget[]; onCl
     ...files.filter(item => item.new).map(item => rowKey(target.path, item.old)),
   ]);
   const count = keys.filter(key => !off.has(key)).length;
-  const ready = sections.filter(section => section.state && section.state.status !== "loading").length;
+  const ready = expanding ? 0 : sections.filter(section => section.state && section.state.status !== "loading").length;
+  const waiting = sections.filter(section => section.plan?.need === "season").length;
   const anything = keys.length > 0;
 
   const toggle = (key: string): void => setOff(prev => {
@@ -108,7 +154,9 @@ export function TmdbRename({ targets, onClose }: { targets: RenameTarget[]; onCl
     let failed = 0;
     let here = decodeURIComponent(location);
     const touched = new Set<string>();
-    for (const { target, files, folder } of sections) {
+    // Deepest folders first: renaming a folder moves everything below it.
+    const order = [...sections].sort((a, b) => b.target.depth - a.target.depth);
+    for (const { target, files, folder } of order) {
       const password = passwordFor(target.path);
       for (const item of files) {
         const key = rowKey(target.path, item.old);
@@ -163,6 +211,15 @@ export function TmdbRename({ targets, onClose }: { targets: RenameTarget[]; onCl
   };
 
   const single = !multi ? sections[0] : null;
+  const rootOf = (path: string): string => chosen.find(target => path === target.path || path.startsWith(target.path + "/"))?.path ?? path;
+  const label = (target: Entry): string => target.depth > 0 ? basename(rootOf(target.path)) + target.path.slice(rootOf(target.path).length) : basename(target.path);
+  const replan = (target: Entry, season: number): void => {
+    const below = targets.filter(entry => entry.path.startsWith(target.path + "/") && plansRef.current[entry.path]?.status === "ok"
+      && (plansRef.current[entry.path] as { plan: RenamePlan }).plan.inherited);
+    const prefixes = [target, ...below].map(entry => entry.path + "\n");
+    setOff(prev => new Set([...prev].filter(key => !prefixes.some(prefix => key.startsWith(prefix)))));
+    void load([target], targets, () => true, season).then(() => load(below, targets, () => true));
+  };
   const footer = (multi ? ready > 0 : single?.plan && !single.plan.reason) && (anything || finished) ? (
     <>
       {!finished && keys.length > 1 && (
@@ -182,10 +239,14 @@ export function TmdbRename({ targets, onClose }: { targets: RenameTarget[]; onCl
 
   return (
     <Sheet open onClose={close} title={title} width={640} footer={footer}>
+      {expanding && !multi && <PlanSkeleton />}
       {multi && (
         <p className="mb-4 flex items-center gap-2 text-[12.5px] text-faint">
           {ready < targets.length && <span className="loader-bars -my-2 scale-50" aria-hidden><i /><i /><i /><i /></span>}
-          {ready < targets.length ? `正在向 TMDB 查询，${ready}/${targets.length}` : "名字来自 TMDB。逐条看一眼，不要的点掉。"}
+          {expanding ? "正在看有哪些子文件夹…"
+            : ready < targets.length ? `正在向 TMDB 查询，${ready}/${targets.length}`
+            : waiting ? `有 ${waiting} 个文件夹要先选是第几季，其余的可以直接整理`
+            : "名字来自 TMDB。逐条看一眼，不要的点掉。"}
         </p>
       )}
       <div className={multi ? "flex flex-col gap-7" : ""}>
@@ -193,13 +254,13 @@ export function TmdbRename({ targets, onClose }: { targets: RenameTarget[]; onCl
           <section key={target.path}>
             {(!state || state.status === "loading") && <PlanSkeleton compact={multi} />}
             {state?.status === "error" && (
-              <ErrorState compact error={state.error} onRetry={() => void load([target], () => true)} />
+              <ErrorState compact error={state.error} onRetry={() => void load([target], targets, () => true)} />
             )}
             {plan?.reason === "no-match" && (multi ? (
               <div className="flex items-center gap-3 rounded-[14px] bg-surface px-4 py-3 hairline">
                 <FilmSlateIcon size={20} className="shrink-0 text-faint" />
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-[13.5px] font-medium">{basename(target.path)}</p>
+                  <p className="truncate text-[13.5px] font-medium">{label(target)}</p>
                   <p className="text-[12.5px] text-faint">TMDB 上没认出来，先「更换封面」选对再整理</p>
                 </div>
               </div>
@@ -213,12 +274,9 @@ export function TmdbRename({ targets, onClose }: { targets: RenameTarget[]; onCl
                 </button>
               </div>
             ))}
-            {plan && !plan.reason && plan.subject?.kind === "tv" && (
+            {plan && !plan.reason && plan.subject?.kind === "tv" && files.some(item => item.kind === "video") && (
               <SeasonPicker id={plan.subject.id} current={plan.season ?? 0} disabled={running || finished}
-                onPick={season => {
-                  setOff(prev => new Set([...prev].filter(key => !key.startsWith(target.path + "\n"))));
-                  void load([target], () => true, season);
-                }} />
+                ask={plan.need === "season"} onPick={season => replan(target, season)} />
             )}
             {plan && !plan.reason && (!plan.subject || target.only) && (
               <>
@@ -248,12 +306,13 @@ export function TmdbRename({ targets, onClose }: { targets: RenameTarget[]; onCl
                     <p className={`truncate font-semibold tracking-tight ${multi ? "text-[14.5px]" : "text-[16px]"}`}>{plan.subject.title}</p>
                     <p className="mt-0.5 truncate text-[12.5px] text-muted">
                       {plan.subject.kind === "tv" ? "剧集" : "电影"}{plan.subject.year ? ` · ${plan.subject.year}` : ""}{plan.subject.season ? ` · 第 ${plan.subject.season} 季` : ""}
-                      {multi && <span className="text-faint"> · {basename(target.path)}</span>}
+                      {multi && <span className="text-faint"> · {label(target)}</span>}
+                      {plan.inherited && <span className="text-faint"> · 跟随上级</span>}
                     </p>
                     {!multi && <p className="mt-1.5 text-[12.5px] text-faint">名字来自 TMDB。逐条看一眼，不要的点掉。</p>}
                   </div>
                 </motion.div>
-                {!files.some(item => item.new) && !folder ? (
+                {!files.some(item => item.new) && !folder && plan.need !== "season" ? (
                   <div className={`${multi ? "mt-3" : "mt-6"} flex items-center gap-2.5 rounded-[14px] bg-surface px-4 py-3 text-[13.5px] hairline`}>
                     <SealCheckIcon size={18} className="text-accent-text" weight="fill" />这里的名字已经很规整了
                   </div>
@@ -286,13 +345,16 @@ export function TmdbRename({ targets, onClose }: { targets: RenameTarget[]; onCl
  * name) by default; a wrong guess, or names given under a wrong season before,
  * are put right by choosing another one here, which plans the folder again.
  */
-function SeasonPicker({ id, current, disabled, onPick }: { id: number; current: number; disabled: boolean; onPick: (season: number) => void }) {
+function SeasonPicker({ id, current, disabled, ask, onPick }: { id: number; current: number; disabled: boolean; ask?: boolean; onPick: (season: number) => void }) {
   const seasons = useQuery({ queryKey: ["poster-seasons", id], queryFn: () => posters.seasons(id), staleTime: 10 * 60_000, retry: false });
   const list = (seasons.data ?? []).filter(item => item.season > 0);
   if (list.length < 2) return null;
   return (
-    <div className="order-first mb-3 flex flex-wrap items-center gap-1.5 text-[12.5px]">
-      <span className="mr-1 text-faint">按哪一季命名</span>
+    <motion.div className={`order-first mb-3 flex flex-wrap items-center gap-1.5 text-[12.5px] ${ask ? "rounded-[14px] bg-surface px-3 py-2.5 hairline" : ""}`}
+      initial={ask ? { opacity: 0, y: -6 } : false} animate={{ opacity: 1, y: 0 }} transition={spring.soft}>
+      <span className={`mr-1 ${ask ? "w-full pb-1 font-medium text-ink" : "text-faint"}`}>
+        {ask ? "这部剧有好几季，这个文件夹是第几季？选好就给出名字" : "按哪一季命名"}
+      </span>
       {list.map(item => {
         const on = item.season === current;
         return (
@@ -303,7 +365,7 @@ function SeasonPicker({ id, current, disabled, onPick }: { id: number; current: 
           </motion.button>
         );
       })}
-    </div>
+    </motion.div>
   );
 }
 
