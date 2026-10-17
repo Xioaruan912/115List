@@ -32,7 +32,13 @@ type DownloadTask struct {
 	callStatusRetried int
 }
 
-func (t *DownloadTask) Run() error {
+func (t *DownloadTask) Run() (err error) {
+	defer func() {
+		if err != nil {
+			// The reason otherwise lives only in the in-memory task list.
+			log.Warnf("offline download %s with %s to %s failed: %v", t.ID, t.Toolname, t.DstDirPath, err)
+		}
+	}()
 	t.ClearEndTime()
 	t.SetStartTime(time.Now())
 	defer func() { t.SetEndTime(time.Now()) }()
