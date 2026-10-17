@@ -9,7 +9,7 @@ import { apiBase } from "../lib/config";
 import { absolute } from "../lib/links";
 import { spring } from "../lib/motion";
 import { formatClock, resumeAt, saveProgress } from "../lib/progress";
-import { setSubtitlesOff, subtitlesOff, type SubtitleTrack } from "../lib/subtitles";
+import { setSubtitlesOff, subtitlesOff, takePreferred, type SubtitleTrack } from "../lib/subtitles";
 import { NextUp, type NextEpisode } from "./NextUp";
 import { SubtitleLayer, SubtitleMenu } from "./Subtitles";
 import { useUi } from "../stores/ui";
@@ -146,12 +146,14 @@ function Scrubber({ video, time, duration, buffered, onSeek, onScrub }: {
 // Moving on to the next episode replaces the player; a fullscreen one asks the next to go fullscreen too.
 let carryFullscreen = false;
 
-export function VideoPlayer({ path, src, fallback, thumb, chrome, cloud, subtitles, next, onAspect, onDownload, onCopy }: {
+export function VideoPlayer({ path, src, fallback, thumb, chrome, cloud, subtitles, next, onSearchSubtitles, onAspect, onDownload, onCopy }: {
   path: string;
   /** Subtitle files beside the video and how to read one. */
   subtitles?: { tracks: SubtitleTrack[]; urlOf: (name: string) => string };
   /** The next episode of the folder, offered when this one ends. */
   next?: NextEpisode;
+  /** Open the online subtitle search for this video. */
+  onSearchSubtitles?: () => void;
   /** Asks for the drive's own transcodes (115); absent for other storages. */
   cloud?: () => Promise<CloudVideo>;
   src: string;
@@ -209,6 +211,12 @@ export function VideoPlayer({ path, src, fallback, thumb, chrome, cloud, subtitl
   const tracks = subtitles?.tracks ?? [];
   const [trackName, setTrackName] = useState<string | null>(() => (subtitlesOff() ? null : tracks[0]?.name ?? null));
   const track = tracks.find(item => item.name === trackName) ?? null;
+  // A subtitle saved from the online search shows as soon as the folder lists it.
+  const trackNames = tracks.map(item => item.name).join("\n");
+  useEffect(() => {
+    const saved = takePreferred(trackNames.split("\n"));
+    if (saved) setTrackName(saved);
+  }, [trackNames]);
   const [subDelay, setSubDelay] = useState(0);
   const [subMenu, setSubMenu] = useState(false);
   const [ended, setEnded] = useState(false);
@@ -682,7 +690,14 @@ export function VideoPlayer({ path, src, fallback, thumb, chrome, cloud, subtitl
             <SubtitleMenu tracks={tracks} current={track} delay={subDelay} open={subMenu}
               onOpen={open => { setSubMenu(open); if (open) { setSpeedMenu(false); setQualityMenu(false); } }}
               onPick={picked => { setTrackName(picked?.name ?? null); setSubtitlesOff(!picked); setSubMenu(false); }}
-              onDelay={value => setSubDelay(Math.round(value * 10) / 10)} />
+              onDelay={value => setSubDelay(Math.round(value * 10) / 10)}
+              onSearch={onSearchSubtitles ? () => {
+                setSubMenu(false);
+                video()?.pause();
+                // The search sheet cannot show over fullscreen: step out of it first.
+                if (document.fullscreenElement) void document.exitFullscreen().catch(() => undefined);
+                onSearchSubtitles();
+              } : undefined} />
             {next && <IconButton label="下一集" onClick={playNext}><SkipForwardIcon size={19} weight="fill" /></IconButton>}
             {pip && <IconButton label="画中画" onClick={() => { const v = video(); if (v) void (document.pictureInPictureElement ? document.exitPictureInPicture() : v.requestPictureInPicture()).catch(() => undefined); }}><PictureInPictureIcon size={19} /></IconButton>}
             <IconButton label={fullscreen ? "退出全屏" : "全屏"} onClick={toggleFullscreen}>{fullscreen ? <CornersInIcon size={19} /> : <CornersOutIcon size={19} />}</IconButton>

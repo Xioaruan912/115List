@@ -1,4 +1,4 @@
-import { CheckIcon, MinusIcon, PlusIcon, SubtitlesIcon, SubtitlesSlashIcon } from "@phosphor-icons/react";
+import { CheckIcon, MagnifyingGlassIcon, MinusIcon, PlusIcon, SubtitlesIcon, SubtitlesSlashIcon } from "@phosphor-icons/react";
 import { useQuery } from "@tanstack/react-query";
 import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -86,7 +86,7 @@ function CueLayer({ video, content, delay, lifted }: { video: HTMLVideoElement; 
 }
 
 /** The CC button and its menu: tracks, off, and a delay nudge for files out of sync. */
-export function SubtitleMenu({ tracks, current, delay, open, onOpen, onPick, onDelay }: {
+export function SubtitleMenu({ tracks, current, delay, open, onOpen, onPick, onDelay, onSearch }: {
   tracks: SubtitleTrack[];
   /** The track showing, or null when off. */
   current: SubtitleTrack | null;
@@ -95,8 +95,10 @@ export function SubtitleMenu({ tracks, current, delay, open, onOpen, onPick, onD
   onOpen: (open: boolean) => void;
   onPick: (track: SubtitleTrack | null) => void;
   onDelay: (delay: number) => void;
+  /** Look for subtitles online (射手网); absent when not set up or the folder is read-only. */
+  onSearch?: () => void;
 }) {
-  if (!tracks.length) return null;
+  if (!tracks.length && !onSearch) return null;
   const Icon = current ? SubtitlesIcon : SubtitlesSlashIcon;
   const row = "flex w-full items-center justify-between gap-3 rounded-[8px] px-3 py-1.5 text-left text-[13px] hover:bg-white/12";
   return (
@@ -119,9 +121,20 @@ export function SubtitleMenu({ tracks, current, delay, open, onOpen, onPick, onD
                 </button>
               );
             })}
-            <button className={`${row} ${current ? "text-white" : "text-accent"}`} onClick={() => onPick(null)}>
-              关闭{!current && <CheckIcon size={12} />}
-            </button>
+            {tracks.length > 0 && (
+              <button className={`${row} ${current ? "text-white" : "text-accent"}`} onClick={() => onPick(null)}>
+                关闭{!current && <CheckIcon size={12} />}
+              </button>
+            )}
+            {!tracks.length && <p className="px-3 pb-1 text-[12.5px] text-white/55">这个视频旁边没有字幕</p>}
+            {onSearch && (
+              <>
+                <div className="mx-2 my-1 h-px bg-white/10" />
+                <button className={`${row} text-white`} onClick={onSearch}>
+                  <span className="flex items-center gap-2"><MagnifyingGlassIcon size={13} />在线搜索字幕…</span>
+                </button>
+              </>
+            )}
             {current && (
               <>
                 <div className="mx-2 my-1 h-px bg-white/10" />

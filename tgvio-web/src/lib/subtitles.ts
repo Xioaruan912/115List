@@ -114,6 +114,19 @@ export function cuesAt(cues: Cue[], time: number): Cue[] {
   return out;
 }
 
+let preferred = "";
+
+/** A subtitle just saved: the player picks it as soon as the folder lists it. */
+export function preferSubtitle(name: string): void { preferred = name; setSubtitlesOff(false); }
+
+/** Takes the preferred subtitle when it is among `names`. */
+export function takePreferred(names: string[]): string | null {
+  if (!preferred || !names.includes(preferred)) return null;
+  const name = preferred;
+  preferred = "";
+  return name;
+}
+
 const OFF_KEY = "tgvio-web:subtitles-off";
 
 /** Whether the person turned subtitles off (remembered across videos). */

@@ -18,6 +18,7 @@ import { extname, join } from "../lib/path";
 import { can, Perm } from "../lib/perm";
 import { sortObjs } from "../lib/sort";
 import { subtitlesFor } from "../lib/subtitles";
+import { onlineSubtitles } from "../api/subtitles";
 import type { Obj } from "../lib/types";
 import { usePrefs } from "../stores/prefs";
 import { useSession } from "../stores/session";
@@ -215,7 +216,18 @@ function ViewerBody({ dir, name, origin }: { dir: string; name: string; origin: 
   const { w: vw, h: vh } = useViewport();
 
   const files = useMemo(() => sortObjs((list.data?.content ?? []).filter(item => !item.is_dir), sortKey, sortDesc), [list.data, sortKey, sortDesc]);
-  const [current, setCurrent] = useState(() => Math.max(0, files.findIndex(item => item.name === name)));
+  // The file on show is held by name: a listing that changes underneath (a
+  // subtitle saved beside the video, a rename, someone else's upload) must not
+  // move the viewer to whatever now sits at the same position.
+  const [shownName, setShownName] = useState(name);
+  const lastIndex = useRef(0);
+  const found = files.findIndex(item => item.name === shownName);
+  const current = found >= 0 ? found : Math.min(lastIndex.current, Math.max(0, files.length - 1));
+  lastIndex.current = current;
+  const setCurrent = useCallback((index: number): void => {
+    const item = files[index];
+    if (item) setShownName(item.name);
+  }, [files]);
   const [direction, setDirection] = useState(0);
   useEffect(() => {
     if (!list.data) return;
@@ -238,6 +250,9 @@ function ViewerBody({ dir, name, origin }: { dir: string; name: string; origin: 
     const byName = new Map(files.map(item => [item.name, item]));
     return { tracks, urlOf: (name: string) => proxyUrl(join(dir, name), byName.get(name) ?? { sign: "" }) };
   }, [videoName, files, dir]);
+  // Online subtitles: when 射手网 is set up and the folder takes new files.
+  const online = useQuery({ queryKey: ["subtitles-online"], queryFn: onlineSubtitles.status, staleTime: 10 * 60_000, enabled: kind === "video", retry: false });
+  const canSearchSubtitles = !!online.data?.enabled && can(me, Perm.Write, list.data?.write);
   const nextVideo = useMemo(() => {
     if (!videoName) return undefined;
     const videos = sortObjs(files.filter(item => kindOf(item) === "video"), "name", false);
@@ -487,6 +502,7 @@ function ViewerBody({ dir, name, origin }: { dir: string; name: string; origin: 
           >
             {kind === "image" && <ImageView key={obj.name} src={src} fallback={fallback} thumb={obj.thumb} zoom={zoom} panX={panX} panY={panY} onAspect={setAspect} />}
             {kind === "video" && <VideoPlayer key={obj.name} path={path} src={src} subtitles={subtitles}
+              onSearchSubtitles={canSearchSubtitles ? () => openDialog({ kind: "subtitle-search", path }) : undefined}
               next={nextVideo ? { title: nextVideo.name.replace(/\.[^.]+$/, ""), thumb: nextVideo.thumb, play: () => { resetZoom(); setDirection(1); setCurrent(files.indexOf(nextVideo)); } } : undefined} fallback={fallback} thumb={obj.thumb} chrome={chrome} onAspect={setAspect} cloud={cloudCapable ? () => cloudVideo(path, passwordFor(dir)) : undefined} onDownload={() => actions.download(dir, obj)} onCopy={() => void actions.copyLinks(dir, [obj])} />}
             {kind === "audio" && <AudioView obj={obj} src={src} />}
             {(kind === "text" || kind === "code" || kind === "markdown") && <TextView obj={obj} url={fallback} kind={kind} />}
