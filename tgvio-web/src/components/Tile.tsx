@@ -90,7 +90,7 @@ function useLongPress(onLong: (x: number, y: number) => void) {
 function Check({ on, visible }: { on: boolean; visible: boolean }) {
   return (
     <span
-      className={`grid size-[22px] place-items-center rounded-full transition-all duration-300 ease-[var(--ease-expo)] ${on ? "bg-accent text-accent-ink scale-100" : "bg-black/35 text-transparent ring-1 ring-white/70 backdrop-blur-sm"} ${visible || on ? "opacity-100" : "opacity-0 group-hover/tile:opacity-100"}`}
+      className={`grid size-[22px] place-items-center rounded-full transition duration-300 ease-[var(--ease-expo)] ${on ? "bg-accent text-accent-ink scale-100" : "bg-black/35 text-transparent ring-1 ring-white/70 backdrop-blur-sm"} ${visible || on ? "opacity-100" : "opacity-0 group-hover/tile:opacity-100"}`}
     >
       <CheckIcon size={13} weight="bold" className={`transition-transform duration-300 ${on ? "scale-100" : "scale-50"}`} />
     </span>
@@ -140,8 +140,8 @@ export const GridTile = memo(function GridTile({ obj, index, selected, selecting
         ) : obj.is_dir ? (
           <div className="absolute inset-0 grid place-items-center text-muted">
             <span className="relative block size-14">
-              <KindIcon kind="folder" weight="duotone" className="absolute inset-0 size-full transition-all duration-500 ease-[var(--ease-expo)] group-hover/tile:scale-75 group-hover/tile:opacity-0" />
-              <FolderOpenIcon weight="duotone" className="absolute inset-0 size-full scale-110 text-accent-text opacity-0 transition-all duration-500 ease-[var(--ease-expo)] group-hover/tile:scale-100 group-hover/tile:opacity-100" />
+              <KindIcon kind="folder" weight="duotone" className="absolute inset-0 size-full transition duration-500 ease-[var(--ease-expo)] group-hover/tile:scale-75 group-hover/tile:opacity-0" />
+              <FolderOpenIcon weight="duotone" className="absolute inset-0 size-full scale-110 text-accent-text opacity-0 transition duration-500 ease-[var(--ease-expo)] group-hover/tile:scale-100 group-hover/tile:opacity-100" />
             </span>
           </div>
         ) : (
@@ -217,7 +217,7 @@ export const ListRow = memo(function ListRow({ obj, index, selected, selecting, 
       <div className="flex min-w-0 items-center gap-3">
         <button type="button" className="relative grid size-8 shrink-0 place-items-center" aria-label={selected ? "取消选择" : "选择"}
           onClick={event => { event.stopPropagation(); handlers.onToggle(obj, event); }}>
-          <span data-thumb className={`grid size-8 place-items-center rounded-lg transition-all duration-300 ${selected || selecting ? "scale-0 opacity-0" : "group-hover/tile:scale-0 group-hover/tile:opacity-0"} ${obj.is_dir ? "text-ink group-hover/tile:text-accent-text" : "text-muted"}`}>
+          <span data-thumb className={`grid size-8 place-items-center rounded-lg transition duration-300 ${selected || selecting ? "scale-0 opacity-0" : "group-hover/tile:scale-0 group-hover/tile:opacity-0"} ${obj.is_dir ? "text-ink group-hover/tile:text-accent-text" : "text-muted"}`}>
             <KindIcon kind={kind} size={20} weight={obj.is_dir ? "duotone" : "regular"} />
           </span>
           <span className="absolute inset-0 grid place-items-center"><Check on={selected} visible={selecting} /></span>
@@ -238,7 +238,7 @@ export function PosterCover({ poster, small = false }: { poster: Poster; small?:
   const [loaded, setLoaded] = useState(false);
   const backdrop = posterSrc(poster.backdrop, undefined) || posterSrc(poster.poster, "w342");
   return (
-    <div className="poster-cover absolute inset-0 overflow-hidden bg-[#111114]">
+    <div className="poster-cover absolute inset-0 overflow-hidden bg-stage">
       <img src={backdrop} alt="" loading="lazy" decoding="async" draggable={false}
         className={`poster-backdrop absolute inset-0 size-full object-cover ${poster.backdrop ? "opacity-80" : "scale-125 opacity-60 blur-xl"}`} />
       <div className="absolute inset-0 bg-gradient-to-r from-black/75 via-black/25 to-transparent" />
@@ -299,8 +299,8 @@ function FolderGlyph({ kinds, small }: { kinds: Kind[]; small: boolean }) {
             </span>
           );
         })}
-        <KindIcon kind="folder" weight="duotone" className="absolute inset-0 size-full transition-all duration-500 ease-[var(--ease-expo)] group-hover/tile:scale-75 group-hover/tile:opacity-0" />
-        <FolderOpenIcon weight="duotone" className="absolute inset-0 size-full scale-110 text-accent-text opacity-0 transition-all duration-500 ease-[var(--ease-expo)] group-hover/tile:scale-100 group-hover/tile:opacity-100" />
+        <KindIcon kind="folder" weight="duotone" className="absolute inset-0 size-full transition duration-500 ease-[var(--ease-expo)] group-hover/tile:scale-75 group-hover/tile:opacity-0" />
+        <FolderOpenIcon weight="duotone" className="absolute inset-0 size-full scale-110 text-accent-text opacity-0 transition duration-500 ease-[var(--ease-expo)] group-hover/tile:scale-100 group-hover/tile:opacity-100" />
       </span>
     </div>
   );

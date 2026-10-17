@@ -92,7 +92,7 @@ function PathsEditor({ paths, onSave }: { paths: string[]; onSave: (paths: strin
           <motion.ul key="chips" className="mt-3 flex flex-wrap gap-2" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
             <AnimatePresence initial={false}>
               {paths.map(path => (
-                <motion.li key={path} layout initial={{ opacity: 0, scale: 0.7 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.6, transition: { duration: 0.16 } }} transition={spring.bouncy}
+                <motion.li key={path} layout initial={{ opacity: 0, scale: 0.7 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.6, transition: { duration: 0.16 } }} transition={spring.pop}
                   className="inline-flex items-center gap-1.5 rounded-full bg-accent-soft py-1.5 pl-3 pr-1.5 text-[13px] font-medium">
                   <FolderSimpleIcon size={14} weight="fill" className="text-accent-text" />
                   <span className="font-mono text-[12.5px]">{path === "/" ? "/（全部）" : path}</span>
@@ -166,7 +166,7 @@ export default function PosterSettings() {
         <div className="pointer-events-none absolute -right-10 -top-16 size-56 rounded-full bg-[radial-gradient(closest-side,var(--accent-soft),transparent)]" />
         <div className="relative flex items-start gap-4">
           <motion.span className="grid size-12 shrink-0 place-items-center rounded-2xl bg-accent text-accent-ink"
-            initial={{ rotate: -20, scale: 0.6 }} animate={{ rotate: 0, scale: 1 }} transition={{ ...spring.bouncy, delay: 0.1 }}>
+            initial={{ rotate: -20, scale: 0.6 }} animate={{ rotate: 0, scale: 1 }} transition={{ ...spring.pop, delay: 0.1 }}>
             <FilmSlateIcon size={24} weight="fill" />
           </motion.span>
           <div className="min-w-0 flex-1">
@@ -198,7 +198,7 @@ export default function PosterSettings() {
           <div className="flex flex-wrap items-center gap-2">
             <button className="btn btn-line h-9 px-3.5 text-[13px]" disabled={!data.token_set || test.state === "busy"} onClick={() => void runTest()}>
               <AnimatePresence mode="popLayout" initial={false}>
-                <motion.span key={test.state} className="inline-flex items-center gap-1.5" initial={{ scale: 0.6, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.6, opacity: 0 }} transition={spring.bouncy}>
+                <motion.span key={test.state} className="inline-flex items-center gap-1.5" initial={{ scale: 0.6, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.6, opacity: 0 }} transition={spring.pop}>
                   {test.state === "busy" ? <><ArrowsClockwiseIcon size={15} className="spin" />测试中</>
                     : test.state === "ok" ? <><CheckIcon size={15} weight="bold" className="text-accent-text" />连接正常</>
                     : <><PlugsConnectedIcon size={15} />测试连接</>}
@@ -235,7 +235,7 @@ export default function PosterSettings() {
                 <button key={value} type="button" role="radio" aria-checked={active}
                   className={`relative h-8 rounded-[9px] px-3 text-[12.5px] font-medium transition-colors ${active ? "text-ink" : "text-muted hover:text-ink"}`}
                   onClick={() => { if (!active) void save({ config: { ...config, language: value } }, `已改为${label}`); }}>
-                  {active && <motion.span layoutId="poster-language" className="absolute inset-0 rounded-[9px] bg-raised" style={{ boxShadow: "var(--shadow-lift)" }} transition={spring.bouncy} />}
+                  {active && <motion.span layoutId="poster-language" className="absolute inset-0 rounded-[9px] bg-raised" style={{ boxShadow: "var(--shadow-lift)" }} transition={spring.pop} />}
                   <span className="relative">{label}</span>
                 </button>
               );
@@ -270,7 +270,7 @@ export default function PosterSettings() {
         <motion.ul className="mt-3 flex flex-wrap gap-2" initial="hidden" animate="shown" variants={{ shown: { transition: { staggerChildren: 0.02 } } }}>
           <AnimatePresence initial={false}>
             {unmatched.map(name => (
-              <motion.li key={name} layout variants={{ hidden: { opacity: 0, scale: 0.8, y: 8 }, shown: { opacity: 1, scale: 1, y: 0, transition: spring.bouncy } }}
+              <motion.li key={name} layout variants={{ hidden: { opacity: 0, scale: 0.8, y: 8 }, shown: { opacity: 1, scale: 1, y: 0, transition: spring.pop } }}
                 exit={{ opacity: 0, scale: 0.6, transition: { duration: 0.18 } }}
                 className="group inline-flex max-w-[22rem] items-center rounded-full bg-surface text-[13px] hairline transition-colors hover:bg-accent-soft">
                 <button className="inline-flex min-w-0 items-center gap-1.5 py-1.5 pl-3 pr-1" onClick={() => useUi.getState().openDialog({ kind: "poster", name })} title={`给「${name}」挑海报`}>

@@ -124,7 +124,7 @@ const Poster = memo(function Poster({ dir, obj, art, index, handlers, onFocus }:
         )}
         <div className="pointer-events-none absolute inset-0 rounded-[12px]" style={{ boxShadow: "inset 0 0 0 1px rgb(255 255 255 / 0.08)" }} />
         <motion.div className="pointer-events-none absolute inset-0 opacity-0 mix-blend-overlay transition-opacity duration-300 group-hover/poster:opacity-100" style={{ background: glare }} />
-        <span className="absolute left-2 top-2 grid size-7 place-items-center rounded-full bg-black/45 text-white opacity-0 backdrop-blur-md transition-all duration-300 group-hover/poster:opacity-100 [@media(hover:none)]:opacity-100">
+        <span className="absolute left-2 top-2 grid size-7 place-items-center rounded-full bg-black/45 text-white opacity-0 backdrop-blur-md transition duration-300 group-hover/poster:opacity-100 [@media(hover:none)]:opacity-100">
           {obj.is_dir ? <FolderSimpleIcon size={13} weight="fill" /> : kind === "video" ? <PlayIcon size={12} weight="fill" /> : <KindIcon kind={kind} size={13} weight="bold" />}
         </span>
         {seen > 0 && (
@@ -161,7 +161,7 @@ function Billboard({ dir, obj, art, handlers, onShuffle, onHold }: {
     ? [art.year ? String(art.year) : "", art.kind === "tv" ? "剧集" : "电影", obj.is_dir ? "" : formatBytes(obj.size)].filter(Boolean)
     : [obj.is_dir ? "文件夹" : extname(obj.name).toUpperCase(), obj.is_dir ? "" : formatBytes(obj.size), formatDate(obj.modified)].filter(Boolean);
   return (
-    <div ref={ref} onPointerEnter={() => onHold(true)} onPointerLeave={() => onHold(false)} className="relative mb-8 h-[min(46vh,400px)] min-h-[280px] sm:h-[min(56vh,520px)] overflow-hidden rounded-[var(--radius-sheet)] bg-[#0b0b0c] text-white" style={{ boxShadow: "inset 0 0 0 1px var(--line)" }}>
+    <div ref={ref} onPointerEnter={() => onHold(true)} onPointerLeave={() => onHold(false)} className="relative mb-8 h-[min(46vh,400px)] min-h-[280px] sm:h-[min(56vh,520px)] overflow-hidden rounded-[var(--radius-sheet)] bg-stage text-white" style={{ boxShadow: "inset 0 0 0 1px var(--line)" }}>
       <AnimatePresence initial={false}>
         <motion.div key={obj.name} className="absolute inset-0" initial={{ opacity: 0, scale: 1.06 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0 }}
           transition={{ duration: 0.9, ease: [0.16, 1, 0.3, 1] }}>
@@ -175,8 +175,8 @@ function Billboard({ dir, obj, art, handlers, onShuffle, onHold }: {
           </div>
         </motion.div>
       </AnimatePresence>
-      <div className="absolute inset-0 bg-gradient-to-t from-[#0b0b0c] via-[#0b0b0c]/45 to-transparent" />
-      <div className="absolute inset-0 bg-gradient-to-r from-[#0b0b0c]/90 via-[#0b0b0c]/35 to-transparent max-sm:hidden" />
+      <div className="absolute inset-0 bg-gradient-to-t from-stage via-stage/45 to-transparent" />
+      <div className="absolute inset-0 bg-gradient-to-r from-stage/90 via-stage/35 to-transparent max-sm:hidden" />
       <div className="absolute inset-x-0 bottom-0 p-5 sm:max-w-[62%] sm:p-9">
         <AnimatePresence mode="wait" initial={false}>
           <motion.div key={obj.name} initial={{ opacity: 0, y: 18, filter: "blur(8px)" }} animate={{ opacity: 1, y: 0, filter: "blur(0px)" }} exit={{ opacity: 0, y: -10, filter: "blur(6px)" }}
@@ -231,7 +231,7 @@ function ContinueRow({ dir, items, handlers }: { dir: string; items: Obj[]; hand
             <div data-thumb className="relative aspect-video overflow-hidden rounded-[12px] bg-surface" style={{ boxShadow: "inset 0 0 0 1px var(--line)" }}>
               {obj.thumb ? <img src={obj.thumb} alt="" loading="lazy" referrerPolicy="no-referrer" className="size-full object-cover transition-transform duration-700 ease-[var(--ease-expo)] group-hover/cont:scale-105" />
                 : <NamedPoster title={titleOf(obj)} caption="" />}
-              <span className="absolute inset-0 grid place-items-center bg-black/25 opacity-0 transition-opacity duration-300 group-hover/cont:opacity-100">
+              <span className="absolute inset-0 grid place-items-center bg-black/25 opacity-0 transition-opacity duration-300 group-hover/cont:opacity-100 [@media(hover:none)]:bg-black/10 [@media(hover:none)]:opacity-100">
                 <span className="grid size-12 place-items-center rounded-full bg-accent text-accent-ink"><PlayIcon size={18} weight="fill" className="translate-x-px" /></span>
               </span>
               <span className="absolute inset-x-0 bottom-0 h-1 bg-black/45">

@@ -40,7 +40,7 @@ function JobRow({ job }: { job: UploadJob }) {
     <motion.li layout className="flex items-center gap-3 rounded-xl px-2 py-2.5" initial={{ opacity: 0, y: 12, scale: 0.96 }} animate={{ opacity: 1, y: 0, scale: 1 }}
       exit={{ opacity: 0, x: 40, transition: { duration: 0.2 } }} transition={spring.snappy}>
       <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-surface text-muted hairline">
-        {job.state === "done" ? <motion.span initial={{ scale: 0, rotate: -40 }} animate={{ scale: 1, rotate: 0 }} transition={spring.bouncy}><CheckCircleIcon size={18} weight="fill" className="text-accent-text" /></motion.span>
+        {job.state === "done" ? <motion.span initial={{ scale: 0, rotate: -40 }} animate={{ scale: 1, rotate: 0 }} transition={spring.pop}><CheckCircleIcon size={18} weight="fill" className="text-accent-text" /></motion.span>
           : job.state === "error" ? <WarningCircleIcon size={18} weight="fill" className="text-danger" />
           : <KindIcon kind={kindOf({ name, is_dir: false, type: 0 })} size={17} />}
       </span>

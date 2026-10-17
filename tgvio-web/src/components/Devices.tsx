@@ -116,7 +116,7 @@ export function SessionSettings() {
                 try { client.setQueryData(["session-config"], await devices.setConfig(days)); toast.success("已保存", `不用超过 ${label === "不过期" ? "十年" : label}才要重新登录`); }
                 catch (error) { toast.error("没有保存", error); }
               }}>
-              {active && <motion.span layoutId="idle-days" className="absolute inset-0 rounded-[9px] bg-raised" style={{ boxShadow: "var(--shadow-lift)" }} transition={spring.bouncy} />}
+              {active && <motion.span layoutId="idle-days" className="absolute inset-0 rounded-[9px] bg-raised" style={{ boxShadow: "var(--shadow-lift)" }} transition={spring.pop} />}
               <span className="relative">{label}</span>
             </button>
           );

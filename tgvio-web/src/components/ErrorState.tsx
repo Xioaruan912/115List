@@ -36,7 +36,7 @@ function Half({ side, joined, sway }: { side: -1 | 1; joined: boolean; sway: boo
       style={{ transformOrigin: side < 0 ? "10% 50%" : "90% 50%" }}
       initial={{ x: 0, y: 0, rotate: 0 }}
       animate={joined ? { x: 0, y: 0, rotate: 0 } : { x: side * 18, y: side * 6, rotate: side * 7 }}
-      transition={joined ? spring.snappy : { ...spring.bouncy, delay: 0.18 }}
+      transition={joined ? spring.snappy : { ...spring.pop, delay: 0.18 }}
     >
       <motion.div className="absolute inset-0" animate={sway ? { rotate: [0, side * 1.8, 0], y: [0, side * -2, 0] } : { rotate: 0, y: 0 }}
         transition={sway ? { duration: 3.8, repeat: Infinity, ease: "easeInOut", delay: side > 0 ? 0.6 : 0.9 } : spring.snappy}>
@@ -109,7 +109,7 @@ export function ErrorState({ error, onRetry, compact = false, icon: IconComponen
       <motion.div {...shield} className={`flex items-center gap-3 rounded-[var(--radius-tile)] bg-[color-mix(in_srgb,var(--danger)_6%,transparent)] px-3 py-2.5 ${className}`}
         initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={spring.soft} role="alert">
         <motion.span className="grid size-9 shrink-0 place-items-center rounded-[11px] bg-[color-mix(in_srgb,var(--danger)_12%,transparent)] text-danger"
-          initial={{ rotate: -14, scale: 0.6 }} animate={{ rotate: 0, scale: 1 }} transition={spring.bouncy} aria-hidden>
+          initial={{ rotate: -14, scale: 0.6 }} animate={{ rotate: 0, scale: 1 }} transition={spring.pop} aria-hidden>
           <IconComponent size={19} weight="duotone" />
         </motion.span>
         <div className="min-w-0 flex-1">

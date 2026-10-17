@@ -92,7 +92,7 @@ function SortControl({ path, media }: { path: string; media: boolean }) {
             <span className="relative inline-flex items-center gap-1">
               {label}
               {active && (
-                <motion.span animate={{ rotate: sortDesc ? 180 : 0 }} transition={spring.bouncy} className="inline-block text-[10px]">▲</motion.span>
+                <motion.span animate={{ rotate: sortDesc ? 180 : 0 }} transition={spring.pop} className="inline-block text-[10px]">▲</motion.span>
               )}
             </span>
           </button>

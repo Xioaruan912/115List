@@ -163,7 +163,7 @@ function OtherView({ obj, dir }: { obj: Obj; dir: string }) {
   const kind = kindOf(obj);
   return (
     <div className="absolute inset-0 flex flex-col items-center justify-center gap-5 rounded-[22px] bg-raised p-8 text-center hairline">
-      <motion.span initial={{ rotate: -12, scale: 0.6 }} animate={{ rotate: 0, scale: 1 }} transition={spring.bouncy} className="text-accent-text">
+      <motion.span initial={{ rotate: -12, scale: 0.6 }} animate={{ rotate: 0, scale: 1 }} transition={spring.pop} className="text-accent-text">
         <KindIcon kind={kind} size={72} weight="duotone" />
       </motion.span>
       <div>
@@ -191,7 +191,7 @@ function Strip({ items, current, onPick }: { items: Obj[]; current: number; onPi
         const active = index === current;
         return (
           <button key={obj.name} data-active={active} onClick={() => onPick(index)} aria-label={obj.name}
-            className={`relative h-14 shrink-0 overflow-hidden rounded-lg transition-all duration-300 ease-[var(--ease-expo)] ${active ? "w-20 opacity-100" : "w-10 opacity-50 hover:opacity-90"}`}>
+            className={`relative h-14 shrink-0 overflow-hidden rounded-lg transition-[width,opacity] duration-300 ease-[var(--ease-expo)] ${active ? "w-20 opacity-100" : "w-10 opacity-50 hover:opacity-90"}`}>
             {obj.thumb ? <img src={obj.thumb} alt="" loading="lazy" referrerPolicy="no-referrer" className="size-full object-cover" />
               : <span className="grid size-full place-items-center bg-white/10 text-white/70"><KindIcon kind={kindOf(obj)} size={16} /></span>}
             {active && <motion.span layoutId="strip-ring" className="absolute inset-0 rounded-lg ring-2 ring-inset ring-accent" transition={spring.snappy} />}
@@ -433,7 +433,7 @@ function ViewerBody({ dir, name, origin }: { dir: string; name: string; origin: 
           re-render whenever the open animation was skipped (Reduce Motion on iOS). */}
       <motion.div className="absolute inset-0" initial={{ opacity: 0 }} animate={{ opacity: closing ? 0 : 1 }} transition={{ duration: 0.35 }}
         onClick={close} onWheel={onStageWheel}>
-        <motion.div className={`absolute inset-0 ${darkStage ? "bg-[#060607]" : "bg-scrim backdrop-blur-xl"}`} style={{ opacity: scrim }} />
+        <motion.div className={`absolute inset-0 ${darkStage ? "bg-stage-deep" : "bg-scrim backdrop-blur-xl"}`} style={{ opacity: scrim }} />
       </motion.div>
 
       <AnimatePresence initial={false} custom={direction}>

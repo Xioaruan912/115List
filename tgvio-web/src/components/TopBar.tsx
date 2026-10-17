@@ -27,7 +27,7 @@ function Crumb({ label, path, current }: { label: React.ReactNode; path: string;
   };
   return (
     <button
-      className={`max-w-[18ch] truncate rounded-lg px-2 py-1 text-[13.5px] transition-all duration-200 ${current ? "font-medium text-ink" : "text-muted hover:bg-[var(--hover)] hover:text-ink"} ${over ? "scale-110 bg-accent text-accent-ink" : ""}`}
+      className={`max-w-[18ch] truncate rounded-lg px-2 py-1 text-[13.5px] transition duration-200 ${current ? "font-medium text-ink" : "text-muted hover:bg-[var(--hover)] hover:text-ink"} ${over ? "scale-110 bg-accent text-accent-ink" : ""}`}
       onClick={() => !current && navigate(encodePath(path))}
       onDragOver={event => { if (!current && event.dataTransfer.types.includes("application/x-tgvio")) { event.preventDefault(); setOver(true); } }}
       onDragLeave={() => setOver(false)}
@@ -82,7 +82,7 @@ function ViewToggle() {
       {(["grid", "list", "cinema"] as const).map(mode => (
         <button key={mode} className={`relative grid size-8 place-items-center rounded-[9px] transition-colors ${view === mode ? "text-ink" : "text-muted hover:text-ink"}`}
           onClick={() => setView(mode)} aria-pressed={view === mode} aria-label={VIEW_LABEL[mode]} title={VIEW_LABEL[mode]}>
-          {view === mode && <motion.span layoutId="view-thumb" className="absolute inset-0 rounded-[9px] bg-raised" style={{ boxShadow: "var(--shadow-lift)" }} transition={spring.bouncy} />}
+          {view === mode && <motion.span layoutId="view-thumb" className="absolute inset-0 rounded-[9px] bg-raised" style={{ boxShadow: "var(--shadow-lift)" }} transition={spring.pop} />}
           <span className="relative">{VIEW_ICON[mode]}</span>
         </button>
       ))}
@@ -100,7 +100,7 @@ export function ThemeButton() {
     <button className="icon-btn" aria-label={`主题：${theme}`} title="切换主题"
       onClick={event => switchTheme(next, event.clientX, event.clientY)}>
       <AnimatePresence mode="popLayout" initial={false}>
-        <motion.span key={theme} initial={{ rotate: -90, scale: 0.4, opacity: 0 }} animate={{ rotate: 0, scale: 1, opacity: 1 }} exit={{ rotate: 90, scale: 0.4, opacity: 0 }} transition={spring.bouncy}>
+        <motion.span key={theme} initial={{ rotate: -90, scale: 0.4, opacity: 0 }} animate={{ rotate: 0, scale: 1, opacity: 1 }} exit={{ rotate: 90, scale: 0.4, opacity: 0 }} transition={spring.pop}>
           {THEME_ICON[theme]}
         </motion.span>
       </AnimatePresence>
@@ -172,7 +172,7 @@ export function TopBar({ path }: { path: string }) {
           ) : (
             <motion.button key="mark" onClick={() => navigate("/")} aria-label={title}
               className="shrink-0 transition-transform hover:rotate-[-8deg] active:scale-90"
-              initial={{ opacity: 0, scale: 0.6 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.6 }} transition={spring.bouncy}>
+              initial={{ opacity: 0, scale: 0.6 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.6 }} transition={spring.pop}>
               <Mark className="size-8 text-[16px]" />
             </motion.button>
           )}

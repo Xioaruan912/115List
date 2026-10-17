@@ -179,7 +179,7 @@ export function PosterWall({ leaving = false }: { leaving?: boolean }) {
   }, [px, py, reduced]);
 
   return (
-    <div className="pointer-events-none absolute inset-0 overflow-hidden bg-[#070708] [--poster-w:118px] sm:[--poster-w:clamp(150px,13vw,230px)]" aria-hidden style={{ perspective: "1400px" }}>
+    <div className="pointer-events-none absolute inset-0 overflow-hidden bg-void [--poster-w:118px] sm:[--poster-w:clamp(150px,13vw,230px)]" aria-hidden style={{ perspective: "1400px" }}>
       <motion.div
         className="absolute left-1/2 top-1/2 flex gap-[clamp(10px,1.4vw,22px)]"
         style={{ width: `calc(${columns} * var(--poster-w) + ${columns - 1} * clamp(10px, 1.4vw, 22px))`, x: "-50%", y: "-50%", rotateX: drift ? rotateX : 18, rotateZ: drift ? rotateZ : -12, transformStyle: "preserve-3d" }}
@@ -211,7 +211,7 @@ export function PosterWall({ leaving = false }: { leaving?: boolean }) {
       <div className="absolute inset-0" style={{ background: "radial-gradient(ellipse 85% 75% at 50% 45%, transparent 30%, rgb(7 7 8 / 0.85) 100%)" }} />
       <div className="absolute inset-0 max-sm:hidden" style={{ background: "linear-gradient(90deg, rgb(7 7 8 / 0.82) 0%, rgb(7 7 8 / 0.45) 38%, transparent 62%)" }} />
       <div className="absolute inset-0 sm:hidden" style={{ background: "linear-gradient(180deg, rgb(7 7 8 / 0.15) 0%, rgb(7 7 8 / 0.7) 22%, rgb(7 7 8 / 0.7) 42%, transparent 52%)" }} />
-      <div className="absolute inset-x-0 bottom-0 h-[55%] bg-gradient-to-t from-[#070708] via-[#070708]/80 to-transparent sm:h-[45%]" />
+      <div className="absolute inset-x-0 bottom-0 h-[55%] bg-gradient-to-t from-void via-void/80 to-transparent sm:h-[45%]" />
     </div>
   );
 }

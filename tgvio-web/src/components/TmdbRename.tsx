@@ -392,7 +392,7 @@ function Row({ item, on, state, index, locked, onToggle }: { item: RenameItem; o
         <span className={`mt-0.5 grid size-[18px] shrink-0 place-items-center rounded-full transition-colors ${on || done ? "bg-accent text-accent-ink" : "hairline"}`}>
           <AnimatePresence>
             {(on || done) && (
-              <motion.span initial={{ scale: 0.4, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.4, opacity: 0 }} transition={spring.bouncy}>
+              <motion.span initial={{ scale: 0.4, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.4, opacity: 0 }} transition={spring.pop}>
                 <CheckIcon size={11} weight="bold" />
               </motion.span>
             )}
@@ -402,7 +402,7 @@ function Row({ item, on, state, index, locked, onToggle }: { item: RenameItem; o
           {item.new ? (
             <span className="block [perspective:600px]">
               <motion.span key={done ? "done" : "plan"} className="block origin-bottom truncate text-[14px] font-medium"
-                initial={done ? { rotateX: 90, opacity: 0 } : false} animate={{ rotateX: 0, opacity: 1 }} transition={spring.bouncy}>
+                initial={done ? { rotateX: 90, opacity: 0 } : false} animate={{ rotateX: 0, opacity: 1 }} transition={spring.pop}>
                 {item.new}
               </motion.span>
             </span>

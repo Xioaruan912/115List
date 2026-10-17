@@ -55,7 +55,7 @@ export const QrCode = memo(function QrCode({ text, size = 196 }: { text: string;
         ))}
       </svg>
       <motion.span className="absolute left-1/2 top-1/2 -ml-[11%] -mt-[11%] grid size-[22%] place-items-center rounded-[22%] bg-white p-[3%]"
-        initial={reduced ? false : { scale: 0, rotate: -90 }} animate={{ scale: 1, rotate: 0 }} transition={{ ...spring.bouncy, delay: 0.55 }}>
+        initial={reduced ? false : { scale: 0, rotate: -90 }} animate={{ scale: 1, rotate: 0 }} transition={{ ...spring.pop, delay: 0.55 }}>
         <Mark className="size-full text-[clamp(12px,3.4vw,22px)]" rounded="rounded-[24%]" />
       </motion.span>
     </div>
@@ -76,7 +76,7 @@ function Segmented<T extends number>({ id, value, options, onChange }: { id: str
         return (
           <button key={option} type="button" role="radio" aria-checked={active} onClick={() => onChange(option)}
             className={`relative h-9 rounded-[9px] text-[13px] font-medium transition-colors ${active ? "text-ink" : "text-muted hover:text-ink"}`}>
-            {active && <motion.span layoutId={`seg-${id}`} className="absolute inset-0 rounded-[9px] bg-raised" style={{ boxShadow: "var(--shadow-lift)" }} transition={spring.bouncy} />}
+            {active && <motion.span layoutId={`seg-${id}`} className="absolute inset-0 rounded-[9px] bg-raised" style={{ boxShadow: "var(--shadow-lift)" }} transition={spring.pop} />}
             <span className="relative">{label}</span>
           </button>
         );
@@ -108,7 +108,7 @@ function Code({ value }: { value: string }) {
     <span className="inline-flex gap-1 font-mono text-[22px] font-semibold tracking-[0.08em]" aria-label={`提取码 ${value}`}>
       {[...value].map((char, index) => (
         <motion.span key={`${value}-${index}`} className="grid h-10 w-8 place-items-center rounded-[8px] bg-surface hairline"
-          initial={{ rotateX: -90, opacity: 0 }} animate={{ rotateX: 0, opacity: 1 }} transition={{ ...spring.bouncy, delay: 0.5 + index * 0.07 }}
+          initial={{ rotateX: -90, opacity: 0 }} animate={{ rotateX: 0, opacity: 1 }} transition={{ ...spring.pop, delay: 0.5 + index * 0.07 }}
           style={{ transformPerspective: 400 }}>
           {char}
         </motion.span>
@@ -197,7 +197,7 @@ export function ShareDialog({ dir, names, onClose }: { dir: string; names: strin
                       <input className="field font-mono tracking-[0.12em]" value={pwd} maxLength={16} spellCheck={false} autoComplete="off"
                         onChange={event => setPwd(event.target.value.replace(/\s/g, ""))} aria-label="提取码" />
                       <button type="button" className="btn btn-line shrink-0 px-3" aria-label="换一个" onClick={() => { setPwd(randomCode()); setSpins(n => n + 1); }}>
-                        <motion.span animate={{ rotate: spins * 180 }} transition={spring.bouncy} className="inline-flex"><ArrowsClockwiseIcon size={16} /></motion.span>
+                        <motion.span animate={{ rotate: spins * 180 }} transition={spring.pop} className="inline-flex"><ArrowsClockwiseIcon size={16} /></motion.span>
                       </button>
                     </motion.div>
                   )}

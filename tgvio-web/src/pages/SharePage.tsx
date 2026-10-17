@@ -55,7 +55,7 @@ function Gate({ title, initial, failures, busy, onSubmit }: { title: string; ini
       exit={{ opacity: 0, transition: { duration: 0.01, delay: 0.6 } }}
       transition={{ ...spring.soft, delay: 0.35 }} style={{ transformPerspective: 1000 }}>
       {/* The ticket tears along the dashed line when the code is right. */}
-      <motion.div className="rounded-t-[22px] bg-[#131315]/90 px-6 pb-6 pt-7 backdrop-blur-2xl" style={{ boxShadow: "inset 0 1px 0 rgb(255 255 255 / 0.08), inset 0 0 0 1px rgb(255 255 255 / 0.07)" }}
+      <motion.div className="rounded-t-[22px] bg-surface/90 px-6 pb-6 pt-7 backdrop-blur-2xl" style={{ boxShadow: "inset 0 1px 0 rgb(255 255 255 / 0.08), inset 0 0 0 1px rgb(255 255 255 / 0.07)" }}
         exit={{ y: -50, rotate: -5, opacity: 0, transition: { duration: 0.55, ease: [0.5, 0, 0.75, 0] } }}>
         <span className="grid size-12 place-items-center rounded-2xl bg-accent text-accent-ink"><LockKeyIcon size={22} weight="fill" /></span>
         <h1 className="mt-5 text-[22px] font-semibold tracking-tight text-white">{title}</h1>
@@ -69,8 +69,8 @@ function Gate({ title, initial, failures, busy, onSubmit }: { title: string; ini
           {error && <motion.p className="mt-2 text-[13px] text-danger" initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>提取码不对，再试一次</motion.p>}
         </AnimatePresence>
       </motion.div>
-      <div className="ticket-cut mx-[18px]" style={{ "--raised": "#070708" } as CSSProperties} aria-hidden />
-      <motion.div className="rounded-b-[22px] bg-[#131315]/90 px-6 pb-6 pt-5 backdrop-blur-2xl" style={{ boxShadow: "inset 0 -1px 0 rgb(255 255 255 / 0.04), inset 0 0 0 1px rgb(255 255 255 / 0.07)" }}
+      <div className="ticket-cut mx-[18px]" style={{ "--raised": "var(--void)" } as CSSProperties} aria-hidden />
+      <motion.div className="rounded-b-[22px] bg-surface/90 px-6 pb-6 pt-5 backdrop-blur-2xl" style={{ boxShadow: "inset 0 -1px 0 rgb(255 255 255 / 0.04), inset 0 0 0 1px rgb(255 255 255 / 0.07)" }}
         exit={{ y: 70, rotate: 7, opacity: 0, transition: { duration: 0.6, ease: [0.5, 0, 0.75, 0] } }}>
         <button className="btn btn-primary h-11 w-full" type="submit" disabled={!code.trim() || busy}>{busy ? "核对中…" : "入场"}</button>
       </motion.div>
@@ -143,7 +143,7 @@ function Single({ obj, url, share }: { obj: Obj; url: string; share: { sid: stri
       {kind === "video" && <div className="relative aspect-video w-full overflow-hidden rounded-[14px]"><ShareVideo obj={obj} url={url} share={share} /></div>}
       {kind === "audio" && <audio src={url} controls className="w-full" />}
       {kind !== "image" && kind !== "video" && kind !== "audio" && (
-        <motion.span className="grid size-24 place-items-center self-start rounded-[22px] bg-white/[0.05] text-accent" initial={{ rotate: -14, scale: 0.6 }} animate={{ rotate: 0, scale: 1 }} transition={{ ...spring.bouncy, delay: 0.5 }}>
+        <motion.span className="grid size-24 place-items-center self-start rounded-[22px] bg-white/[0.05] text-accent" initial={{ rotate: -14, scale: 0.6 }} animate={{ rotate: 0, scale: 1 }} transition={{ ...spring.pop, delay: 0.5 }}>
           <KindIcon kind={kind} size={46} weight="duotone" />
         </motion.span>
       )}
@@ -195,9 +195,9 @@ export function SharePage() {
   const totalBytes = items.reduce((sum, item) => sum + (item.is_dir ? 0 : item.size), 0);
 
   return (
-    <div className="theme-dark relative min-h-dvh overflow-x-hidden bg-[#070708] text-ink">
+    <div className="theme-dark relative min-h-dvh overflow-x-hidden bg-void text-ink">
       <div className="fixed inset-0"><PosterWall /></div>
-      <div className="fixed inset-0 bg-[#070708]/55" />
+      <div className="fixed inset-0 bg-void/55" />
       <header className="relative z-10 mx-auto flex max-w-[1180px] items-center gap-3 px-5 pt-[max(1.25rem,env(safe-area-inset-top))] sm:px-8">
         <Mark className="size-9 text-base" rounded="rounded-[11px]" />
         <span className="font-semibold tracking-tight text-white">{siteTitle}</span>

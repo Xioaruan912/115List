@@ -48,7 +48,7 @@ function DockButton({ label, onClick, children, mouseX, magnify, active, badge }
     >
       {children}
       {badge}
-      <span className="pointer-events-none absolute -top-9 left-1/2 -translate-x-1/2 translate-y-1 whitespace-nowrap rounded-lg bg-ink px-2 py-1 text-[12px] font-medium text-bg opacity-0 transition-all duration-200 group-hover/dock:translate-y-0 group-hover/dock:opacity-100 [@media(hover:none)]:hidden">
+      <span className="pointer-events-none absolute -top-9 left-1/2 -translate-x-1/2 translate-y-1 whitespace-nowrap rounded-lg bg-ink px-2 py-1 text-[12px] font-medium text-bg opacity-0 transition duration-200 group-hover/dock:translate-y-0 group-hover/dock:opacity-100 [@media(hover:none)]:hidden">
         {label}
       </span>
     </motion.button>

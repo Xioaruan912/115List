@@ -5,7 +5,7 @@
 /* Ink: one flat near-black (or cool paper in light mode), hairlines instead of
    boxes, and a single acid-lime accent used for focus, progress and the primary
    action only. Radius scale: controls 10px, tiles 14px, sheets 22px, pills full.
-   Z scale: header 20, dock 30, menus 40, sheets 50, viewer 60, toasts 70, grain 80. */
+   Z scale: header 20, dock 30, viewer 60, sheets 65, menus 66 (over sheets: a sheet's own menus), toasts 70, grain 80. */
 
 @custom-variant dark (&:where([data-theme=dark], [data-theme=dark] *));
 
@@ -25,6 +25,10 @@
   --color-accent-text: var(--accent-text);
   --color-danger: var(--danger);
   --color-scrim: var(--scrim);
+  /* Always-dark stages (cinema billboard, viewer, login and share pages, generated posters), the same in both themes. */
+  --color-stage: var(--stage);
+  --color-stage-deep: var(--stage-deep);
+  --color-void: var(--void);
   --ease-expo: cubic-bezier(0.16, 1, 0.3, 1);
   --ease-swift: cubic-bezier(0.32, 0.72, 0, 1);
   --radius-control: 10px;
@@ -42,7 +46,10 @@
   --line-strong: rgb(255 255 255 / 0.14);
   --ink: #ececed;
   --muted: #9a9aa0;
-  --faint: #66666d;
+  --faint: #85858c; /* ≥4.5:1 on bg, surface and raised: hints stay readable */
+  --stage: #0b0b0c;
+  --stage-deep: #060607;
+  --void: #070708;
   --accent: #c4ec5c;
   --accent-ink: #11140b;
   --accent-text: #c4ec5c;
@@ -64,7 +71,10 @@
   --line-strong: rgb(20 24 32 / 0.16);
   --ink: #131417;
   --muted: #5a5d65;
-  --faint: #93959c;
+  --faint: #696c74; /* ≥4.5:1 on bg, surface and raised */
+  --stage: #0b0b0c;
+  --stage-deep: #060607;
+  --void: #070708;
   --accent: #c4ec5c;
   --accent-ink: #11140b;
   --accent-text: #4b6a00;

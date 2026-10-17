@@ -4,7 +4,8 @@ import type { Transition } from "motion/react";
 export const spring = {
   snappy: { type: "spring", stiffness: 560, damping: 40, mass: 0.7 } satisfies Transition,
   soft: { type: "spring", stiffness: 280, damping: 32, mass: 0.9 } satisfies Transition,
-  bouncy: { type: "spring", stiffness: 420, damping: 24, mass: 0.8 } satisfies Transition,
+  // Quick and settling without overshoot (ζ≈0.93): UI state never bounces past its mark.
+  pop: { type: "spring", stiffness: 420, damping: 34, mass: 0.8 } satisfies Transition,
   sheet: { type: "spring", stiffness: 380, damping: 38, mass: 0.9 } satisfies Transition,
 };
 

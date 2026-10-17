@@ -63,7 +63,7 @@ function Group({ group }: { group: number }) {
       <AnimatePresence>
         {dirty > 0 && (
           <motion.div className="glass sticky bottom-6 mt-8 flex items-center justify-between gap-4 rounded-2xl px-4 py-3 hairline" style={{ boxShadow: "var(--shadow-float)" }}
-            initial={{ opacity: 0, y: 30, scale: 0.95 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: 20 }} transition={spring.bouncy}>
+            initial={{ opacity: 0, y: 30, scale: 0.95 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: 20 }} transition={spring.pop}>
             <span className="text-[13.5px]">{dirty} 项未保存</span>
             <div className="flex gap-2">
               <button className="btn btn-ghost" onClick={() => setDraft({})}>还原</button>
