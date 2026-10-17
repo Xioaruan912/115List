@@ -793,6 +793,24 @@ func (t *TMDB) Set(name string, p *Poster) {
 	t.save()
 }
 
+// Library returns copies of the entries that found something and know the
+// folder they were seen in: the material for a library page.
+func (t *TMDB) Library() []Poster {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	out := make([]Poster, 0, len(t.entries))
+	for _, entry := range t.entries {
+		if !entry.None && entry.Dir != "" && entry.ID > 0 && entry.Name != "" {
+			out = append(out, *entry)
+			t.wantCategoryLocked(entry)
+		}
+	}
+	return out
+}
+
+// IsMediaFile reports whether a name is a video (or disc image) rather than a folder.
+func IsMediaFile(name string) bool { return mediaExt.MatchString(name) }
+
 // wantCategoryLocked queues an entry made before categories for a details
 // call, reporting whether its category is on the way.
 func (t *TMDB) wantCategoryLocked(entry *Poster) bool {

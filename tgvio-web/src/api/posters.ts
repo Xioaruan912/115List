@@ -39,6 +39,19 @@ export function categoryCounts(names: string[], items: Record<string, Poster>): 
   return CATEGORY_ORDER.filter(cat => counts.has(cat)).map(cat => [cat, counts.get(cat)!]);
 }
 
+/** One film or series of the library page: where it lives, as the user sees it. */
+export interface LibraryItem extends Poster {
+  path: string;
+  /** A video file rather than a folder. */
+  file?: boolean;
+  /** Season folders found for a series. */
+  seasons?: number;
+  /** When it was first matched (ms). */
+  at: number;
+}
+
+export const library = () => get<{ items: LibraryItem[]; blur: boolean }>("/tgvio/library");
+
 export interface SeasonInfo { season: number; name: string; poster?: string; year?: number; episodes: number }
 
 export interface PosterLookup { items: Record<string, Poster>; pending: number; enabled: boolean; blur: boolean }
