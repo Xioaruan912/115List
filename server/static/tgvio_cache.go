@@ -67,3 +67,33 @@ func Mark(c *gin.Context) {
 	c.Header("Cache-Control", "public, max-age=3600")
 	c.Data(200, "image/svg+xml; charset=utf-8", []byte(tgvio.MarkSVG(setting.GetStr(conf.SiteTitle))))
 }
+
+func iconURL() string {
+	base := getSiteConfig().BasePath
+	if base == "/" {
+		base = ""
+	}
+	return base + tgvio.IconPath
+}
+
+// MarkIcon serves the site mark as PNG: 192.png, 512.png (rounded), maskable.png
+// and apple-touch-icon.png (full squares the system shapes itself).
+func MarkIcon(c *gin.Context) {
+	title := setting.GetStr(conf.SiteTitle)
+	var data []byte
+	switch c.Param("file") {
+	case "192.png":
+		data = tgvio.MarkPNG(title, 192, false)
+	case "512.png":
+		data = tgvio.MarkPNG(title, 512, false)
+	case "maskable.png":
+		data = tgvio.MarkPNG(title, 512, true)
+	case "apple-touch-icon.png":
+		data = tgvio.MarkPNG(title, 180, true)
+	default:
+		c.Status(404)
+		return
+	}
+	c.Header("Cache-Control", "public, max-age=3600")
+	c.Data(200, "image/png", data)
+}

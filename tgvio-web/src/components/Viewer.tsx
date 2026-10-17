@@ -503,6 +503,7 @@ function ViewerBody({ dir, name, origin }: { dir: string; name: string; origin: 
             {kind === "image" && <ImageView key={obj.name} src={src} fallback={fallback} thumb={obj.thumb} zoom={zoom} panX={panX} panY={panY} onAspect={setAspect} />}
             {kind === "video" && <VideoPlayer key={obj.name} path={path} src={src} subtitles={subtitles}
               onSearchSubtitles={canSearchSubtitles ? () => openDialog({ kind: "subtitle-search", path }) : undefined}
+              meta={{ title: obj.name.replace(/\.[^.]+$/, ""), artist: dir.split("/").pop() || undefined, artwork: obj.thumb || undefined }}
               next={nextVideo ? { title: nextVideo.name.replace(/\.[^.]+$/, ""), thumb: nextVideo.thumb, play: () => { resetZoom(); setDirection(1); setCurrent(files.indexOf(nextVideo)); } } : undefined} fallback={fallback} thumb={obj.thumb} chrome={chrome} onAspect={setAspect} cloud={cloudCapable ? () => cloudVideo(path, passwordFor(dir)) : undefined} onDownload={() => actions.download(dir, obj)} onCopy={() => void actions.copyLinks(dir, [obj])} />}
             {kind === "audio" && <AudioView obj={obj} src={src} />}
             {(kind === "text" || kind === "code" || kind === "markdown") && <TextView obj={obj} url={fallback} kind={kind} />}
