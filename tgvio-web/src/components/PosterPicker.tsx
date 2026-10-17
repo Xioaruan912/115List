@@ -60,7 +60,7 @@ function SeasonStep({ name, series, chosen, onBack, onPick }: { name: string; se
                     <AnimatePresence>
                       {active && (
                         <motion.span className="absolute inset-0 grid place-items-center bg-black/35" initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
-                          <motion.span className="grid size-10 place-items-center rounded-full bg-accent text-accent-ink" initial={{ scale: 0, rotate: -90 }} animate={{ scale: 1, rotate: 0 }} transition={spring.bouncy}>
+                          <motion.span className="grid size-10 place-items-center rounded-full bg-accent text-accent-ink" initial={{ scale: 0, rotate: -90 }} animate={{ scale: 1, rotate: 0 }} transition={spring.pop}>
                             <CheckIcon size={20} weight="bold" />
                           </motion.span>
                         </motion.span>
@@ -149,7 +149,7 @@ export function PosterPicker({ name, onClose }: { name: string; onClose: () => v
                       <AnimatePresence>
                         {active && (
                           <motion.span className="absolute inset-0 grid place-items-center bg-black/35" initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
-                            <motion.span className="grid size-10 place-items-center rounded-full bg-accent text-accent-ink" initial={{ scale: 0, rotate: -90 }} animate={{ scale: 1, rotate: 0 }} transition={spring.bouncy}>
+                            <motion.span className="grid size-10 place-items-center rounded-full bg-accent text-accent-ink" initial={{ scale: 0, rotate: -90 }} animate={{ scale: 1, rotate: 0 }} transition={spring.pop}>
                               <CheckIcon size={20} weight="bold" />
                             </motion.span>
                           </motion.span>

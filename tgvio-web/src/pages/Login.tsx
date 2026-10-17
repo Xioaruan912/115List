@@ -46,7 +46,7 @@ export function Login() {
 
   const leaving = state === "done";
   return (
-    <div className="theme-dark relative min-h-dvh overflow-hidden bg-[#070708] text-ink">
+    <div className="theme-dark relative min-h-dvh overflow-hidden bg-void text-ink">
       <PosterWall leaving={leaving} />
       <motion.div
         className="relative mx-auto grid min-h-dvh max-w-[1240px] grid-rows-[1fr_auto] gap-8 px-5 pt-[max(1.5rem,env(safe-area-inset-top))] sm:px-8 lg:grid-cols-[1.15fr_400px] lg:grid-rows-1 lg:items-center lg:gap-16"
@@ -105,7 +105,7 @@ export function Login() {
             <AnimatePresence mode="popLayout" initial={false}>
               {state === "idle" && <motion.span key="idle" className="flex items-center gap-2" initial={{ y: 20, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: -20, opacity: 0 }}>开场 <ArrowRightIcon size={16} weight="bold" /></motion.span>}
               {state === "busy" && <motion.span key="busy" initial={{ y: 20, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: -20, opacity: 0 }}><span className="spin block size-5 rounded-full border-2 border-accent-ink/25 border-t-accent-ink" /></motion.span>}
-              {state === "done" && <motion.span key="done" initial={{ scale: 0, rotate: -45 }} animate={{ scale: 1, rotate: 0 }} transition={spring.bouncy}><CheckIcon size={20} weight="bold" /></motion.span>}
+              {state === "done" && <motion.span key="done" initial={{ scale: 0, rotate: -45 }} animate={{ scale: 1, rotate: 0 }} transition={spring.pop}><CheckIcon size={20} weight="bold" /></motion.span>}
             </AnimatePresence>
           </motion.button>
           <button type="button" className="mt-3 h-9 w-full text-center text-[13px] text-muted hover:text-ink" onClick={() => navigate("/")}>以访客身份浏览</button>

@@ -76,7 +76,7 @@ export function ArchiveView({ dir, obj }: { dir: string; obj: Obj }) {
   return (
     <div className="absolute inset-0 flex flex-col overflow-hidden rounded-[22px] bg-raised hairline" onPointerDown={event => event.stopPropagation()}>
       <header className="flex items-center gap-3 border-b border-line px-5 py-4">
-        <motion.span initial={{ rotate: -14, scale: 0.6 }} animate={{ rotate: 0, scale: 1 }} transition={spring.bouncy}
+        <motion.span initial={{ rotate: -14, scale: 0.6 }} animate={{ rotate: 0, scale: 1 }} transition={spring.pop}
           className="grid size-10 shrink-0 place-items-center rounded-xl bg-accent-soft text-accent-text"><FileArchiveIcon size={22} weight="duotone" /></motion.span>
         <div className="min-w-0 flex-1">
           <p className="truncate font-semibold">{obj.name}</p>

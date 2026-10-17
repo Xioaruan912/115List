@@ -28,7 +28,7 @@ export function Toaster() {
               initial={{ opacity: 0, y: -28, scale: 0.9 }}
               animate={{ opacity: 1 - depth * 0.08, y: 0, scale: 1 - depth * 0.025 }}
               exit={{ opacity: 0, y: -16, scale: 0.92, transition: { duration: 0.18 } }}
-              transition={spring.bouncy}
+              transition={spring.pop}
               drag="x"
               dragConstraints={{ left: 0, right: 0 }}
               dragElastic={0.6}

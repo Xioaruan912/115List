@@ -397,7 +397,7 @@ export function VideoPlayer({ path, src, fallback, thumb, chrome, cloud, onAspec
   const showCover = phase !== "ready" || (waiting && time === 0);
 
   return (
-    <div ref={root} className={`video-player absolute inset-0 overflow-hidden bg-[#060607] ${visible ? "" : "cursor-none"}`}>
+    <div ref={root} className={`video-player absolute inset-0 overflow-hidden bg-stage-deep ${visible ? "" : "cursor-none"}`}>
       <video
         ref={ref}
         playsInline
@@ -480,7 +480,7 @@ export function VideoPlayer({ path, src, fallback, thumb, chrome, cloud, onAspec
           <motion.button key="paused" type="button" aria-label="播放" onClick={toggle}
             className="absolute left-1/2 top-1/2 -ml-9 -mt-9 grid size-18 place-items-center rounded-full bg-white/14 text-white backdrop-blur-xl transition-colors hover:bg-accent hover:text-accent-ink"
             style={{ boxShadow: "inset 0 0 0 1px rgb(255 255 255 / 0.18), 0 20px 50px -20px rgb(0 0 0 / 0.7)" }}
-            initial={{ opacity: 0, scale: 0.7 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 1.2 }} transition={spring.bouncy}>
+            initial={{ opacity: 0, scale: 0.7 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 1.2 }} transition={spring.pop}>
             <PlayIcon size={30} weight="fill" className="translate-x-0.5" />
           </motion.button>
         )}
@@ -541,7 +541,7 @@ export function VideoPlayer({ path, src, fallback, thumb, chrome, cloud, onAspec
       <AnimatePresence>
         {notice && (
           <motion.div key="notice" className="absolute left-1/2 top-3 z-[1] -translate-x-1/2 whitespace-nowrap rounded-full bg-black/65 px-3.5 py-1.5 text-[13px] text-white backdrop-blur-xl"
-            initial={{ opacity: 0, y: -12, scale: 0.9 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: -8 }} transition={spring.bouncy}>
+            initial={{ opacity: 0, y: -12, scale: 0.9 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: -8 }} transition={spring.pop}>
             {notice}
           </motion.div>
         )}
@@ -550,7 +550,7 @@ export function VideoPlayer({ path, src, fallback, thumb, chrome, cloud, onAspec
       <AnimatePresence>
         {resumed > 0 && !notice && (
           <motion.div key="resume" className="absolute left-1/2 top-3 flex -translate-x-1/2 items-center gap-1 rounded-full bg-black/60 py-1 pl-3.5 pr-1 text-[13px] text-white backdrop-blur-xl"
-            initial={{ opacity: 0, y: -12, scale: 0.9 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: -8 }} transition={spring.bouncy}>
+            initial={{ opacity: 0, y: -12, scale: 0.9 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: -8 }} transition={spring.pop}>
             <span className="tabular">从 {formatClock(resumed)} 继续</span>
             <button className="rounded-full px-2.5 py-1 text-accent hover:bg-white/10" onClick={() => { const v = video(); if (v) v.currentTime = 0; setResumed(0); }}>从头播放</button>
           </motion.div>
@@ -571,7 +571,7 @@ export function VideoPlayer({ path, src, fallback, thumb, chrome, cloud, onAspec
           <div className="mt-0.5 flex items-center gap-0.5 text-white">
             <IconButton label={playing ? "暂停" : "播放"} onClick={toggle}>
               <AnimatePresence mode="popLayout" initial={false}>
-                <motion.span key={playing ? "pause" : "play"} initial={{ scale: 0.4, opacity: 0, rotate: -40 }} animate={{ scale: 1, opacity: 1, rotate: 0 }} exit={{ scale: 0.4, opacity: 0 }} transition={spring.bouncy}>
+                <motion.span key={playing ? "pause" : "play"} initial={{ scale: 0.4, opacity: 0, rotate: -40 }} animate={{ scale: 1, opacity: 1, rotate: 0 }} exit={{ scale: 0.4, opacity: 0 }} transition={spring.pop}>
                   {playing ? <PauseIcon size={19} weight="fill" /> : <PlayIcon size={19} weight="fill" />}
                 </motion.span>
               </AnimatePresence>
@@ -580,7 +580,7 @@ export function VideoPlayer({ path, src, fallback, thumb, chrome, cloud, onAspec
               <IconButton label={muted ? "取消静音" : "静音"} onClick={() => setVolume({ muted: !muted })}><VolumeIcon size={19} /></IconButton>
               <input type="range" min={0} max={1} step={0.02} value={muted ? 0 : volume} aria-label="音量"
                 onChange={event => setVolume({ volume: Number(event.target.value), muted: Number(event.target.value) === 0 })}
-                className="volume-range w-0 opacity-0 transition-all duration-300 ease-[var(--ease-expo)] group-hover/vol:mr-2 group-hover/vol:w-20 group-hover/vol:opacity-100 focus:mr-2 focus:w-20 focus:opacity-100"
+                className="volume-range w-0 opacity-0 transition-[width,margin,opacity] duration-300 ease-[var(--ease-expo)] group-hover/vol:mr-2 group-hover/vol:w-20 group-hover/vol:opacity-100 focus:mr-2 focus:w-20 focus:opacity-100"
                 style={{ "--v": `${(muted ? 0 : volume) * 100}%` } as React.CSSProperties} />
             </div>
             <span className="ml-1.5 font-mono text-[12px] text-white/85 tabular">

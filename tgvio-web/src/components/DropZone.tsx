@@ -81,7 +81,7 @@ export function DropZone({ dir, enabled }: { dir: string; enabled: boolean }) {
             initial={{ scale: 1.04 }} animate={{ scale: 1 }} exit={{ scale: 1.04 }} transition={spring.soft}
           >
             <motion.span className="grid size-20 place-items-center rounded-3xl bg-accent text-accent-ink"
-              initial={{ y: 30, rotate: -10 }} animate={{ y: [0, -10, 0], rotate: 0 }} transition={{ y: { duration: 1.6, repeat: Infinity, ease: "easeInOut" }, rotate: spring.bouncy }}>
+              initial={{ y: 30, rotate: -10 }} animate={{ y: [0, -10, 0], rotate: 0 }} transition={{ y: { duration: 1.6, repeat: Infinity, ease: "easeInOut" }, rotate: spring.pop }}>
               <UploadSimpleIcon size={36} weight="bold" />
             </motion.span>
             <p className="text-2xl font-semibold tracking-tight">松手上传到 <span className="text-accent-text">{dir}</span></p>
