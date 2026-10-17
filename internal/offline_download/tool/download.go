@@ -108,12 +108,7 @@ outer:
 		return nil
 	}
 	if t.tool.Name() == "115 Cloud" {
-		// hack for 115
-		<-time.After(time.Second * 1)
-		err := t.tool.Remove(t)
-		if err != nil {
-			log.Errorln(err.Error())
-		}
+		// The finished task stays in 115's own 云下载 list, where people look for it.
 		return nil
 	}
 	if t.tool.Name() == "115 Open" {
