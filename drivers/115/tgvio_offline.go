@@ -7,14 +7,14 @@ import (
 	"strconv"
 	"strings"
 
-	crypto "github.com/SheltonZhu/115driver/pkg/crypto/m115"
 	driver115 "github.com/SheltonZhu/115driver/pkg/driver"
 )
 
-// The 115 SDK reads only the info hashes of add_task_urls and drops each
-// link's own state, so a link 115 refused came back as an empty hash with no
-// error: the task then found nothing to watch and ended without a word. This
-// sends the same request and keeps 115's answer for every link.
+// Adding offline tasks. The SDK posts to lixianssp with its own m115
+// encryption, which 115 now answers with a bare "decode fail!", and it read
+// only the info hashes, so a refused link came back as an empty hash with no
+// error. This uses the endpoint 115's web page uses (a sign from the offline
+// space call, then one plain form per link) and keeps 115's answer for every link.
 
 type offlineAdded struct {
 	State    bool   `json:"state"`
@@ -23,11 +23,6 @@ type offlineAdded struct {
 	ErrorMsg string `json:"error_msg"`
 	InfoHash string `json:"info_hash"`
 	URL      string `json:"url"`
-}
-
-type offlineAddAnswer struct {
-	offlineAdded
-	Result []offlineAdded `json:"result"`
 }
 
 // 115 answers 10008 for a link already in the list; the existing task is the one to follow.
@@ -45,30 +40,24 @@ func (a offlineAdded) err() error {
 	return fmt.Errorf("115 offline download: %s (code %d)", msg, code)
 }
 
-// offlineHashes picks the task hash of every link from 115's answer, or the reason it was refused.
-func offlineHashes(answer offlineAddAnswer, count int) ([]string, error) {
-	items := answer.Result
-	if len(items) == 0 {
-		if !answer.State && (answer.ErrorMsg != "" || answer.Errcode != 0 || answer.Errno != 0) {
-			return nil, answer.err()
-		}
-		if answer.InfoHash != "" {
-			items = []offlineAdded{answer.offlineAdded}
-		}
+// offlineHash is the task hash of a link from 115's answer, or the reason it was refused.
+func offlineHash(answer offlineAdded) (string, error) {
+	exists := answer.Errcode == offlineTaskExists || answer.Errno == offlineTaskExists
+	if answer.InfoHash == "" || (!answer.State && !exists) {
+		return "", answer.err()
 	}
-	if len(items) < count {
-		return nil, fmt.Errorf("115 offline download: answered %d of %d links", len(items), count)
-	}
-	hashes := make([]string, count)
-	for i := 0; i < count; i++ {
-		item := items[i]
-		exists := item.Errcode == offlineTaskExists || item.Errno == offlineTaskExists
-		if item.InfoHash == "" || (!item.State && !exists) {
-			return nil, item.err()
-		}
-		hashes[i] = item.InfoHash
-	}
-	return hashes, nil
+	return answer.InfoHash, nil
+}
+
+const (
+	offlineSpaceURL = "https://115.com/"
+	offlineAddURL   = "https://115.com/web/lixian/?ct=lixian&ac=add_task_url"
+)
+
+type offlineSpace struct {
+	State bool   `json:"state"`
+	Sign  string `json:"sign"`
+	Time  int64  `json:"time"`
 }
 
 func (d *Pan115) addOfflineTasks(ctx context.Context, uris []string, dirID string) ([]string, error) {
@@ -85,38 +74,42 @@ func (d *Pan115) addOfflineTasks(ctx context.Context, uris []string, dirID strin
 		}
 		d.client.UserID = user.UserID
 	}
-	params := map[string]string{
-		"ac":         "add_task_urls",
-		"wp_path_id": dirID,
-		"app_ver":    appVer,
-		"uid":        strconv.FormatInt(d.client.UserID, 10),
-	}
-	for i, uri := range uris {
-		params[fmt.Sprintf("url[%d]", i)] = uri
-	}
-	body, err := json.Marshal(params)
+	var space offlineSpace
+	resp, err := d.client.NewRequest().SetContext(ctx).
+		SetQueryParams(map[string]string{"ct": "offline", "ac": "space", "_": driver115.Now().String()}).
+		Get(offlineSpaceURL)
 	if err != nil {
 		return nil, err
 	}
-	key := crypto.GenerateKey()
-	result := driver115.DownloadResp{}
-	resp, err := d.client.NewRequest().
-		SetContext(ctx).
-		SetQueryParam("t", driver115.Now().String()).
-		SetFormData(map[string]string{"data": crypto.Encode(body, key)}).
-		ForceContentType("application/json").
-		SetResult(&result).
-		Post(driver115.ApiAddOfflineUrl)
-	if err := driver115.CheckErr(err, &result, resp); err != nil {
-		return nil, err
+	if err := json.Unmarshal(resp.Body(), &space); err != nil || !space.State || space.Sign == "" {
+		return nil, fmt.Errorf("115 offline download: no sign from 115 (HTTP %d)", resp.StatusCode())
 	}
-	plain, err := crypto.Decode(string(result.EncodedData), key)
-	if err != nil {
-		return nil, err
+	hashes := make([]string, 0, len(uris))
+	for _, uri := range uris {
+		if err := d.WaitLimit(ctx); err != nil {
+			return nil, err
+		}
+		resp, err := d.client.NewRequest().SetContext(ctx).
+			SetFormData(map[string]string{
+				"url":        uri,
+				"wp_path_id": dirID,
+				"uid":        strconv.FormatInt(d.client.UserID, 10),
+				"sign":       space.Sign,
+				"time":       strconv.FormatInt(space.Time, 10),
+			}).
+			Post(offlineAddURL)
+		if err != nil {
+			return nil, err
+		}
+		var answer offlineAdded
+		if err := json.Unmarshal(resp.Body(), &answer); err != nil {
+			return nil, fmt.Errorf("115 offline download: unreadable answer (HTTP %d)", resp.StatusCode())
+		}
+		hash, err := offlineHash(answer)
+		if err != nil {
+			return nil, err
+		}
+		hashes = append(hashes, hash)
 	}
-	var answer offlineAddAnswer
-	if err := json.Unmarshal(plain, &answer); err != nil {
-		return nil, err
-	}
-	return offlineHashes(answer, len(uris))
+	return hashes, nil
 }
