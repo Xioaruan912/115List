@@ -211,12 +211,15 @@ function InfoDialog({ dir, obj, onClose }: { dir: string; obj: import("../lib/ty
 }
 
 function OfflineDialog({ dir, onClose }: { dir: string; onClose: () => void }) {
-  const tools = useQuery({ queryKey: ["offline-tools"], queryFn: fs.offlineTools, staleTime: 300_000 });
+  const tools = useQuery({ queryKey: ["offline-tools", dir], queryFn: () => fs.offlineTools(dir), staleTime: 300_000 });
   const [urls, setUrls] = useState("");
   const [tool, setTool] = useState("");
   const [policy, setPolicy] = useState("delete_on_upload_succeed");
   const [busy, run] = useBusy();
-  useEffect(() => { if (!tool && tools.data?.length) setTool(tools.data[0]); }, [tools.data, tool]);
+  useEffect(() => {
+    if (!tool && tools.data?.length) setTool(tools.data.find(name => fs.nativeOfflineTools.includes(name)) ?? tools.data[0]);
+  }, [tools.data, tool]);
+  const native = fs.nativeOfflineTools.includes(tool);
   const list = urls.split("\n").map(line => line.trim()).filter(Boolean);
   return (
     <Sheet open onClose={onClose} width={540} title="离线下载"
@@ -237,9 +240,9 @@ function OfflineDialog({ dir, onClose }: { dir: string; onClose: () => void }) {
             {(tools.data ?? []).map(name => <option key={name} value={name}>{name}</option>)}
           </select>
         </label>
-        <label>
+        <label className={native ? "opacity-50" : ""}>
           <span className="label">临时文件</span>
-          <select className="field" value={policy} onChange={event => setPolicy(event.target.value)}>
+          <select className="field" value={policy} disabled={native} onChange={event => setPolicy(event.target.value)}>
             <option value="delete_on_upload_succeed">上传成功后删除</option>
             <option value="delete_on_upload_failed">上传失败后删除</option>
             <option value="delete_never">保留</option>
@@ -247,7 +250,7 @@ function OfflineDialog({ dir, onClose }: { dir: string; onClose: () => void }) {
           </select>
         </label>
       </div>
-      <p className="mt-3 text-[12.5px] text-faint">保存到 {dir}</p>
+      <p className="mt-3 text-[12.5px] text-faint">保存到 {dir}{native && `，由 ${tool} 在网盘里直接下载，不经过服务器`}</p>
     </Sheet>
   );
 }
