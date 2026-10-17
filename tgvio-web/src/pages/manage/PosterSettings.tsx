@@ -5,6 +5,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { AnimatePresence, motion } from "motion/react";
 import { useState, type ReactNode } from "react";
 import { posterAdmin, posters, type PosterLanguage, type PosterSettings as Settings } from "../../api/posters";
+import { subtitleAdmin } from "../../api/subtitles";
 import { FolderPicker } from "../../components/Dialogs";
 import { ErrorState } from "../../components/ErrorState";
 import { Sheet } from "../../components/Sheet";
@@ -33,6 +34,62 @@ function Row({ title, hint, children }: { title: string; hint?: ReactNode; child
       </div>
       <div className="shrink-0">{children}</div>
     </div>
+  );
+}
+
+/**
+ * 射手网 (assrt.net) token for the player's 在线搜索字幕: write-only like the
+ * TMDB one, tested against the remaining quota.
+ */
+function SubtitleTokenRow() {
+  const client = useQueryClient();
+  const query = useQuery({ queryKey: ["subtitle-admin"], queryFn: subtitleAdmin.get });
+  const [editing, setEditing] = useState(false);
+  const [value, setValue] = useState("");
+  const [state, setState] = useState<{ kind: "idle" | "busy" | "ok" | "bad"; text?: string }>({ kind: "idle" });
+  const test = async (): Promise<void> => {
+    setState({ kind: "busy" });
+    try { const { quota } = await subtitleAdmin.test(); setState({ kind: "ok", text: `连接正常，本分钟还能查 ${quota} 次` }); }
+    catch (error) { setState({ kind: "bad", text: reason(error) }); }
+  };
+  const data = query.data;
+  return (
+    <>
+      <Row title="射手网字幕令牌" hint={data?.token_set
+        ? <>已设置，末尾 <span className="font-mono">{data.token_hint}</span>。播放器的字幕菜单里会出现「在线搜索字幕」。</>
+        : <>在 <a className="underline" href="https://assrt.net/usercp.php" target="_blank" rel="noreferrer">assrt.net 用户面板</a> 免费注册后复制令牌。每分钟最多查 20 次。</>}>
+        <div className="flex flex-wrap items-center gap-2">
+          <button className="btn btn-line h-9 px-3.5 text-[13px]" disabled={!data?.token_set || state.kind === "busy"} onClick={() => void test()}>
+            {state.kind === "busy" ? <><ArrowsClockwiseIcon size={15} className="spin" />测试中</> : state.kind === "ok" ? <><CheckIcon size={15} weight="bold" className="text-accent-text" />连接正常</> : <><PlugsConnectedIcon size={15} />测试连接</>}
+          </button>
+          <button className="btn btn-line h-9 px-3.5 text-[13px]" onClick={() => setEditing(open => !open)}><KeyIcon size={15} />{data?.token_set ? "更换" : "填写"}</button>
+        </div>
+      </Row>
+      <AnimatePresence initial={false}>
+        {state.text && state.kind !== "busy" && (
+          <motion.p key="state" className={`pb-4 text-[12.5px] ${state.kind === "bad" ? "text-danger" : "text-muted"}`} initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }}>
+            {state.kind === "bad" ? `连不上射手网：${state.text}` : state.text}
+          </motion.p>
+        )}
+        {editing && (
+          <motion.form key="form" className="flex gap-2 overflow-hidden pb-5" initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }} transition={spring.soft}
+            onSubmit={async event => {
+              event.preventDefault();
+              try {
+                const out = await subtitleAdmin.set(value.trim());
+                client.setQueryData(["subtitle-admin"], out);
+                void client.invalidateQueries({ queryKey: ["subtitles-online"] });
+                toast.success(value.trim() ? "已保存字幕令牌" : "已移除字幕令牌");
+                setValue(""); setEditing(false);
+                if (out.token_set) void test();
+              } catch (error) { toast.error("没有保存", error); }
+            }}>
+            <input className="field font-mono text-[12.5px]" type="password" autoComplete="off" spellCheck={false} placeholder="粘贴令牌（留空保存即移除）" value={value} onChange={event => setValue(event.target.value)} autoFocus />
+            <button className="btn btn-primary shrink-0">保存</button>
+          </motion.form>
+        )}
+      </AnimatePresence>
+    </>
   );
 }
 
@@ -226,6 +283,8 @@ export default function PosterSettings() {
             </motion.form>
           )}
         </AnimatePresence>
+
+        <SubtitleTokenRow />
 
         <Row title="语言" hint="片名和简介用哪种语言。换了以后会重新匹配（手动选的保留）。">
           <div className="grid grid-cols-4 rounded-[12px] bg-surface p-1 hairline" role="radiogroup">

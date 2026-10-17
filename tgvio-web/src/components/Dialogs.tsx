@@ -19,6 +19,7 @@ import { KindIcon } from "./KindIcon";
 import { DeviceList } from "./Devices";
 import { PosterPicker } from "./PosterPicker";
 import { Share115Dialog } from "./Share115";
+import { SubtitleSearch } from "./SubtitleSearch";
 import { TmdbRename } from "./TmdbRename";
 import { ShareDialog, SharesDialog } from "./Share";
 import { Sheet } from "./Sheet";
@@ -313,6 +314,8 @@ function DialogFor({ dialog, onClose }: { dialog: Dialog; onClose: () => void })
       return <OfflineDialog dir={dialog.dir} onClose={onClose} />;
     case "share115":
       return <Share115Dialog dir={dialog.dir} onClose={onClose} />;
+    case "subtitle-search":
+      return <SubtitleSearch path={dialog.path} onClose={onClose} />;
     case "share":
       return <ShareDialog dir={dialog.dir} names={dialog.names} onClose={onClose} />;
     case "poster":
