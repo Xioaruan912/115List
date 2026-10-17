@@ -17,6 +17,7 @@ import { spring } from "../lib/motion";
 import { extname, join } from "../lib/path";
 import { can, Perm } from "../lib/perm";
 import { sortObjs } from "../lib/sort";
+import { subtitlesFor } from "../lib/subtitles";
 import type { Obj } from "../lib/types";
 import { usePrefs } from "../stores/prefs";
 import { useSession } from "../stores/session";
@@ -227,6 +228,21 @@ function ViewerBody({ dir, name, origin }: { dir: string; name: string; origin: 
   // The thumbnail strip is for pictures and videos only: documents and archives
   // page with the arrows, the keys and the wheel, but never look like a gallery.
   const gallery = useMemo(() => files.filter(item => galleryKind(kindOf(item)) === "media"), [files]);
+  // Subtitles beside the video, and the next episode by name (S01E02 after
+  // S01E01) whatever the folder is sorted by.
+  const videoName = obj && kind === "video" ? obj.name : "";
+  const subtitles = useMemo(() => {
+    if (!videoName) return undefined;
+    const tracks = subtitlesFor(videoName, files);
+    if (!tracks.length) return undefined;
+    const byName = new Map(files.map(item => [item.name, item]));
+    return { tracks, urlOf: (name: string) => proxyUrl(join(dir, name), byName.get(name) ?? { sign: "" }) };
+  }, [videoName, files, dir]);
+  const nextVideo = useMemo(() => {
+    if (!videoName) return undefined;
+    const videos = sortObjs(files.filter(item => kindOf(item) === "video"), "name", false);
+    return videos[videos.findIndex(item => item.name === videoName) + 1];
+  }, [videoName, files]);
   const strip = media && gallery.length > 1 && gallery.some(item => item.thumb) && !mobile;
   const [aspects, setAspects] = useState<Record<string, number>>({});
   // Videos start 16:9 (the tile they came from may be a square icon) until the metadata says otherwise.
@@ -470,7 +486,8 @@ function ViewerBody({ dir, name, origin }: { dir: string; name: string; origin: 
             onWheel={onWheel}
           >
             {kind === "image" && <ImageView key={obj.name} src={src} fallback={fallback} thumb={obj.thumb} zoom={zoom} panX={panX} panY={panY} onAspect={setAspect} />}
-            {kind === "video" && <VideoPlayer key={obj.name} path={path} src={src} fallback={fallback} thumb={obj.thumb} chrome={chrome} onAspect={setAspect} cloud={cloudCapable ? () => cloudVideo(path, passwordFor(dir)) : undefined} onDownload={() => actions.download(dir, obj)} onCopy={() => void actions.copyLinks(dir, [obj])} />}
+            {kind === "video" && <VideoPlayer key={obj.name} path={path} src={src} subtitles={subtitles}
+              next={nextVideo ? { title: nextVideo.name.replace(/\.[^.]+$/, ""), thumb: nextVideo.thumb, play: () => { resetZoom(); setDirection(1); setCurrent(files.indexOf(nextVideo)); } } : undefined} fallback={fallback} thumb={obj.thumb} chrome={chrome} onAspect={setAspect} cloud={cloudCapable ? () => cloudVideo(path, passwordFor(dir)) : undefined} onDownload={() => actions.download(dir, obj)} onCopy={() => void actions.copyLinks(dir, [obj])} />}
             {kind === "audio" && <AudioView obj={obj} src={src} />}
             {(kind === "text" || kind === "code" || kind === "markdown") && <TextView obj={obj} url={fallback} kind={kind} />}
             {kind === "archive" && can(me, Perm.ReadArchives) && <ArchiveView dir={dir} obj={obj} />}

@@ -346,3 +346,9 @@ button, a, [role="button"] { touch-action: manipulation; }
 .cover-blur [data-poster-blur] .poster-cover img, .cover-blur [data-poster-blur] .poster-cell [data-thumb] img { filter: blur(18px) saturate(0.7); transition: filter 420ms var(--ease-expo); }
 @media (hover: hover) { .cover-blur [data-poster-blur] .tile:hover .poster-cover img, .cover-blur [data-poster-blur] .poster-cell:hover [data-thumb] img { filter: none; } }
 .cover-blur [data-poster-blur] .tile.reveal .poster-cover img { filter: none; }
+
+/* Plain (SRT / WebVTT) subtitles: white with a soft dark outline, readable over any frame. */
+.subtitle-cue {
+  text-shadow: 0 0 2px rgb(0 0 0 / 0.95), 0 0 6px rgb(0 0 0 / 0.75), 0 2px 3px rgb(0 0 0 / 0.9);
+  overflow-wrap: anywhere;
+}
