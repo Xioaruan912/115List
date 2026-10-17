@@ -1,5 +1,5 @@
 import {
-  ArrowRightIcon, CloudArrowDownIcon, DesktopIcon, EyeIcon, EyeSlashIcon, FolderPlusIcon, GaugeIcon, GearIcon, HardDrivesIcon,
+  ArrowRightIcon, CloudArrowDownIcon, LinkIcon, DesktopIcon, EyeIcon, EyeSlashIcon, FolderPlusIcon, GaugeIcon, GearIcon, HardDrivesIcon,
   ListBulletsIcon, ListChecksIcon, MagnifyingGlassIcon, MoonIcon, SignOutIcon, SquaresFourIcon, SunIcon, UploadSimpleIcon, UsersIcon,
 } from "@phosphor-icons/react";
 import { useQuery } from "@tanstack/react-query";
@@ -158,6 +158,7 @@ function PaletteBody({ path }: { path: string }) {
         { id: "upload", label: "上传文件", icon: <UploadSimpleIcon size={16} />, run: () => { close(); pickFiles(files => useUploads.getState().add(path, files)); } },
       ] : []),
       ...(can(me, Perm.Offline) ? [{ id: "offline", label: "离线下载", icon: <CloudArrowDownIcon size={16} />, run: () => useUi.getState().openDialog({ kind: "offline", dir: path }) }] : []),
+      ...(writable && /115/.test(list.data?.provider ?? "") ? [{ id: "share115", label: "转存 115 分享", icon: <LinkIcon size={16} />, run: () => useUi.getState().openDialog({ kind: "share115", dir: path }) }] : []),
       { id: "view", label: view === "grid" ? "切换到列表视图" : "切换到网格视图", icon: view === "grid" ? <ListBulletsIcon size={16} /> : <SquaresFourIcon size={16} />, run: () => { usePrefs.getState().setView(view === "grid" ? "list" : "grid"); close(); } },
       { id: "blur", label: blur ? "显示封面" : "模糊封面", icon: blur ? <EyeIcon size={16} /> : <EyeSlashIcon size={16} />, run: () => { usePrefs.getState().setBlur(!blur); close(); } },
       { id: "dark", label: "深色主题", icon: <MoonIcon size={16} />, run: () => { close(); switchTheme("dark"); } },

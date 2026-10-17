@@ -86,6 +86,8 @@ export function Dock({ path }: { path: string }) {
 
   const items = list.data?.content ?? [];
   const writable = can(me, Perm.Write, list.data?.write);
+  // 115 storages take share links straight into the folder.
+  const on115 = writable && /115/.test(list.data?.provider ?? "");
   const count = selected?.size ?? 0;
   const chosen = items.filter(item => selected?.has(item.name));
 
@@ -210,6 +212,7 @@ export function Dock({ path }: { path: string }) {
           { label: "上传文件", icon: <UploadSimpleIcon size={15} />, run: () => pickFiles(files => addUploads(path, files)) },
           { label: "上传文件夹", icon: <FolderSimpleIcon size={15} />, run: () => pickFiles(files => addUploads(path, files), true) },
           ...(can(me, Perm.Offline) ? ["divider" as const, { label: "离线下载", icon: <CloudArrowDownIcon size={15} />, run: () => openDialog({ kind: "offline", dir: path }) }] : []),
+          ...(on115 ? [{ label: "转存 115 分享", icon: <LinkIcon size={15} />, run: () => openDialog({ kind: "share115", dir: path }) }] : []),
         ]}
       />
     </>

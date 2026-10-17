@@ -8,6 +8,7 @@ export type Dialog =
   | { kind: "transfer"; mode: "move" | "copy"; dir: string; names: string[] }
   | { kind: "info"; dir: string; obj: Obj }
   | { kind: "offline"; dir: string }
+  | { kind: "share115"; dir: string }
   | { kind: "decompress"; dir: string; obj: Obj; innerPath: string; archivePass: string }
   | { kind: "share"; dir: string; names: string[] }
   | { kind: "shares" }
