@@ -30,6 +30,7 @@ type posterOut struct {
 	Rating   float64 `json:"rating,omitempty"`
 	Manual   bool    `json:"manual,omitempty"`
 	Season   int     `json:"season,omitempty"`
+	Cat      string  `json:"cat,omitempty"`
 }
 
 func posterURL(size, file string) string {
@@ -44,7 +45,7 @@ func toPosterOut(p *tgvio.Poster) *posterOut {
 		return nil
 	}
 	return &posterOut{Kind: p.Kind, ID: p.ID, Title: p.Title, Original: p.Original, Year: p.Year,
-		Poster: posterURL("w342", p.Poster), Backdrop: posterURL("w1280", p.Backdrop), Overview: p.Overview, Rating: p.Rating, Manual: p.Manual, Season: p.Season}
+		Poster: posterURL("w342", p.Poster), Backdrop: posterURL("w1280", p.Backdrop), Overview: p.Overview, Rating: p.Rating, Manual: p.Manual, Season: p.Season, Cat: p.Cat}
 }
 
 func posters() *tgvio.TMDB { return tgvio.Posters(flags.DataDir) }

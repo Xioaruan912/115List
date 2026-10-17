@@ -6,6 +6,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, typ
 import { useLocation } from "wouter";
 import { dirKey, needsPassword, prefetchDir, rememberPassword, useDir } from "../hooks/useDir";
 import { usePosters } from "../hooks/usePosters";
+import { CATEGORY_LABEL, categoryCounts, categoryOf, type Category } from "../api/posters";
 import { useThumbs } from "../hooks/useThumbs";
 import { useIsMobile } from "../hooks/useMedia";
 import { useWidth } from "../hooks/useSize";
@@ -15,7 +16,7 @@ import { formatBytes } from "../lib/format";
 import { spring } from "../lib/motion";
 import { basename, encodePath, join } from "../lib/path";
 import { can, Perm } from "../lib/perm";
-import { sortObjs } from "../lib/sort";
+import { sortByPoster, sortObjs } from "../lib/sort";
 import type { Obj } from "../lib/types";
 import { usePrefs, type SortKey } from "../stores/prefs";
 import { useSession } from "../stores/session";
@@ -45,11 +46,37 @@ export function pickFiles(onFiles: (files: { file: File; name: string }[]) => vo
   input.click();
 }
 
-function SortControl({ path }: { path: string }) {
+/**
+ * Narrow a folder to one kind of thing TMDB knows (电影, 电视剧, 动漫…). Shown
+ * when the folder holds more than one kind; the pill slides between choices.
+ */
+function CategoryFilter({ path, counts, total, value, onChange }: {
+  path: string; counts: [Category, number][]; total: number; value: Category | "all"; onChange: (value: Category | "all") => void;
+}) {
+  const options: [Category | "all", string, number][] = [["all", "全部", total], ...counts.map(([cat, n]) => [cat, CATEGORY_LABEL[cat], n] as [Category, string, number])];
+  return (
+    <div className="-mx-1 flex max-w-full items-center gap-1 overflow-x-auto px-1 text-[13px] [scrollbar-width:none]" role="group" aria-label="分类">
+      {options.map(([key, label, n]) => {
+        const active = key === value;
+        return (
+          <button key={key} aria-pressed={active} onClick={() => { flip.capture(); onChange(key); }}
+            className={`relative h-8 shrink-0 rounded-full px-3 transition-colors ${active ? "text-accent-ink" : "text-muted hover:text-ink"}`}>
+            {active && <motion.span layoutId={`cat-${path}`} className="absolute inset-0 rounded-full bg-accent" transition={spring.snappy} />}
+            <span className="relative tabular">{label}<span className={`ml-1 text-[11.5px] ${active ? "opacity-70" : "text-faint"}`}>{n}</span></span>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+/** Sorting; rating and year show up in folders TMDB knows something in. */
+function SortControl({ path, media }: { path: string; media: boolean }) {
   const sortKey = usePrefs(state => state.sortKey);
   const sortDesc = usePrefs(state => state.sortDesc);
   const setSort = usePrefs(state => state.setSort);
-  const options: [SortKey, string][] = [["name", "名称"], ["modified", "时间"], ["size", "大小"]];
+  const options = ([["name", "名称"], ["modified", "时间"], ["size", "大小"], ["rating", "评分"], ["year", "年份"]] as [SortKey, string][])
+    .filter(([key]) => media || key === sortKey || (key !== "rating" && key !== "year"));
   return (
     <div className="flex items-center gap-1 text-[13px]" role="group" aria-label="排序">
       {options.map(([key, label]) => {
@@ -139,9 +166,18 @@ export function DirectoryView({ path }: { path: string }) {
   const selected = useUi(state => state.selectionDir === path ? state.selected : EMPTY);
   const mobile = useIsMobile();
 
-  const items = useMemo(() => sortObjs(query.data?.content ?? [], sortKey, sortDesc), [query.data, sortKey, sortDesc]);
+  // Posters are asked for in the listing's own order (their query key follows
+  // it), then rating and year reorder what they answered.
+  const listed = useMemo(() => sortObjs(query.data?.content ?? [], sortKey, sortDesc), [query.data, sortKey, sortDesc]);
   const writable = can(me, Perm.Write, query.data?.write);
-  const { items: posterMap, blur: posterBlur } = usePosters(path, items);
+  const { items: posterMap, blur: posterBlur } = usePosters(path, listed);
+  const sorted = useMemo(() => sortKey === "rating" || sortKey === "year" ? sortByPoster(listed, sortKey, sortDesc, posterMap) : listed,
+    [listed, sortKey, sortDesc, posterMap]);
+  const counts = useMemo(() => categoryCounts(listed.map(item => item.name), posterMap), [listed, posterMap]);
+  const [catState, setCatState] = useState<{ path: string; cat: Category | "all" }>({ path, cat: "all" });
+  const chosenCat = catState.path === path && counts.some(([cat]) => cat === catState.cat) ? catState.cat : "all";
+  const items = useMemo(() => chosenCat === "all" ? sorted : sorted.filter(item => categoryOf(posterMap[item.name]) === chosenCat),
+    [sorted, chosenCat, posterMap]);
   const thumbMap = useThumbs(path, items);
   // Videos the drive lists without a picture get the one made for them; only
   // those objects change, so the other tiles keep their memo.
@@ -519,7 +555,10 @@ export function DirectoryView({ path }: { path: string }) {
                 </>
               ) : " "}
             </p>
-            {items.length > 1 && <SortControl path={path} />}
+            <div className="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-2">
+              {counts.length > 1 && <CategoryFilter path={path} counts={counts} total={listed.length} value={chosenCat} onChange={cat => setCatState({ path, cat })} />}
+              {listed.length > 1 && <SortControl path={path} media={Object.keys(posterMap).length > 0} />}
+            </div>
           </div>
         </motion.header>
         <div ref={listRef}>{body}</div>

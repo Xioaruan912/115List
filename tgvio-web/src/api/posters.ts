@@ -14,6 +14,29 @@ export interface Poster {
   rating?: number;
   manual?: boolean;
   season?: number;
+  /** What it is for browsing, from TMDB's genres; missing while the server is still asking. */
+  cat?: Category;
+}
+
+export type Category = "movie" | "tv" | "anime" | "variety" | "documentary";
+
+export const CATEGORY_LABEL: Record<Category, string> = { movie: "电影", tv: "电视剧", anime: "动漫", variety: "综艺", documentary: "纪录片" };
+const CATEGORY_ORDER: Category[] = ["movie", "tv", "anime", "variety", "documentary"];
+
+/** A poster's category; one from before categories counts by its kind until the server fills it in. */
+export function categoryOf(poster: Poster | undefined): Category | undefined {
+  if (!poster) return undefined;
+  return poster.cat ?? (poster.kind === "tv" ? "tv" : "movie");
+}
+
+/** How many of a listing fall in each category, in display order. */
+export function categoryCounts(names: string[], items: Record<string, Poster>): [Category, number][] {
+  const counts = new Map<Category, number>();
+  for (const name of names) {
+    const cat = categoryOf(items[name]);
+    if (cat) counts.set(cat, (counts.get(cat) ?? 0) + 1);
+  }
+  return CATEGORY_ORDER.filter(cat => counts.has(cat)).map(cat => [cat, counts.get(cat)!]);
 }
 
 export interface SeasonInfo { season: number; name: string; poster?: string; year?: number; episodes: number }
