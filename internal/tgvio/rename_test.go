@@ -101,3 +101,28 @@ func TestSubtitleTail(t *testing.T) {
 		t.Errorf("seasonsWithEpisodes = %d", n)
 	}
 }
+
+func TestVersionsAndPlaceholders(t *testing.T) {
+	if got := versionTag([]string{"a.2160p.mkv", "a.1080p.mkv"}, 1); got != "1080p" {
+		t.Errorf("by resolution: %q", got)
+	}
+	if got := versionTag([]string{"a - 第1集.mkv", "a - 第 1 集.mkv"}, 1); got != "版本2" {
+		t.Errorf("by number: %q", got)
+	}
+	for _, title := range []string{"第 1 集", "第12集", "Episode 3"} {
+		if !placeholderTitle.MatchString(title) {
+			t.Errorf("%q is a placeholder", title)
+		}
+	}
+	if placeholderTitle.MatchString("瑞秋知道了") {
+		t.Error("a real title is no placeholder")
+	}
+	plan := &RenamePlan{Items: []RenameItem{
+		{Old: "big.mkv", New: "X - S01E01.mkv", Kind: "video"},
+		{Old: "X - S01E01.mkv", New: "X - S01E01 - 版本2.mkv", Kind: "video"},
+	}}
+	freeingFirst(plan)
+	if plan.Items[0].Old != "X - S01E01.mkv" {
+		t.Errorf("the file leaving a name goes first: %+v", plan.Items)
+	}
+}

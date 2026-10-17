@@ -1,4 +1,4 @@
-import { CheckIcon, FilmSlateIcon, SealCheckIcon, SubtitlesIcon, FolderSimpleIcon, FilmStripIcon, WarningIcon } from "@phosphor-icons/react";
+import { CheckIcon, FileIcon, FilmSlateIcon, SealCheckIcon, SubtitlesIcon, FolderSimpleIcon, FilmStripIcon, WarningIcon } from "@phosphor-icons/react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { AnimatePresence, motion } from "motion/react";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -8,6 +8,7 @@ import { tmdbRename, type RenameInherit, type RenameItem, type RenamePlan } from
 import { passwordFor } from "../hooks/useDir";
 import * as actions from "../lib/actions";
 import { reason } from "../lib/errors";
+import { formatBytes } from "../lib/format";
 import { spring } from "../lib/motion";
 import { basename, encodePath, join, parent } from "../lib/path";
 import { toast } from "../stores/toast";
@@ -33,6 +34,7 @@ const WHY: Record<NonNullable<RenameItem["reason"]>, string> = {
   unknown: "TMDB 上没认出来",
   "pick-season": "先在上面选是第几季",
   inner: "子文件夹，名字保留",
+  version: "这一集有好几个文件：最大的用标准名，其余加上版本，确认后勾上",
 };
 
 type RowState = { status: "busy" } | { status: "done" } | { status: "error"; message: string };
@@ -98,7 +100,12 @@ export function TmdbRename({ targets: chosen, onClose }: { targets: RenameTarget
       try {
         const inherit = target.depth > 0 ? inheritFor(target.path, all, plansRef.current) : undefined;
         const plan = await tmdbRename.plan(target.path, passwordFor(target.path), target.only, season, inherit);
-        if (alive()) setLoaded(prev => ({ ...prev, [target.path]: { status: "ok", plan } }));
+        if (alive()) {
+          setLoaded(prev => ({ ...prev, [target.path]: { status: "ok", plan } }));
+          // Versions of one episode wait for the person: they come unticked.
+          const versions = plan.items.filter(item => item.reason === "version" && item.new).map(item => rowKey(target.path, item.old));
+          if (versions.length) setOff(prev => new Set([...prev, ...versions]));
+        }
       } catch (error) {
         if (alive()) setLoaded(prev => ({ ...prev, [target.path]: { status: "error", error } }));
       }
@@ -372,9 +379,9 @@ function SeasonPicker({ id, current, disabled, ask, onPick }: { id: number; curr
 
 function Row({ item, on, state, index, locked, onToggle }: { item: RenameItem; on: boolean; state?: RowState; index: number; locked: boolean; onToggle: () => void }) {
   const done = state?.status === "done";
-  const tag = item.kind === "folder" ? "文件夹" : item.kind === "subtitle" ? "字幕"
+  const tag = item.kind === "folder" ? "文件夹" : item.kind === "subtitle" ? "字幕" : item.kind === "extra" ? "附属"
     : item.episode ? `S${String(item.season ?? 1).padStart(2, "0")}E${String(item.episode).padStart(2, "0")}` : "";
-  const Icon = item.kind === "folder" ? FolderSimpleIcon : item.kind === "subtitle" ? SubtitlesIcon : FilmStripIcon;
+  const Icon = item.kind === "folder" ? FolderSimpleIcon : item.kind === "subtitle" ? SubtitlesIcon : item.kind === "extra" ? FileIcon : FilmStripIcon;
   return (
     <motion.li
       initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}
@@ -405,7 +412,11 @@ function Row({ item, on, state, index, locked, onToggle }: { item: RenameItem; o
           {item.new && (
             <span className={`mt-0.5 block truncate text-[12.5px] text-faint transition-opacity ${done ? "line-through opacity-60" : ""}`}>{item.old}</span>
           )}
-          {!item.new && item.reason && <span className="mt-0.5 block text-[12.5px] text-faint">{WHY[item.reason]}</span>}
+          {item.reason && (!item.new || item.reason === "version") && (
+            <span className={`mt-0.5 block text-[12.5px] ${item.reason === "version" ? "text-muted" : "text-faint"}`}>
+              {item.reason === "version" && item.size ? <span className="tabular font-medium text-ink">{formatBytes(item.size)} · </span> : null}{WHY[item.reason]}
+            </span>
+          )}
           {state?.status === "error" && (
             <motion.span className="mt-1 flex items-center gap-1 text-[12.5px] text-danger" initial={{ x: -6 }} animate={{ x: [6, -4, 2, 0] }} transition={{ duration: 0.4 }}>
               <WarningIcon size={13} />{state.message}

@@ -5,10 +5,12 @@ import type { Poster } from "./posters";
 export interface RenameItem {
   old: string;
   new?: string;
-  kind: "video" | "subtitle" | "folder";
+  kind: "video" | "subtitle" | "extra" | "folder";
   season?: number;
   episode?: number;
-  reason?: "same" | "no-episode" | "several" | "conflict" | "unknown" | "pick-season" | "inner";
+  /** Size of a version of an episode. */
+  size?: number;
+  reason?: "same" | "no-episode" | "several" | "conflict" | "unknown" | "pick-season" | "inner" | "version";
 }
 
 export interface RenamePlan {

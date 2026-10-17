@@ -24,16 +24,18 @@ import (
 type RenameEntry struct {
 	Name  string `json:"name"`
 	IsDir bool   `json:"is_dir"`
+	Size  int64  `json:"size,omitempty"`
 }
 
 // RenameItem is one proposed rename.
 type RenameItem struct {
 	Old     string `json:"old"`
 	New     string `json:"new,omitempty"`
-	Kind    string `json:"kind"` // "video", "subtitle", "folder"
+	Kind    string `json:"kind"` // "video", "subtitle", "extra" (.nfo, -thumb.jpg), "folder"
 	Season  int    `json:"season,omitempty"`
 	Episode int    `json:"episode,omitempty"`
 	Reason  string `json:"reason,omitempty"` // why there is no proposal
+	Size    int64  `json:"size,omitempty"`   // for versions of one episode, to tell them apart
 }
 
 // RenamePlan is what the person reviews.
@@ -70,9 +72,14 @@ var (
 	epDash    = regexp.MustCompile(`\s-\s(\d{1,4})(?:v\d)?(?:\s|$|[\[(.])`)
 	epBare    = regexp.MustCompile(`^(\d{1,4})$`)
 	epTail    = regexp.MustCompile(`(?:^|[\s._\-])(\d{1,3})$`)
-	langTag   = regexp.MustCompile(`(?i)^(?:(?:en|eng|zh|chi|zho|chs|cht|sc|tc|gb|big5|ja|jp|jpn|ko|kor|fr|fre|de|ger|es|spa|ru|rus|it|pt|th|vi)(?:[-_](?:cn|tw|hk|hans|hant|sg|us|gb|br))?|forced|sdh|default|cc|(?:简|繁|中|英|日|韩|双语|体|文|字幕|[&+\-_])+)$`)
-	partTag   = regexp.MustCompile(`(?i)(?:^|[^a-z0-9])(?:cd|disc|disk|part|pt)[ ._-]?(\d{1,2})(?:[^0-9]|$)`)
-	notEp     = regexp.MustCompile(`(?i)\b\d{3,4}p\b|[xh]\.?26[45]|\b(?:19|20)\d{2}\b|\b\d+bit\b|\bddp?\d\.\d\b|\b[257]\.1\b`)
+	// TMDB's stand-in for an episode with no title yet ("第 1 集", "Episode 1"): not worth a file name.
+	placeholderTitle = regexp.MustCompile(`(?i)^(?:第\s*\d+\s*[集话話]|episode\s*\d+|ep\.?\s*\d+)$`)
+	resolutionTag    = regexp.MustCompile(`(?i)\b(?:4320|2160|1440|1080|720|576|480)[pi]\b|\b[48]k\b`)
+	// Artwork media servers keep beside a video ("…-thumb.jpg", "…-poster.png").
+	companionImage = regexp.MustCompile(`(?i)-(?:thumb|poster|fanart|landscape|banner|clearart|logo|disc)\.(?:jpe?g|png|webp)$`)
+	langTag        = regexp.MustCompile(`(?i)^(?:(?:en|eng|zh|chi|zho|chs|cht|sc|tc|gb|big5|ja|jp|jpn|ko|kor|fr|fre|de|ger|es|spa|ru|rus|it|pt|th|vi)(?:[-_](?:cn|tw|hk|hans|hant|sg|us|gb|br))?|forced|sdh|default|cc|(?:简|繁|中|英|日|韩|双语|体|文|字幕|[&+\-_])+)$`)
+	partTag        = regexp.MustCompile(`(?i)(?:^|[^a-z0-9])(?:cd|disc|disk|part|pt)[ ._-]?(\d{1,2})(?:[^0-9]|$)`)
+	notEp          = regexp.MustCompile(`(?i)\b\d{3,4}p\b|[xh]\.?26[45]|\b(?:19|20)\d{2}\b|\b\d+bit\b|\bddp?\d\.\d\b|\b[257]\.1\b`)
 )
 
 // ParseEpisode reads a season and an episode number from a video name (season 0
@@ -459,6 +466,18 @@ func (t *TMDB) PlanRenameIn(ctx context.Context, dir string, entries []RenameEnt
 		}
 		seasonYear = years[folderSeason]
 		titles := map[int]map[int]string{}
+		size := map[string]int64{}
+		for _, e := range entries {
+			size[e.Name] = e.Size
+		}
+		type episodeFile struct {
+			old     string
+			s, ep   int
+			name    string
+			version string
+		}
+		var found []*episodeFile
+		byEpisode := map[[2]int][]*episodeFile{}
 		for _, v := range videos {
 			s, ep := ParseEpisode(v)
 			if ep == 0 {
@@ -470,12 +489,43 @@ func (t *TMDB) PlanRenameIn(ctx context.Context, dir string, entries []RenameEnt
 				titles[s] = t.episodeTitles(ctx, subject.ID, s)
 			}
 			name := fmt.Sprintf("%s - S%02dE%02d", title, s, ep)
-			if et := SafeName(titles[s][ep]); et != "" {
+			if et := SafeName(titles[s][ep]); et != "" && !placeholderTitle.MatchString(et) {
 				name += " - " + et
 			}
-			newBase[strings.TrimSuffix(v, stdpath.Ext(v))] = name
-			episodeBase[[2]int{s, ep}] = name
-			add(RenameItem{Old: v, New: name + extOf(v), Kind: "video", Season: s, Episode: ep})
+			f := &episodeFile{old: v, s: s, ep: ep, name: name}
+			found = append(found, f)
+			byEpisode[[2]int{s, ep}] = append(byEpisode[[2]int{s, ep}], f)
+		}
+		// One episode in several files (a 14 GB remux beside a 2 GB encode):
+		// the largest takes the plain name, the others a version tag, and the
+		// person confirms each (they come unticked).
+		for _, group := range byEpisode {
+			if len(group) < 2 {
+				continue
+			}
+			sort.SliceStable(group, func(i, j int) bool { return size[group[i].old] > size[group[j].old] })
+			names := make([]string, len(group))
+			for i, f := range group {
+				names[i] = f.old
+			}
+			for i, f := range group {
+				f.version = "main"
+				if i > 0 {
+					f.version = versionTag(names, i)
+					f.name += " - " + f.version
+				}
+			}
+		}
+		for _, f := range found {
+			newBase[strings.TrimSuffix(f.old, stdpath.Ext(f.old))] = f.name
+			if f.version == "" || f.version == "main" {
+				episodeBase[[2]int{f.s, f.ep}] = f.name
+			}
+			item := RenameItem{Old: f.old, New: f.name + extOf(f.old), Kind: "video", Season: f.s, Episode: f.ep}
+			if f.version != "" {
+				item.Reason, item.Size = "version", size[f.old]
+			}
+			add(item)
 		}
 	} else {
 		whole := titleYear(title, base.Year)
@@ -514,18 +564,26 @@ func (t *TMDB) PlanRenameIn(ctx context.Context, dir string, entries []RenameEnt
 	// Subtitles and .nfo files follow the video they are named after, keeping
 	// what follows its name (".chs.ass", ".zh-CN.srt").
 	for _, e := range entries {
-		if e.IsDir || !subtitleExt.MatchString(e.Name) {
+		image := companionImage.MatchString(e.Name)
+		if e.IsDir || !subtitleExt.MatchString(e.Name) && !image {
 			continue
+		}
+		kind := "subtitle"
+		if image || strings.HasSuffix(strings.ToLower(e.Name), ".nfo") {
+			kind = "extra"
 		}
 		best := ""
 		for old := range newBase {
-			if strings.HasPrefix(e.Name, old+".") && len(old) > len(best) {
+			if (strings.HasPrefix(e.Name, old+".") || image && strings.HasPrefix(e.Name, old+"-")) && len(old) > len(best) {
 				best = old
 			}
 		}
 		if best != "" {
-			add(RenameItem{Old: e.Name, New: newBase[best] + e.Name[len(best):], Kind: "subtitle"})
+			add(RenameItem{Old: e.Name, New: newBase[best] + e.Name[len(best):], Kind: kind})
 			continue
+		}
+		if kind == "extra" {
+			continue // artwork and .nfo of no video here ("season.nfo", "tvshow.nfo") stay as they are
 		}
 		// Named after no video here (a "Subs" folder, "S05E03.chs.ass" next to
 		// differently named videos): by its own episode number, else after the
@@ -558,7 +616,7 @@ func (t *TMDB) PlanRenameIn(ctx context.Context, dir string, entries []RenameEnt
 		if name == "" {
 			continue
 		}
-		add(RenameItem{Old: e.Name, New: name + tail, Kind: "subtitle"})
+		add(RenameItem{Old: e.Name, New: name + tail, Kind: kind})
 	}
 
 	// The folder: "片名 (年份)", or "剧名 第二季 (年份)" for one season.
@@ -582,12 +640,27 @@ func (t *TMDB) PlanRenameIn(ctx context.Context, dir string, entries []RenameEnt
 
 	plan.Season = folderSeason
 	markConflicts(plan, entries)
+	freeingFirst(plan)
 	return plan, nil
 }
 
 // RenameWorthy reports whether a file is one the planner names (a video, a subtitle or .nfo).
 func RenameWorthy(name string) bool {
 	return mediaExt.MatchString(name) || subtitleExt.MatchString(name)
+}
+
+// versionTag tells apart the versions of one episode: by resolution when the
+// names say different ones ("2160p"), else by number ("版本2").
+func versionTag(names []string, i int) string {
+	seen := map[string]bool{}
+	for _, name := range names {
+		r := strings.ToLower(resolutionTag.FindString(name))
+		if r == "" || seen[r] {
+			return "版本" + strconv.Itoa(i+1)
+		}
+		seen[r] = true
+	}
+	return strings.ToLower(resolutionTag.FindString(names[i]))
 }
 
 // seasonsWithEpisodes counts a series' real seasons (specials, season 0, aside).
@@ -633,6 +706,20 @@ func subtitleTail(name string) string {
 		return "." + stem + ext
 	}
 	return ext
+}
+
+// freeingFirst orders the rows so a file moving out of a name goes before the
+// file moving into it (the larger version taking the name a smaller one has).
+func freeingFirst(plan *RenamePlan) {
+	wanted := map[string]bool{}
+	for _, item := range plan.Items {
+		if item.New != "" && item.Kind != "folder" {
+			wanted[strings.ToLower(item.New)] = true
+		}
+	}
+	sort.SliceStable(plan.Items, func(i, j int) bool {
+		return wanted[strings.ToLower(plan.Items[i].Old)] && !wanted[strings.ToLower(plan.Items[j].Old)]
+	})
 }
 
 // placeEpisode fits an episode number to TMDB's seasons. Fansubs often number
@@ -691,8 +778,6 @@ func markConflicts(plan *RenamePlan, entries []RenameEntry) {
 	}
 }
 
-// Renamed carries a poster entry to an object's new name, so a renamed folder or
-// video keeps its poster (and a choice made by hand) without a new lookup.
 // RenamedAs records what a folder renamed after a plan is: the plan's film or
 // series (one season's poster for a season folder), so the new name never waits
 // for a lookup, nor keeps a "nothing found" from its old, messy name. A poster
@@ -721,6 +806,8 @@ func (t *TMDB) RenamedAs(ctx context.Context, dir, oldName, newName, newDir stri
 	t.save()
 }
 
+// Renamed carries a poster entry to an object's new name, so a renamed folder or
+// video keeps its poster (and a choice made by hand) without a new lookup.
 func (t *TMDB) Renamed(dir, oldName, newName, newDir string) {
 	t.mu.Lock()
 	entry, ok := t.entries[Key(oldName)]
