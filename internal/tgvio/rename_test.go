@@ -77,3 +77,23 @@ func TestPlaceEpisode(t *testing.T) {
 		t.Errorf("no seasons -> S%dE%d", s, e)
 	}
 }
+
+func TestSubtitleTail(t *testing.T) {
+	for name, want := range map[string]string{
+		"S05E03.chs.ass":          ".chs.ass",
+		"Movie.zh-CN.srt":         ".zh-CN.srt",
+		"我们这一天.简体中文.ass":          ".简体中文.ass",
+		"我们这一天.第五季.ass":           ".ass",
+		"Show.S01E01.WEB-DL.srt":  ".srt",
+		"plain.srt":               ".srt",
+		"简体中文.srt":                ".简体中文.srt",
+		"Show.S01E01.eng.sdh.srt": ".sdh.srt",
+	} {
+		if got := subtitleTail(name); got != want {
+			t.Errorf("subtitleTail(%q) = %q, want %q", name, got, want)
+		}
+	}
+	if n := seasonsWithEpisodes(map[int]int{0: 5, 1: 10, 2: 0, 3: 8}); n != 2 {
+		t.Errorf("seasonsWithEpisodes = %d", n)
+	}
+}

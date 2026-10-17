@@ -124,6 +124,7 @@ func Init(e *gin.Engine) {
 	auth.GET("/tgvio/posters/seasons", middlewares.AuthNotGuest, handles.TgvioPosterSeasons)
 	auth.POST("/tgvio/rename/plan", middlewares.AuthNotGuest, handles.TgvioRenamePlan)
 	auth.POST("/tgvio/rename/apply", middlewares.AuthNotGuest, handles.TgvioRenameApply)
+	auth.POST("/tgvio/rename/tree", middlewares.AuthNotGuest, handles.TgvioRenameTree)
 	g.GET("/tgvio/poster/:size/:file", handles.TgvioPosterImage)
 	auth.POST("/tgvio/thumbs", middlewares.AuthNotGuest, handles.TgvioThumbs)
 	g.GET("/tgvio/thumb/:file", handles.TgvioThumbImage)

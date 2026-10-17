@@ -42,6 +42,20 @@ type RenamePlan struct {
 	Season  int          `json:"season,omitempty"` // the season the episodes were named under
 	Items   []RenameItem `json:"items"`
 	Reason  string       `json:"reason,omitempty"` // the whole folder could not be planned
+	// Need is "season" when the series has several seasons and nothing says
+	// which one this folder is: nothing is proposed until the person picks one.
+	Need string `json:"need,omitempty"`
+	// Inherited: the folder found nothing of its own (or is part of the series
+	// above it) and is named after the folder above.
+	Inherited bool `json:"inherited,omitempty"`
+}
+
+// RenameInherit is what the folder above a subfolder was planned as, for
+// subfolders that name nothing themselves ("Subs", "Season 2", "第五季").
+type RenameInherit struct {
+	Kind   string `json:"kind"`
+	ID     int    `json:"id"`
+	Season int    `json:"season,omitempty"`
 }
 
 var (
@@ -56,6 +70,7 @@ var (
 	epDash    = regexp.MustCompile(`\s-\s(\d{1,4})(?:v\d)?(?:\s|$|[\[(.])`)
 	epBare    = regexp.MustCompile(`^(\d{1,4})$`)
 	epTail    = regexp.MustCompile(`(?:^|[\s._\-])(\d{1,3})$`)
+	langTag   = regexp.MustCompile(`(?i)^(?:(?:en|eng|zh|chi|zho|chs|cht|sc|tc|gb|big5|ja|jp|jpn|ko|kor|fr|fre|de|ger|es|spa|ru|rus|it|pt|th|vi)(?:[-_](?:cn|tw|hk|hans|hant|sg|us|gb|br))?|forced|sdh|default|cc|(?:简|繁|中|英|日|韩|双语|体|文|字幕|[&+\-_])+)$`)
 	partTag   = regexp.MustCompile(`(?i)(?:^|[^a-z0-9])(?:cd|disc|disk|part|pt)[ ._-]?(\d{1,2})(?:[^0-9]|$)`)
 	notEp     = regexp.MustCompile(`(?i)\b\d{3,4}p\b|[xh]\.?26[45]|\b(?:19|20)\d{2}\b|\b\d+bit\b|\bddp?\d\.\d\b|\b[257]\.1\b`)
 )
@@ -320,6 +335,14 @@ func (t *TMDB) subjectOf(ctx context.Context, dir string, entries []RenameEntry)
 // season > 0 names the season by hand (the plan's season picker); 0 reads it
 // from the folder's poster or name.
 func (t *TMDB) PlanRename(ctx context.Context, dir string, entries []RenameEntry, season int) (*RenamePlan, error) {
+	return t.PlanRenameIn(ctx, dir, entries, season, nil)
+}
+
+// PlanRenameIn plans a folder inside one already planned (a subfolder of a
+// series or film being renamed as a whole). A subfolder of a series is always
+// part of that series, whatever its own name finds ("Featurettes" is no film of
+// its own); a subfolder of a film folder keeps its own match when it has one.
+func (t *TMDB) PlanRenameIn(ctx context.Context, dir string, entries []RenameEntry, season int, inherit *RenameInherit) (*RenamePlan, error) {
 	if !t.Enabled() {
 		return nil, errors.New("TMDB is not configured")
 	}
@@ -330,6 +353,15 @@ func (t *TMDB) PlanRename(ctx context.Context, dir string, entries []RenameEntry
 		return nil, err
 	}
 	plan := &RenamePlan{Items: []RenameItem{}}
+	ownSeason := true
+	if inherit != nil && inherit.ID > 0 && (subject.None || subject.ID != inherit.ID || subject.Kind != inherit.Kind) &&
+		(subject.None || inherit.Kind == "tv") {
+		above, err := t.Details(ctx, inherit.Kind, inherit.ID)
+		if err != nil {
+			return nil, err
+		}
+		subject, ownSeason, plan.Inherited = above, false, true
+	}
 	if subject.None {
 		plan.Reason = "no-match"
 		return plan, nil
@@ -351,7 +383,8 @@ func (t *TMDB) PlanRename(ctx context.Context, dir string, entries []RenameEntry
 		}
 	}
 	sort.Strings(videos)
-	newBase := map[string]string{} // video name without extension -> new one
+	newBase := map[string]string{}     // video name without extension -> new one
+	episodeBase := map[[2]int]string{} // season and episode -> the new name of its video
 	add := func(item RenameItem) {
 		if item.New == item.Old {
 			item.New = ""
@@ -364,12 +397,17 @@ func (t *TMDB) PlanRename(ctx context.Context, dir string, entries []RenameEntry
 
 	folderSeason, seasonYear := 0, 0
 	if subject.Kind == "tv" {
-		folderSeason = subject.Season
-		if season > 0 {
+		// Which season: chosen by hand, the folder's name ("第五季", "Season 2"),
+		// the folder's own poster, then the folder above.
+		switch {
+		case season > 0:
 			folderSeason = season
-		}
-		if folderSeason == 0 {
+		case SeasonOf(folder) > 0:
 			folderSeason = SeasonOf(folder)
+		case ownSeason && subject.Season > 0:
+			folderSeason = subject.Season
+		case inherit != nil && inherit.Season > 0:
+			folderSeason = inherit.Season
 		}
 		// A folder that is one season decides the season, even over "S01E05" in
 		// a file name: names given under a wrong season must be fixable.
@@ -396,6 +434,28 @@ func (t *TMDB) PlanRename(ctx context.Context, dir string, entries []RenameEntry
 				}
 			}
 		}
+		// Nothing names the season, the files do not either, and their numbers
+		// fit inside the first season (so they are not counted on from it): with
+		// several seasons this could be any of them. Wait for the person.
+		if folderSeason == 0 && seasonsWithEpisodes(counts) > 1 {
+			named, top := false, 0
+			for _, v := range videos {
+				s, ep := ParseEpisode(v)
+				if s > 0 {
+					named = true
+				}
+				if ep > top {
+					top = ep
+				}
+			}
+			if !named && top > 0 && top <= counts[1] {
+				plan.Need = "season"
+				for _, v := range videos {
+					plan.Items = append(plan.Items, RenameItem{Old: v, Kind: "video", Reason: "pick-season"})
+				}
+				return plan, nil
+			}
+		}
 		seasonYear = years[folderSeason]
 		titles := map[int]map[int]string{}
 		for _, v := range videos {
@@ -413,6 +473,7 @@ func (t *TMDB) PlanRename(ctx context.Context, dir string, entries []RenameEntry
 				name += " - " + et
 			}
 			newBase[strings.TrimSuffix(v, stdpath.Ext(v))] = name
+			episodeBase[[2]int{s, ep}] = name
 			add(RenameItem{Old: v, New: name + extOf(v), Kind: "video", Season: s, Episode: ep})
 		}
 	} else {
@@ -461,10 +522,42 @@ func (t *TMDB) PlanRename(ctx context.Context, dir string, entries []RenameEntry
 				best = old
 			}
 		}
-		if best == "" {
+		if best != "" {
+			add(RenameItem{Old: e.Name, New: newBase[best] + e.Name[len(best):], Kind: "subtitle"})
 			continue
 		}
-		add(RenameItem{Old: e.Name, New: newBase[best] + e.Name[len(best):], Kind: "subtitle"})
+		// Named after no video here (a "Subs" folder, "S05E03.chs.ass" next to
+		// differently named videos): by its own episode number, else after the
+		// folder's title, keeping its language tag.
+		tail := subtitleTail(e.Name)
+		stem := strings.TrimSuffix(e.Name, tail)
+		var name string
+		if subject.Kind == "tv" {
+			s, ep := ParseEpisode(stem)
+			if ep > 0 {
+				s, ep = placeEpisodeIn(subject, folderSeason, s, ep, ctx, t)
+				if name = episodeBase[[2]int{s, ep}]; name == "" {
+					// Same name as its video gets in the folder beside it.
+					name = fmt.Sprintf("%s - S%02dE%02d", title, s, ep)
+					if et := SafeName(t.episodeTitles(ctx, subject.ID, s)[ep]); et != "" {
+						name += " - " + et
+					}
+				}
+			} else if folderSeason > 0 {
+				name = title + " 第" + cnNumeral(folderSeason) + "季"
+			} else {
+				name = title
+			}
+		} else if len(videos) <= 1 && !multi {
+			name = titleYear(title, base.Year)
+			for _, v := range newBase {
+				name = v
+			}
+		}
+		if name == "" {
+			continue
+		}
+		add(RenameItem{Old: e.Name, New: name + tail, Kind: "subtitle"})
 	}
 
 	// The folder: "片名 (年份)", or "剧名 第二季 (年份)" for one season.
@@ -478,6 +571,10 @@ func (t *TMDB) PlanRename(ctx context.Context, dir string, entries []RenameEntry
 	}
 	if multi {
 		add(RenameItem{Old: folder, Kind: "folder", Reason: "several"})
+	} else if plan.Inherited && SeasonOf(folder) == 0 && season == 0 {
+		// "Subs", "Featurettes": a part of the folder above keeps its name
+		// (a season picked by hand says what it is, and it is named for it).
+		add(RenameItem{Old: folder, Kind: "folder", Reason: "inner"})
 	} else {
 		add(RenameItem{Old: folder, New: folderName, Kind: "folder"})
 	}
@@ -485,6 +582,55 @@ func (t *TMDB) PlanRename(ctx context.Context, dir string, entries []RenameEntry
 	plan.Season = folderSeason
 	markConflicts(plan, entries)
 	return plan, nil
+}
+
+// RenameWorthy reports whether a file is one the planner names (a video, a subtitle or .nfo).
+func RenameWorthy(name string) bool {
+	return mediaExt.MatchString(name) || subtitleExt.MatchString(name)
+}
+
+// seasonsWithEpisodes counts a series' real seasons (specials, season 0, aside).
+func seasonsWithEpisodes(counts map[int]int) int {
+	n := 0
+	for s, eps := range counts {
+		if s > 0 && eps > 0 {
+			n++
+		}
+	}
+	return n
+}
+
+// placeEpisodeIn places a subtitle's episode like the videos of the folder.
+func placeEpisodeIn(subject *Poster, folderSeason, s, ep int, ctx context.Context, t *TMDB) (int, int) {
+	if folderSeason > 0 {
+		s = folderSeason
+	} else if s == 0 {
+		s = 1
+	}
+	counts, last := map[int]int{}, 0
+	if seasons, err := t.Seasons(ctx, subject.ID); err == nil {
+		for _, info := range seasons {
+			counts[info.Season] = info.Episodes
+			if info.Season > last {
+				last = info.Season
+			}
+		}
+	}
+	return placeEpisode(counts, last, s, ep)
+}
+
+// subtitleTail is what a subtitle keeps after its new name: a short language
+// tag and the extension (".chs.ass", ".zh-CN.srt", ".简体.ass", ".srt").
+func subtitleTail(name string) string {
+	ext := stdpath.Ext(name)
+	stem := strings.TrimSuffix(name, ext)
+	if dot := strings.LastIndex(stem, "."); dot >= 0 && langTag.MatchString(stem[dot+1:]) {
+		return stem[dot:] + ext
+	}
+	if langTag.MatchString(stem) { // "简体中文.srt", "eng.srt"
+		return "." + stem + ext
+	}
+	return ext
 }
 
 // placeEpisode fits an episode number to TMDB's seasons. Fansubs often number
