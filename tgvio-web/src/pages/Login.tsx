@@ -8,6 +8,7 @@ import { SplitText } from "../components/SplitText";
 import { ApiError } from "../lib/api";
 import { spring } from "../lib/motion";
 import { useSession } from "../stores/session";
+import { toast } from "../stores/toast";
 import { reason } from "../lib/errors";
 
 export function Login() {
@@ -108,7 +109,10 @@ export function Login() {
               {state === "done" && <motion.span key="done" initial={{ scale: 0, rotate: -45 }} animate={{ scale: 1, rotate: 0 }} transition={spring.pop}><CheckIcon size={20} weight="bold" /></motion.span>}
             </AnimatePresence>
           </motion.button>
-          <button type="button" className="mt-3 h-9 w-full text-center text-[13px] text-muted hover:text-ink" onClick={() => navigate("/")}>以访客身份浏览</button>
+          <button type="button" className="mt-3 h-9 w-full text-center text-[13px] text-muted hover:text-ink"
+            onClick={() => void useSession.getState().browseAsGuest().then(() => navigate("/"), error => toast.error("没法以访客身份浏览", error))}>
+            以访客身份浏览
+          </button>
         </motion.form>
       </motion.div>
     </div>

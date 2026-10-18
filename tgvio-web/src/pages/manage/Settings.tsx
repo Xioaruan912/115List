@@ -13,7 +13,7 @@ import { SessionSettings } from "../../components/Devices";
 // 100 is ours: TGVIO settings that are not OpenList setting items.
 const POSTERS = 100;
 const LOGIN = 101;
-const GROUPS: [number, string][] = [[1, "站点"], [2, "样式"], [3, "预览"], [4, "全局"], [POSTERS, "海报"], [LOGIN, "登录"], [11, "流量"], [6, "索引"], [5, "离线下载"], [7, "单点登录"], [8, "LDAP"], [9, "S3"], [10, "FTP"]];
+const GROUPS: [number, string][] = [[1, "站点"], [2, "样式"], [3, "预览"], [4, "全局"], [POSTERS, "影视库"], [LOGIN, "登录"], [11, "流量"], [6, "索引"], [5, "离线下载"], [7, "单点登录"], [8, "LDAP"], [9, "S3"], [10, "FTP"]];
 
 const PosterSettings = lazy(() => import("./PosterSettings"));
 

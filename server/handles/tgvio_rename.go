@@ -43,6 +43,10 @@ func renameFolder(c *gin.Context, path, password string) (string, bool) {
 		common.ErrorResp(c, errs.PermissionDenied, 403)
 		return "", false
 	}
+	if !posters().InLibrary(reqPath) {
+		common.ErrorStrResp(c, "this folder is outside the media library paths", 400)
+		return "", false
+	}
 	meta, err := op.GetNearestMeta(reqPath)
 	if err != nil && !errors.Is(errors.Cause(err), errs.MetaNotFound) {
 		common.ErrorResp(c, err, 500, true)

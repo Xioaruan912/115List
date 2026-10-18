@@ -9,7 +9,8 @@ import { ErrorState } from "../components/ErrorState";
 import { Mark } from "../components/Mark";
 import { spring } from "../lib/motion";
 import { basename, encodePath, parent } from "../lib/path";
-import { formatClock, recentProgress, subscribeProgress, watched } from "../lib/progress";
+import { clearProgress, formatClock, recentProgress, subscribeProgress, watched } from "../lib/progress";
+import { useToasts } from "../stores/toast";
 import { usePrefs } from "../stores/prefs";
 import { useSession } from "../stores/session";
 import { useUi } from "../stores/ui";
@@ -101,15 +102,28 @@ function ContinueRow({ items, onPlay }: { items: LibraryItem[]; onPlay: (path: s
     return { path, progress, owner, episode: match ? `S${match[1].padStart(2, "0")}E${match[2].padStart(2, "0")}` : "" };
   });
   if (!rows.length) return null;
+  const clear = (paths: string[], title: string): void => {
+    const undo = clearProgress(paths);
+    useToasts.getState().push({ tone: "info", title, action: { label: "撤销", run: undo } }, 6000);
+  };
   return (
     <section className="mt-8">
-      <h2 className="mb-3 px-2 text-[17px] font-semibold tracking-tight sm:px-0">继续观看</h2>
+      <div className="mb-3 flex items-center justify-between px-2 sm:px-0">
+        <h2 className="text-[17px] font-semibold tracking-tight">继续观看</h2>
+        <button className="rounded-lg px-2.5 py-1 text-[13px] text-muted hover:bg-[var(--hover)] hover:text-ink" onClick={() => clear(rows.map(row => row.path), "已清空继续观看")}>清空</button>
+      </div>
       <div className="-mx-3 flex snap-x gap-3 overflow-x-auto px-3 pb-2 [scrollbar-width:none] sm:-mx-8 sm:px-8">
         {rows.map(({ path, progress, owner, episode }, index) => {
           const art = owner?.backdrop || owner?.poster;
           return (
-            <motion.button key={path} className="tile group/cont w-[min(72vw,300px)] shrink-0 snap-start text-left" onClick={() => onPlay(path)}
+            <motion.div key={path} role="button" tabIndex={0} className="tile group/cont relative w-[min(72vw,300px)] shrink-0 cursor-pointer snap-start text-left" onClick={() => onPlay(path)}
+              onKeyDown={event => { if (event.key === "Enter") onPlay(path); }}
               initial={{ opacity: 0, x: 30 }} animate={{ opacity: 1, x: 0 }} transition={{ ...spring.soft, delay: index * 0.04 }}>
+              <button aria-label="从继续观看里移除" title="移除"
+                className="absolute right-2 top-2 z-[1] grid size-7 place-items-center rounded-full bg-black/55 text-white opacity-0 backdrop-blur-md transition-opacity hover:bg-black/75 group-hover/cont:opacity-100 focus-visible:opacity-100 [@media(hover:none)]:opacity-100"
+                onClick={event => { event.stopPropagation(); clear([path], `已移除「${owner?.title ?? basename(path)}」`); }}>
+                <XIcon size={13} weight="bold" />
+              </button>
               <div className="relative aspect-video overflow-hidden rounded-[12px] bg-surface" style={{ boxShadow: "inset 0 0 0 1px var(--line)" }}>
                 {art ? <img src={posterSrc(art, owner?.backdrop ? undefined : "w342")} alt="" loading="lazy" className="thumb size-full object-cover transition-transform duration-700 ease-[var(--ease-expo)] group-hover/cont:scale-105" />
                   : <span className="grid size-full place-items-center text-faint"><FilmSlateIcon size={28} /></span>}
@@ -119,7 +133,7 @@ function ContinueRow({ items, onPlay }: { items: LibraryItem[]; onPlay: (path: s
               </div>
               <p className="mt-2 truncate text-[13px] font-medium">{owner?.title ?? basename(path)}{episode && <span className="ml-1.5 font-mono text-[12px] text-muted">{episode}</span>}</p>
               <p className="text-[12px] text-muted tabular">还剩 {formatClock(progress.duration - progress.time)}</p>
-            </motion.button>
+            </motion.div>
           );
         })}
       </div>

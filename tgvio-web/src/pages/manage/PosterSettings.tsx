@@ -137,7 +137,7 @@ function PathsEditor({ paths, onSave }: { paths: string[]; onSave: (paths: strin
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-8">
         <div className="min-w-0">
           <p className="text-[14px] font-medium">生效目录</p>
-          <p className="mt-0.5 max-w-[52ch] text-[12.5px] leading-relaxed text-muted">只有这些文件夹（含子文件夹）里会找海报，别的地方保持原样。可以加多个。</p>
+          <p className="mt-0.5 max-w-[52ch] text-[12.5px] leading-relaxed text-muted">影视库只在这些文件夹（含子文件夹）里生效：海报、剧集详情、按 TMDB 整理命名、片库、片名搜索、视频缩略图。别的地方保持普通网盘的样子。可以加多个。</p>
         </div>
         <div className="flex shrink-0 gap-2">
           <button className="btn btn-line h-9 px-3.5 text-[13px]" onClick={() => { setTarget("/"); setPicking(true); }}><FolderPlusIcon size={15} />增加目录</button>
@@ -158,7 +158,7 @@ function PathsEditor({ paths, onSave }: { paths: string[]; onSave: (paths: strin
                 </motion.li>
               ))}
             </AnimatePresence>
-            {!paths.length && <li className="text-[13px] text-danger">没有目录：现在哪里都不会显示海报。</li>}
+            {!paths.length && <li className="text-[13px] text-danger">没有目录：影视库现在哪里都不生效。</li>}
           </motion.ul>
         ) : (
           <motion.div key="lines" className="mt-3" initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }} transition={spring.soft}>
@@ -227,11 +227,11 @@ export default function PosterSettings() {
             <FilmSlateIcon size={24} weight="fill" />
           </motion.span>
           <div className="min-w-0 flex-1">
-            <h2 className="text-[18px] font-semibold tracking-tight">影视海报</h2>
-            <p className="mt-0.5 max-w-[56ch] text-[13px] leading-relaxed text-muted">按文件夹和视频的名字到 TMDB 找海报、剧照和简介，用在网格封面和影院模式里。只请求 TMDB，不碰 115。</p>
+            <h2 className="text-[18px] font-semibold tracking-tight">影视库</h2>
+            <p className="mt-0.5 max-w-[56ch] text-[13px] leading-relaxed text-muted">按文件夹和视频的名字到 TMDB 认出电影和剧集：海报、剧照、简介、剧集详情、片库、整理命名都靠它。只在下面的生效目录里起作用，只请求 TMDB，不碰 115。</p>
           </div>
-          <button type="button" role="switch" aria-checked={config.enabled} aria-label="启用海报" className="switch mt-1 shrink-0"
-            onClick={() => void save({ config: { ...config, enabled: !config.enabled } }, config.enabled ? "已关闭海报" : "已打开海报")} />
+          <button type="button" role="switch" aria-checked={config.enabled} aria-label="启用影视库" className="switch mt-1 shrink-0"
+            onClick={() => void save({ config: { ...config, enabled: !config.enabled } }, config.enabled ? "已关闭影视库" : "已打开影视库")} />
         </div>
       </motion.section>
 

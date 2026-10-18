@@ -12,6 +12,7 @@ import (
 	"github.com/OpenListTeam/OpenList/v4/internal/model"
 	"github.com/OpenListTeam/OpenList/v4/internal/op"
 	"github.com/OpenListTeam/OpenList/v4/internal/tgvio"
+	"github.com/OpenListTeam/OpenList/v4/pkg/utils"
 	"github.com/OpenListTeam/OpenList/v4/server/common"
 	"github.com/gin-gonic/gin"
 	"github.com/pkg/errors"
@@ -73,6 +74,9 @@ func TgvioLibrary(c *gin.Context) {
 		return strings.Count(path, "/") < strings.Count(cur.path, "/")
 	}
 	for _, entry := range posters().Library() {
+		if !posters().InLibrary(entry.Dir) {
+			continue // outside the library paths (or the library is off)
+		}
 		// Names looked up as "series + season folder" do not name a real object.
 		if prefix := stdpath.Base(entry.Dir) + " "; entry.Season > 0 && strings.HasPrefix(entry.Name, prefix) && entry.Dir != "/" {
 			continue
@@ -141,4 +145,34 @@ func TgvioLibrary(c *gin.Context) {
 	}
 	cfg := posters().Config()
 	common.SuccessResp(c, gin.H{"items": items, "blur": cfg.Blur})
+}
+
+// TgvioLibraryScope: GET /api/tgvio/library/scope tells the browser where the
+// media-library features apply: whether they are on, and the library paths the
+// user can see (as they see them).
+func TgvioLibraryScope(c *gin.Context) {
+	user := c.Request.Context().Value(conf.UserKey).(*model.User)
+	p := posters()
+	enabled := p.Enabled() && p.Config().Enabled
+	paths := []string{}
+	if enabled {
+		seen := map[string]bool{}
+		add := func(real string) {
+			if shown, ok := user.ShowPath(real); ok && !seen[shown] {
+				seen[shown] = true
+				paths = append(paths, shown)
+			}
+		}
+		for _, lib := range p.Config().Paths {
+			for _, root := range user.Roots() {
+				switch {
+				case utils.IsSubPath(root, lib): // a library folder inside the user's space
+					add(lib)
+				case utils.IsSubPath(lib, root): // the user's whole root lies in the library
+					add(root)
+				}
+			}
+		}
+	}
+	common.SuccessResp(c, gin.H{"enabled": enabled && len(paths) > 0, "paths": paths})
 }

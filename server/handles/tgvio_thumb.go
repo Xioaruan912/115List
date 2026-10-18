@@ -51,6 +51,11 @@ func TgvioThumbs(c *gin.Context) {
 	items := map[string]string{}
 	pending := 0
 	ctx := c.Request.Context()
+	if !posters().InLibrary(dir) {
+		// Video thumbnails are a media-library feature: only inside its paths.
+		common.SuccessResp(c, gin.H{"items": items, "pending": 0})
+		return
+	}
 	for name, still := range posters().EpisodeStills(ctx, dir, req.Names) {
 		items[name] = posterURL("w300", still)
 	}

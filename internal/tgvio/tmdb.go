@@ -773,6 +773,13 @@ func pathBase(p string) string {
 }
 
 // Covers reports whether posters are wanted in this folder (a real path).
+// InLibrary reports whether the media-library features (posters, series pages,
+// TMDB renaming, the library page, title search, video thumbnails) apply to a
+// folder: switched on, with a token, and inside one of the library paths.
+func (t *TMDB) InLibrary(dir string) bool {
+	return t.Enabled() && t.Config().Enabled && t.Covers(dir)
+}
+
 func (t *TMDB) Covers(dir string) bool {
 	for _, root := range t.Config().Paths {
 		if root == "/" || dir == root || strings.HasPrefix(dir, root+"/") {

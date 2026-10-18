@@ -6,6 +6,7 @@ import { useLocation } from "wouter";
 import { posterSrc } from "../api/posters";
 import { series, type SeriesEpisode } from "../api/series";
 import { passwordFor } from "../hooks/useDir";
+import { useLibraryScope } from "../hooks/useLibraryScope";
 import { spring } from "../lib/motion";
 import { encodePath, join } from "../lib/path";
 import { getProgress, subscribeProgress, watched } from "../lib/progress";
@@ -51,6 +52,7 @@ function nextUp(path: string, episodes: SeriesEpisode[]): { episode: SeriesEpiso
 
 export function SeriesPanel({ path, items }: { path: string; items: Obj[] }) {
   const [, navigate] = useLocation();
+  const library = useLibraryScope();
   const looksLike = useMemo(
     () => items.some(item => item.is_dir ? SEASONISH.test(item.name) : EPISODISH.test(item.name)),
     [items],
@@ -58,7 +60,7 @@ export function SeriesPanel({ path, items }: { path: string; items: Obj[] }) {
   const query = useQuery({
     queryKey: ["series", path, items.length],
     queryFn: () => series(path, passwordFor(path)),
-    enabled: looksLike,
+    enabled: looksLike && library.has(path),
     staleTime: 5 * 60_000,
     retry: false,
   });

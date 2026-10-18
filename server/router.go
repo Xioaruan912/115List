@@ -128,6 +128,7 @@ func Init(e *gin.Engine) {
 	auth.GET("/tgvio/progress", middlewares.AuthNotGuest, handles.TgvioProgress)
 	auth.POST("/tgvio/progress", middlewares.AuthNotGuest, handles.TgvioProgressMerge)
 	auth.GET("/tgvio/library", middlewares.AuthNotGuest, handles.TgvioLibrary)
+	auth.GET("/tgvio/library/scope", handles.TgvioLibraryScope)
 	auth.GET("/tgvio/search", middlewares.AuthNotGuest, handles.TgvioSearch)
 	auth.POST("/tgvio/series", middlewares.AuthNotGuest, handles.TgvioSeries)
 	auth.POST("/tgvio/115/share/peek", middlewares.AuthNotGuest, handles.Tgvio115SharePeek)

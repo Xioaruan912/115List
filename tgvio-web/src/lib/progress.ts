@@ -67,9 +67,42 @@ export function saveProgress(path: string, time: number, duration: number): void
 export function inProgress(dir: string): { name: string; progress: Progress }[] {
   const prefix = dir === "/" ? "/" : `${dir}/`;
   return Object.entries(store)
-    .filter(([path, progress]) => !progress.done && path.startsWith(prefix) && !path.slice(prefix.length).includes("/"))
+    .filter(([path, progress]) => started(progress) && path.startsWith(prefix) && !path.slice(prefix.length).includes("/"))
     .map(([path, progress]) => ({ name: path.slice(prefix.length), progress }))
     .sort((a, b) => b.progress.at - a.progress.at);
+}
+
+/** Started and not finished: what 继续观看 offers (a cleared entry is back at 0). */
+function started(progress: Progress): boolean {
+  return !progress.done && progress.time >= 15;
+}
+
+/**
+ * Takes videos off 继续观看 everywhere: their position goes back to the start
+ * (not "finished", so nothing claims they were watched). Returns what to put
+ * back for an undo.
+ */
+export function clearProgress(paths: string[]): () => void {
+  const before: Store = {};
+  const next: Store = { ...store };
+  const now = Date.now();
+  for (const path of paths) {
+    const entry = store[path];
+    if (!entry) continue;
+    before[path] = entry;
+    next[path] = { time: 0, duration: entry.duration, at: now };
+    queue(path, next[path]);
+  }
+  commit(next);
+  return () => {
+    const restored: Store = { ...store };
+    const at = Date.now();
+    for (const [path, entry] of Object.entries(before)) {
+      restored[path] = { ...entry, at };
+      queue(path, restored[path]);
+    }
+    commit(restored);
+  };
 }
 
 export function subscribeProgress(listener: () => void): () => void {
@@ -167,7 +200,7 @@ export function syncProgress(account: string | null): void {
 /** Videos started and not finished anywhere, most recent first. */
 export function recentProgress(limit = 16): { path: string; progress: Progress }[] {
   return Object.entries(store)
-    .filter(([, progress]) => !progress.done)
+    .filter(([, progress]) => started(progress))
     .sort((a, b) => b[1].at - a[1].at)
     .slice(0, limit)
     .map(([path, progress]) => ({ path, progress }));

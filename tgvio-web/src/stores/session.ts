@@ -16,6 +16,8 @@ interface SessionState {
   boot: () => Promise<void>;
   signIn: (username: string, password: string, otp: string) => Promise<void>;
   signOut: () => Promise<void>;
+  /** Drop any (expired) token and carry on as the guest account, when the site allows guests. */
+  browseAsGuest: () => Promise<void>;
 }
 
 export const useSession = create<SessionState>((set, getState) => ({
@@ -41,6 +43,12 @@ export const useSession = create<SessionState>((set, getState) => ({
     const token = await auth.login(username, password, otp);
     setToken(token);
     // A guest's "/" is the guest's base folder: nothing seen before may be reused.
+    queryClient.clear();
+    const me = await auth.me();
+    set({ me, status: "ready", error: "" });
+  },
+  async browseAsGuest() {
+    setToken("");
     queryClient.clear();
     const me = await auth.me();
     set({ me, status: "ready", error: "" });

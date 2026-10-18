@@ -7,7 +7,8 @@ import { formatBytes, formatDate } from "../lib/format";
 import { kindOf } from "../lib/kind";
 import { spring } from "../lib/motion";
 import { extname, join } from "../lib/path";
-import { formatClock, getProgress, inProgress, subscribeProgress, watched } from "../lib/progress";
+import { clearProgress, formatClock, getProgress, inProgress, subscribeProgress, watched } from "../lib/progress";
+import { useToasts } from "../stores/toast";
 import type { Obj } from "../lib/types";
 import { useUi } from "../stores/ui";
 import { KindIcon } from "./KindIcon";
@@ -227,7 +228,13 @@ function ContinueRow({ dir, items, handlers }: { dir: string; items: Obj[]; hand
   if (!rows.length) return null;
   return (
     <section className="mb-9">
-      <h3 className="mb-3 text-[17px] font-semibold tracking-tight">继续观看</h3>
+      <div className="mb-3 flex items-center justify-between">
+        <h3 className="text-[17px] font-semibold tracking-tight">继续观看</h3>
+        <button className="rounded-lg px-2.5 py-1 text-[13px] text-muted hover:bg-[var(--hover)] hover:text-ink" onClick={() => {
+          const undo = clearProgress(rows.map(row => join(dir, row.obj.name)));
+          useToasts.getState().push({ tone: "info", title: "已清空继续观看", action: { label: "撤销", run: undo } }, 6000);
+        }}>清空</button>
+      </div>
       <div className="-mx-3 flex snap-x snap-mandatory gap-3 overflow-x-auto px-3 pb-2 [scrollbar-width:none]">
         {rows.map(({ obj, progress }, index) => (
           <motion.button key={obj.name} data-name={obj.name} className="group/cont relative w-[min(72vw,300px)] shrink-0 snap-start text-left"

@@ -7,6 +7,7 @@ import { AnimatePresence, motion, useMotionValue, useSpring, useTransform, type 
 import { useRef, useState, type ReactNode } from "react";
 import { useLocation } from "wouter";
 import { useDir } from "../hooks/useDir";
+import { useLibraryScope } from "../hooks/useLibraryScope";
 import { useCanHover, useIsMobile } from "../hooks/useMedia";
 import * as actions from "../lib/actions";
 import { spring } from "../lib/motion";
@@ -90,6 +91,7 @@ export function Dock({ path }: { path: string }) {
   const on115 = writable && /115/.test(list.data?.provider ?? "");
   const count = selected?.size ?? 0;
   const chosen = items.filter(item => selected?.has(item.name));
+  const library = useLibraryScope();
 
   const dockContent = (
     <motion.div key="dock" className="flex items-end gap-1"
@@ -164,7 +166,7 @@ export function Dock({ path }: { path: string }) {
       {single && can(me, Perm.Rename) && (
         <button className="icon-btn size-10" aria-label="重命名" title="重命名" onClick={() => openDialog({ kind: "rename", dir: path, obj: single })}><PencilSimpleIcon size={19} /></button>
       )}
-      {can(me, Perm.Rename) && !isGuest(me) && actions.tmdbTargets(path, chosen).length > 0 && (
+      {can(me, Perm.Rename) && !isGuest(me) && library.has(path) && actions.tmdbTargets(path, chosen).length > 0 && (
         <button className="icon-btn size-10" aria-label="按 TMDB 整理命名" title="按 TMDB 整理命名"
           onClick={() => openDialog({ kind: "tmdb-rename", targets: actions.tmdbTargets(path, chosen) })}><TextAaIcon size={19} /></button>
       )}

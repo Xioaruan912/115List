@@ -82,7 +82,7 @@ func TgvioSearch(c *gin.Context) {
 				break
 			}
 		}
-		if !match || !mayOpen(entry.Dir) || libraryExtras.MatchString(entry.Name) {
+		if !match || !posters().InLibrary(entry.Dir) || !mayOpen(entry.Dir) || libraryExtras.MatchString(entry.Name) {
 			continue
 		}
 		real := stdpath.Join(entry.Dir, entry.Name)

@@ -11,6 +11,7 @@ import { resolvedTheme, usePrefs, type Theme } from "../stores/prefs";
 import { useSession } from "../stores/session";
 import { useUi } from "../stores/ui";
 import { Mark } from "./Mark";
+import { useLibraryScope } from "../hooks/useLibraryScope";
 import { Menu } from "./Menu";
 import { switchTheme } from "./theme";
 
@@ -159,6 +160,7 @@ export function TopBar({ path }: { path: string }) {
   const setPalette = useUi(state => state.setPalette);
   const palette = useUi(state => state.palette);
   const title = useSession(state => state.settings.site_title) || "OpenList";
+  const library = useLibraryScope();
   return (
     <header className="pointer-events-none fixed inset-x-0 top-0 z-20 pt-[env(safe-area-inset-top)]">
       <div className="absolute inset-0 -bottom-6 bg-gradient-to-b from-bg via-bg/85 to-transparent" />
@@ -192,9 +194,11 @@ export function TopBar({ path }: { path: string }) {
           </motion.button>
         )}
         {palette && <span className="h-9 sm:w-60" />}
-        <motion.button className="icon-btn" aria-label="片库" title="片库" onClick={() => navigate("/@library")} whileTap={{ scale: 0.9 }}>
-          <FilmReelIcon size={18} />
-        </motion.button>
+        {library.enabled && (
+          <motion.button className="icon-btn" aria-label="片库" title="片库" onClick={() => navigate("/@library")} whileTap={{ scale: 0.9 }}>
+            <FilmReelIcon size={18} />
+          </motion.button>
+        )}
         <div className="hidden sm:block"><ViewToggle /></div>
         <div className="max-sm:hidden"><ThemeButton /></div>
         <Account />
