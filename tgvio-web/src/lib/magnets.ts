@@ -160,6 +160,22 @@ export function folderName(title: string, year?: number): string {
 }
 
 /**
+ * A folder name for several titles of one series: what their names share
+ * ("潜伏", "潜伏2", "潜伏3：…" → "潜伏 系列"), else the first title's.
+ */
+export function seriesName(titles: string[]): string {
+  if (!titles.length) return "";
+  let prefix = titles[0];
+  for (const title of titles.slice(1)) {
+    let i = 0;
+    while (i < prefix.length && i < title.length && prefix[i] === title[i]) i++;
+    prefix = prefix.slice(0, i);
+  }
+  prefix = prefix.replace(/[\s\d:：·.\-_（(【\[]+$/u, "").trim();
+  return folderName(prefix.length >= 1 ? `${prefix} 系列` : titles[0]);
+}
+
+/**
  * The bookmarklet: on a resource site's page, collect its magnets and open the
  * library with them (in the address's #, which never reaches a server).
  */

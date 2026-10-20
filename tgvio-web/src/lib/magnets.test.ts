@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe as group, expect, it } from "vitest";
-import { describe, folderName, fromHTML, fromList, fromSeed, fromText, parseSize, rank } from "./magnets";
+import { describe, folderName, fromHTML, fromList, fromSeed, fromText, parseSize, rank, seriesName } from "./magnets";
 
 const H1 = "0f8210b19b5d9bae385aceaba5e6abfe66e12cfb";
 const H2 = "1a2b3c4d5e6f708192a3b4c5d6e7f8091a2b3c4d";
@@ -67,6 +67,11 @@ group("magnets", () => {
     expect(item.tags).toEqual(expect.arrayContaining(["中字", "国语", "4K", "合集"]));
     expect(item.size).toBe(Math.round(174.33 * 2 ** 30));
     expect(item.url).toBe("");
+  });
+
+  it("names a series folder after what the titles share", () => {
+    expect(seriesName(["潜伏", "潜伏2", "潜伏3：最终章"])).toBe("潜伏 系列");
+    expect(seriesName(["蜘蛛侠", "神探夏洛克"])).toBe("蜘蛛侠");
   });
 
   it("names folders the library can match", () => {

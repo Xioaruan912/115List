@@ -189,7 +189,10 @@ export default function Library() {
           <button className="shrink-0 transition-transform hover:rotate-[-8deg] active:scale-90 max-sm:hidden" aria-label={title} onClick={() => navigate("/")}>
             <Mark className="size-8 text-[16px]" />
           </button>
-          <button className="icon-btn sm:hidden" aria-label="返回文件" onClick={() => navigate("/")}><ArrowUUpLeftIcon size={18} /></button>
+          {/* Out of the library, back to the files: plain words, the way 管理 does it. */}
+          <button className="btn btn-ghost h-9 shrink-0 px-2.5 text-[13.5px] max-sm:px-2" aria-label="返回文件" onClick={() => navigate("/")}>
+            <ArrowUUpLeftIcon size={17} /><span className="max-sm:hidden">返回文件</span>
+          </button>
           <span className="flex-1" />
           {sites.data?.enabled && (
             <button className="btn btn-line h-9 shrink-0 px-3 text-[13px]" aria-label="找资源" onClick={() => setFinder({ query: search.trim() })}>
