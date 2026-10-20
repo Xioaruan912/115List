@@ -146,11 +146,11 @@ export function fromSeed(site: string, seed: { id: string; title: string; size?:
   return { url: "", hash: `seed:${site}:${seed.id}`, title: seed.title, size: seed.size ? parseSize(seed.size) : undefined, seed: { site, id: seed.id }, ...describe(seed.title, extra) };
 }
 
-/** One per info hash (the first title wins), best first. */
+/** One per info hash (the first title wins), best first; between equals the smaller one, so the default pick is not a 170 GB remux. */
 export function rank(items: Magnet[]): Magnet[] {
   const seen = new Map<string, Magnet>();
   for (const item of items) if (!seen.has(item.hash)) seen.set(item.hash, item);
-  return [...seen.values()].sort((a, b) => b.score - a.score || (b.size ?? 0) - (a.size ?? 0));
+  return [...seen.values()].sort((a, b) => b.score - a.score || (a.size ?? Infinity) - (b.size ?? Infinity));
 }
 
 /** The library's folder name for a title: "潜伏 (2009)". Characters drives refuse are dropped. */
