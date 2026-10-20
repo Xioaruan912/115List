@@ -1,4 +1,4 @@
-import { ArrowUUpLeftIcon, CheckIcon, FilmSlateIcon, MagnifyingGlassIcon, StarIcon, XIcon } from "@phosphor-icons/react";
+import { ArrowUUpLeftIcon, CheckIcon, FilmSlateIcon, MagnetIcon, MagnifyingGlassIcon, StarIcon, XIcon } from "@phosphor-icons/react";
 import { useQuery } from "@tanstack/react-query";
 import { motion } from "motion/react";
 import { memo, useDeferredValue, useEffect, useMemo, useState, useSyncExternalStore } from "react";
@@ -7,6 +7,7 @@ import { categoryCounts, categoryOf, library, posterSrc, type Category, type Lib
 import { CategoryFilter } from "../components/CategoryFilter";
 import { ErrorState } from "../components/ErrorState";
 import { Mark } from "../components/Mark";
+import { useResourceRoot } from "../hooks/useResourceRoot";
 import { spring } from "../lib/motion";
 import { basename, encodePath, parent } from "../lib/path";
 import { clearProgress, formatClock, recentProgress, subscribeProgress, watched } from "../lib/progress";
@@ -147,6 +148,8 @@ export default function Library() {
   const title = useSession(state => state.settings.site_title) || "OpenList";
   const query = useQuery({ queryKey: ["library"], queryFn: library, staleTime: 60_000 });
   const [search, setSearch] = useState("");
+  // Not in the library: look it up on the resource sites, from the folder downloads go to.
+  const resourceRoot = useResourceRoot();
   const deferred = useDeferredValue(search.trim());
   const [sort, setSort] = useState<LibrarySort>("recent");
   const [cat, setCat] = useState<Category | "all">("all");
@@ -228,7 +231,15 @@ export default function Library() {
           </div>
         )}
         {query.data && all.length > 0 && !items.length && (
-          <p className="py-20 text-center text-[13.5px] text-muted">片库里没有「{deferred}」</p>
+          <div className="py-20 text-center">
+            <p className="text-[13.5px] text-muted">片库里没有「{deferred}」</p>
+            {resourceRoot.enabled && (
+              <button className="btn btn-primary mt-4 h-10 px-4" onClick={() => {
+                navigate(encodePath(resourceRoot.folder));
+                useUi.getState().openDialog({ kind: "resources", query: deferred });
+              }}><MagnetIcon size={16} />去资源站找「{deferred}」</button>
+            )}
+          </div>
         )}
         {items.length > 0 && (
           <div className="mt-8 grid grid-cols-3 gap-x-2.5 gap-y-5 sm:grid-cols-[repeat(auto-fill,minmax(150px,1fr))] sm:gap-x-5 sm:gap-y-7">
