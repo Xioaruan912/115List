@@ -95,6 +95,9 @@ export function TmdbRename({ targets: chosen, onClose }: { targets: RenameTarget
   // Plans load one folder after another, parents before their subfolders:
   // TMDB is asked a few times per folder, and a subfolder goes by its parent.
   const load = useCallback(async (list: Entry[], all: Entry[], alive: () => boolean, season?: number): Promise<void> => {
+    // Folders the planner finds nothing to do in ("这里的名字已经很规整了": a folder of several films keeps
+    // its name) count as organized, so 整理模式 stops showing them. The planner has read them already.
+    const tidy: string[] = [];
     for (const target of list) {
       if (!alive()) return;
       setLoaded(prev => ({ ...prev, [target.path]: { status: "loading" } }));
@@ -106,12 +109,15 @@ export function TmdbRename({ targets: chosen, onClose }: { targets: RenameTarget
           // Versions of one episode wait for the person: they come unticked.
           const versions = plan.items.filter(item => item.reason === "version" && item.new).map(item => rowKey(target.path, item.old));
           if (versions.length) setOff(prev => new Set([...prev, ...versions]));
+          const folderNew = plan.items.some(item => item.kind === "folder" && item.new);
+          if (!target.only && !plan.reason && plan.subject && plan.need !== "season" && !folderNew && !filesOf(plan, undefined).some(item => item.new)) tidy.push(target.path);
         }
       } catch (error) {
         if (alive()) setLoaded(prev => ({ ...prev, [target.path]: { status: "error", error } }));
       }
     }
-  }, [setLoaded]);
+    if (tidy.length) void organize.mark(tidy, false).then(() => client.invalidateQueries({ queryKey: ["organize"] })).catch(() => undefined);
+  }, [setLoaded, client]);
   useEffect(() => {
     let alive = true;
     void (async () => {
