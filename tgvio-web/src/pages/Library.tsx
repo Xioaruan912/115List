@@ -1,15 +1,12 @@
-import { ArrowUUpLeftIcon, CheckIcon, FilmSlateIcon, MagnetIcon, MagnifyingGlassIcon, StarIcon, XIcon } from "@phosphor-icons/react";
+import { ArrowUUpLeftIcon, CheckIcon, FilmSlateIcon, MagnifyingGlassIcon, StarIcon, XIcon } from "@phosphor-icons/react";
 import { useQuery } from "@tanstack/react-query";
 import { motion } from "motion/react";
 import { memo, useDeferredValue, useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { useLocation } from "wouter";
 import { categoryCounts, categoryOf, library, posterSrc, type Category, type LibraryItem } from "../api/posters";
-import { resources } from "../api/resources";
 import { CategoryFilter } from "../components/CategoryFilter";
 import { ErrorState } from "../components/ErrorState";
 import { Mark } from "../components/Mark";
-import { ResourceFinder } from "../components/ResourceFinder";
-import { fromList, type Magnet } from "../lib/magnets";
 import { spring } from "../lib/motion";
 import { basename, encodePath, parent } from "../lib/path";
 import { clearProgress, formatClock, recentProgress, subscribeProgress, watched } from "../lib/progress";
@@ -150,17 +147,6 @@ export default function Library() {
   const title = useSession(state => state.settings.site_title) || "OpenList";
   const query = useQuery({ queryKey: ["library"], queryFn: library, staleTime: 60_000 });
   const [search, setSearch] = useState("");
-  // 找资源: on when the admin set up resource sites. A bookmarklet on a site
-  // page comes back here with its magnets in the address's #resources=.
-  const sites = useQuery({ queryKey: ["resources"], queryFn: resources.list, staleTime: 5 * 60_000, retry: false });
-  const [finder, setFinder] = useState<{ query: string; items?: Magnet[] } | null>(null);
-  useEffect(() => {
-    const raw = /^#resources=(.+)$/.exec(location.hash)?.[1];
-    if (!raw) return;
-    history.replaceState(null, "", location.pathname + location.search);
-    try { setFinder({ query: "", items: fromList(JSON.parse(decodeURIComponent(raw)) as { u: string; t?: string; x?: string }[]) }); }
-    catch { /* not ours */ }
-  }, []);
   const deferred = useDeferredValue(search.trim());
   const [sort, setSort] = useState<LibrarySort>("recent");
   const [cat, setCat] = useState<Category | "all">("all");
@@ -194,11 +180,6 @@ export default function Library() {
             <ArrowUUpLeftIcon size={17} /><span className="max-sm:hidden">返回文件</span>
           </button>
           <span className="flex-1" />
-          {sites.data?.enabled && (
-            <button className="btn btn-line h-9 shrink-0 px-3 text-[13px]" aria-label="找资源" onClick={() => setFinder({ query: search.trim() })}>
-              <MagnetIcon size={15} /><span className="max-sm:hidden">找资源</span>
-            </button>
-          )}
           <label className="flex h-9 w-full max-w-72 items-center gap-2 rounded-[11px] bg-surface px-3 text-muted hairline focus-within:text-ink">
             <MagnifyingGlassIcon size={16} className="shrink-0" />
             <input value={search} onChange={event => setSearch(event.target.value)} placeholder="搜片名、原名" aria-label="搜索片库"
@@ -247,12 +228,7 @@ export default function Library() {
           </div>
         )}
         {query.data && all.length > 0 && !items.length && (
-          <div className="py-20 text-center">
-            <p className="text-[13.5px] text-muted">片库里没有「{deferred}」</p>
-            {sites.data?.enabled && (
-              <button className="btn btn-primary mt-4 h-10 px-4" onClick={() => setFinder({ query: deferred })}><MagnetIcon size={16} />去资源站找「{deferred}」</button>
-            )}
-          </div>
+          <p className="py-20 text-center text-[13.5px] text-muted">片库里没有「{deferred}」</p>
         )}
         {items.length > 0 && (
           <div className="mt-8 grid grid-cols-3 gap-x-2.5 gap-y-5 sm:grid-cols-[repeat(auto-fill,minmax(150px,1fr))] sm:gap-x-5 sm:gap-y-7">
@@ -261,7 +237,6 @@ export default function Library() {
         )}
         {items.length > 600 && <p className="mt-8 text-center text-[12.5px] text-muted">只显示前 600 部，用搜索或分类缩小范围</p>}
       </main>
-      {finder && <ResourceFinder initialQuery={finder.query} initialItems={finder.items} onClose={() => setFinder(null)} />}
     </div>
   );
 }

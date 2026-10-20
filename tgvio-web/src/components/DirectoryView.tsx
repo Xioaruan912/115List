@@ -1,4 +1,4 @@
-import { ArrowClockwiseIcon, FolderPlusIcon, LockIcon, UploadSimpleIcon } from "@phosphor-icons/react";
+import { ArrowClockwiseIcon, FolderPlusIcon, LockIcon, MagnetIcon, UploadSimpleIcon } from "@phosphor-icons/react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { animate, motion, useIsPresent, useMotionValue, useScroll, useTransform } from "motion/react";
@@ -6,6 +6,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, typ
 import { useLocation } from "wouter";
 import { dirKey, needsPassword, prefetchDir, rememberPassword, useDir } from "../hooks/useDir";
 import { usePosters } from "../hooks/usePosters";
+import { useResourceRoot } from "../hooks/useResourceRoot";
 import { categoryCounts, categoryOf, type Category } from "../api/posters";
 import { CategoryFilter } from "./CategoryFilter";
 import { RenameNudge } from "./RenameNudge";
@@ -134,6 +135,7 @@ function Skeleton({ view, cols }: { view: "grid" | "list"; cols: number }) {
 export function DirectoryView({ path }: { path: string }) {
   const present = useIsPresent();
   const query = useDir(path);
+  const resourceRoot = useResourceRoot();
   const client = useQueryClient();
   const [, navigate] = useLocation();
   const view = usePrefs(state => state.view);
@@ -521,9 +523,16 @@ export function DirectoryView({ path }: { path: string }) {
       )}
       <div className="mx-auto w-full max-w-[1400px] px-3 pt-[calc(env(safe-area-inset-top)+68px)] sm:px-8 sm:pt-[96px]">
         <motion.header style={{ scale: titleScale, opacity: titleOpacity, y: titleY, transformOrigin: "0% 100%" }} className="px-2 pb-5 sm:px-0">
-          <h1 className="text-[clamp(30px,5.4vw,56px)] font-semibold leading-[1.06] tracking-[-0.04em] break-words">
-            <SplitText key={title} text={title} />
-          </h1>
+          <div className="flex items-end justify-between gap-4">
+            <h1 className="min-w-0 text-[clamp(30px,5.4vw,56px)] font-semibold leading-[1.06] tracking-[-0.04em] break-words">
+              <SplitText key={title} text={title} />
+            </h1>
+            {resourceRoot.at(path) && (
+              <button className="btn btn-primary mb-1 h-10 shrink-0 px-4" onClick={() => useUi.getState().openDialog({ kind: "resources" })}>
+                <MagnetIcon size={16} />找资源
+              </button>
+            )}
+          </div>
           <div className="mt-3 flex flex-wrap items-center justify-between gap-x-6 gap-y-2">
             <p className="text-[13px] text-muted tabular enter" style={{ "--i": 6 } as React.CSSProperties}>
               {query.data ? (

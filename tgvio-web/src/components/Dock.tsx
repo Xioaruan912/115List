@@ -1,13 +1,14 @@
 import {
   TextAaIcon,
   ArrowClockwiseIcon, ArrowsLeftRightIcon, CheckSquareIcon, ChecksIcon, CloudArrowDownIcon, DotsThreeIcon, CopyIcon, DownloadSimpleIcon, FolderPlusIcon,
-  GearIcon, LinkIcon, ShareNetworkIcon, ListChecksIcon, MagnifyingGlassIcon, PencilSimpleIcon, TrashIcon, UploadSimpleIcon, XIcon, FolderSimpleIcon,
+  GearIcon, LinkIcon, MagnetIcon, ShareNetworkIcon, ListChecksIcon, MagnifyingGlassIcon, PencilSimpleIcon, TrashIcon, UploadSimpleIcon, XIcon, FolderSimpleIcon,
 } from "@phosphor-icons/react";
 import { AnimatePresence, motion, useMotionValue, useSpring, useTransform, type MotionValue } from "motion/react";
 import { useRef, useState, type ReactNode } from "react";
 import { useLocation } from "wouter";
 import { useDir } from "../hooks/useDir";
 import { useLibraryScope } from "../hooks/useLibraryScope";
+import { useResourceRoot } from "../hooks/useResourceRoot";
 import { useCanHover, useIsMobile } from "../hooks/useMedia";
 import * as actions from "../lib/actions";
 import { spring } from "../lib/motion";
@@ -92,10 +93,16 @@ export function Dock({ path }: { path: string }) {
   const count = selected?.size ?? 0;
   const chosen = items.filter(item => selected?.has(item.name));
   const library = useLibraryScope();
+  const resourceRoot = useResourceRoot();
 
   const dockContent = (
     <motion.div key="dock" className="flex items-end gap-1"
       initial={{ opacity: 0, scale: 0.9, filter: "blur(6px)" }} animate={{ opacity: 1, scale: 1, filter: "blur(0px)" }} exit={{ opacity: 0, scale: 0.9, filter: "blur(6px)" }} transition={spring.snappy}>
+      {resourceRoot.at(path) && (
+        <DockButton label="找资源" mouseX={mouseX} magnify={magnify} onClick={() => openDialog({ kind: "resources" })}>
+          <MagnetIcon size={20} />
+        </DockButton>
+      )}
       {writable && (
         <DockButton label="上传" mouseX={mouseX} magnify={magnify}
           onClick={event => { const r = event.currentTarget.getBoundingClientRect(); setUploadMenu({ x: r.left, y: r.top - 8 }); }}>

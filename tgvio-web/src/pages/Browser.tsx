@@ -17,6 +17,7 @@ import { useUploads } from "../stores/uploads";
 import { usePrefs } from "../stores/prefs";
 import { useSession } from "../stores/session";
 import { useUi } from "../stores/ui";
+import { fromList } from "../lib/magnets";
 
 function typing(target: EventTarget | null): boolean {
   const element = target as HTMLElement | null;
@@ -81,6 +82,17 @@ export function Browser({ path }: { path: string }) {
     if (ui.selectionDir && ui.selectionDir !== path) ui.clearSelection();
     ui.closeMenu();
   }, [path]);
+
+  // The 送回影视库 bookmarklet opens the library root with a site page's magnets in #resources= (never sent to a server).
+  useEffect(() => {
+    const raw = /^#resources=(.+)$/.exec(location.hash)?.[1];
+    if (!raw) return;
+    history.replaceState(null, "", location.pathname + location.search);
+    try {
+      const items = fromList(JSON.parse(decodeURIComponent(raw)) as { u: string; t?: string; x?: string }[]);
+      if (items.length) useUi.getState().openDialog({ kind: "resources", items });
+    } catch { /* not ours */ }
+  }, []);
 
   useEffect(() => {
     const title = useSession.getState().settings.site_title || "OpenList";

@@ -177,9 +177,9 @@ export function seriesName(titles: string[]): string {
 
 /**
  * The bookmarklet: on a resource site's page, collect its magnets and open the
- * library with them (in the address's #, which never reaches a server).
+ * library root folder with them (in the address's #, which never reaches a server).
  */
-export function bookmarklet(origin: string): string {
-  const code = `(()=>{const l=[...document.querySelectorAll('a[href^="magnet:"]')].map(a=>{const r=a.closest('li,tr,p,div')||a;return{u:a.href,t:a.title||a.textContent.trim(),x:r.textContent.replace(/\\s+/g,' ').slice(0,300)}});if(!l.length){alert('这一页没有磁力链接');return}window.open(${JSON.stringify(origin + "/@library")}+'#resources='+encodeURIComponent(JSON.stringify(l)))})()`;
+export function bookmarklet(origin: string, folder = "/"): string {
+  const code = `(()=>{const l=[...document.querySelectorAll('a[href^="magnet:"]')].map(a=>{const r=a.closest('li,tr,p,div')||a;return{u:a.href,t:a.title||a.textContent.trim(),x:r.textContent.replace(/\\s+/g,' ').slice(0,300)}});if(!l.length){alert('这一页没有磁力链接');return}window.open(${JSON.stringify(origin + folder.split("/").map(encodeURIComponent).join("/"))}+'#resources='+encodeURIComponent(JSON.stringify(l)))})()`;
   return `javascript:${encodeURIComponent(code)}`;
 }

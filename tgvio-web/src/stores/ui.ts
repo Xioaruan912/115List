@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import type { Magnet } from "../lib/magnets";
 import type { Obj } from "../lib/types";
 
 export type Dialog =
@@ -15,6 +16,7 @@ export type Dialog =
   | { kind: "shares" }
   | { kind: "poster"; name: string }
   | { kind: "tmdb-rename"; targets: { path: string; only?: string[] }[] }
+  | { kind: "resources"; query?: string; items?: Magnet[] }
   | { kind: "account" };
 
 export interface Rect { x: number; y: number; width: number; height: number }

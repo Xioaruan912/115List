@@ -18,6 +18,7 @@ import type { Obj } from "../lib/types";
 import { KindIcon } from "./KindIcon";
 import { DeviceList } from "./Devices";
 import { PosterPicker } from "./PosterPicker";
+import { ResourceFinder } from "./ResourceFinder";
 import { Share115Dialog } from "./Share115";
 import { SubtitleSearch } from "./SubtitleSearch";
 import { TmdbRename } from "./TmdbRename";
@@ -326,6 +327,8 @@ function DialogFor({ dialog, onClose }: { dialog: Dialog; onClose: () => void })
       return <SharesDialog onClose={onClose} />;
     case "account":
       return <AccountDialog onClose={onClose} />;
+    case "resources":
+      return <ResourceFinder initialQuery={dialog.query} initialItems={dialog.items} onClose={onClose} />;
     case "decompress":
       return <DecompressDialog dir={dialog.dir} obj={dialog.obj} innerPath={dialog.innerPath} archivePass={dialog.archivePass} onClose={onClose} />;
   }

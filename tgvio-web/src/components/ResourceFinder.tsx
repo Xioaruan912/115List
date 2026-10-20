@@ -127,9 +127,9 @@ function SiteTitles({ site, query, opening, ticked, onToggle, onOpen, onTitles }
 }
 
 /** A bookmark that sends a site page's magnets back here. React refuses javascript: links, so the href is set by hand. */
-function Bookmarklet() {
+function Bookmarklet({ folder }: { folder: string }) {
   const ref = useRef<HTMLAnchorElement>(null);
-  const code = useMemo(() => bookmarklet(location.origin), []);
+  const code = useMemo(() => bookmarklet(location.origin, folder || "/"), [folder]);
   useEffect(() => { ref.current?.setAttribute("href", code); }, [code]);
   return (
     <p className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1.5 text-[12px] leading-relaxed text-faint">
@@ -397,7 +397,7 @@ export function ResourceFinder({ initialQuery = "", initialItems, onClose }: { i
                       <div className="mt-1.5 flex justify-end">
                         <button className="inline-flex items-center gap-1 text-[12.5px] text-muted hover:text-ink" onClick={() => void readClipboard()}><ClipboardTextIcon size={14} />读取剪贴板</button>
                       </div>
-                      <Bookmarklet />
+                      <Bookmarklet folder={defaultBase} />
                     </div>
                   )}
                 </div>
