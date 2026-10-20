@@ -35,7 +35,7 @@ export default function Manage() {
           <nav className="flex min-w-0 flex-1 gap-0.5 overflow-x-auto [scrollbar-width:none]" aria-label="管理">
             {PAGES.map(([key, label], i) => (
               <Link key={key} href={key ? `/@manage/${key}` : "/@manage"}
-                className={`relative h-9 shrink-0 rounded-[10px] px-3 py-2 text-[13.5px] transition-colors ${i === index ? "text-ink" : "text-muted hover:text-ink"}`}
+                className={`relative h-9 shrink-0 rounded-[10px] px-3 py-2 touch:h-11 text-[13.5px] transition-colors ${i === index ? "text-ink" : "text-muted hover:text-ink"}`}
                 aria-current={i === index ? "page" : undefined}>
                 {i === index && <motion.span layoutId="manage-tab" className="absolute inset-0 rounded-[10px] bg-[var(--hover)]" transition={spring.snappy} />}
                 {i === index && <motion.span layoutId="manage-tab-bar" className="absolute inset-x-3 -bottom-[11px] h-[2px] rounded-full bg-accent" transition={spring.snappy} />}

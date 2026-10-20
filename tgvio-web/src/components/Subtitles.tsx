@@ -100,16 +100,16 @@ export function SubtitleMenu({ tracks, current, delay, open, onOpen, onPick, onD
 }) {
   if (!tracks.length && !onSearch) return null;
   const Icon = current ? SubtitlesIcon : SubtitlesSlashIcon;
-  const row = "flex w-full items-center justify-between gap-3 rounded-[8px] px-3 py-1.5 text-left text-[13px] hover:bg-white/12";
+  const row = "flex w-full items-center justify-between gap-3 rounded-[8px] px-3 py-1.5 text-left text-[13px] hover:bg-white/12 touch:py-2.5";
   return (
     <div className="relative">
       <motion.button type="button" whileTap={{ scale: 0.9 }} onClick={() => onOpen(!open)} aria-label="字幕" aria-expanded={open}
-        className={`grid size-9 place-items-center rounded-full transition-colors hover:bg-white/12 ${current ? "text-accent" : "text-white"}`}>
+        className={`grid size-9 place-items-center rounded-full transition-colors sm:touch:size-11 hover:bg-white/12 ${current ? "text-accent" : "text-white"}`}>
         <Icon size={19} />
       </motion.button>
       <AnimatePresence>
         {open && (
-          <motion.div className="absolute bottom-11 right-0 w-56 overflow-hidden rounded-[12px] bg-black/80 p-1 backdrop-blur-xl" style={{ boxShadow: "inset 0 0 0 1px rgb(255 255 255 / 0.1)", transformOrigin: "100% 100%" }}
+          <motion.div className="absolute bottom-11 right-0 w-56 sm:touch:bottom-13 overflow-hidden rounded-[12px] bg-black/80 p-1 backdrop-blur-xl" style={{ boxShadow: "inset 0 0 0 1px rgb(255 255 255 / 0.1)", transformOrigin: "100% 100%" }}
             initial={{ opacity: 0, scale: 0.85, y: 6 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.9 }} transition={spring.snappy}>
             <p className="px-3 pb-1 pt-1.5 text-[11px] text-white/45">字幕</p>
             {tracks.map(track => {
@@ -141,11 +141,11 @@ export function SubtitleMenu({ tracks, current, delay, open, onOpen, onPick, onD
                 <div className="flex items-center justify-between px-3 py-1 text-[12.5px] text-white/75">
                   <span>时间轴</span>
                   <span className="flex items-center gap-1">
-                    <button className="grid size-7 place-items-center rounded-full hover:bg-white/12" aria-label="字幕提前 0.5 秒" onClick={() => onDelay(delay - 0.5)}><MinusIcon size={12} /></button>
+                    <button className="grid size-7 place-items-center rounded-full hover:bg-white/12 touch:size-10" aria-label="字幕提前 0.5 秒" onClick={() => onDelay(delay - 0.5)}><MinusIcon size={12} /></button>
                     <button className="w-12 rounded-full py-0.5 text-center font-mono text-[11.5px] tabular hover:bg-white/12" aria-label="字幕时间复位" onClick={() => onDelay(0)}>
                       {delay > 0 ? "+" : ""}{delay.toFixed(1)}s
                     </button>
-                    <button className="grid size-7 place-items-center rounded-full hover:bg-white/12" aria-label="字幕推后 0.5 秒" onClick={() => onDelay(delay + 0.5)}><PlusIcon size={12} /></button>
+                    <button className="grid size-7 place-items-center rounded-full hover:bg-white/12 touch:size-10" aria-label="字幕推后 0.5 秒" onClick={() => onDelay(delay + 0.5)}><PlusIcon size={12} /></button>
                   </span>
                 </div>
               </>

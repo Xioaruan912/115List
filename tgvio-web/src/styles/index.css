@@ -8,6 +8,8 @@
    Z scale: header 20, dock 30, viewer 60, sheets 65, menus 66 (over sheets: a sheet's own menus), toasts 70, grain 80. */
 
 @custom-variant dark (&:where([data-theme=dark], [data-theme=dark] *));
+/* Fingers, not a mouse: phones and tablets (an iPad gets the desktop layout, so size alone will not do). */
+@custom-variant touch (@media (pointer: coarse));
 
 @theme {
   --font-sans: "Geist Variable", ui-sans-serif, system-ui, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
@@ -255,6 +257,16 @@
   .field, input, textarea, select { font-size: 16px; }
 }
 button, a, [role="button"] { touch-action: manipulation; }
+/* Touch screens: controls at least 44px, the size a fingertip hits reliably.
+   min-* wins over the h-8 / size-9 utilities without changing the mouse layout. */
+@media (pointer: coarse) {
+  .btn, .field { min-height: 2.75rem; }
+  .icon-btn { min-width: 2.75rem; min-height: 2.75rem; }
+  [role="menu"].glass [role="menuitem"] { min-height: 2.75rem; font-size: 15px; }
+  .switch { width: 2.9rem; height: 1.7rem; }
+  .switch::after { width: calc(1.7rem - 6px); }
+  .switch[aria-checked="true"]::after { transform: translateX(1.2rem); }
+}
 
 /* Tailwind's colour aliases resolve where they are declared (:root), so a scoped
    dark area has to declare them again to pick up its own tokens. */

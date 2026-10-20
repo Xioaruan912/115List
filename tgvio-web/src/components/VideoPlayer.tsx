@@ -73,7 +73,7 @@ function savedVolume(): { volume: number; muted: boolean } {
 function IconButton({ label, onClick, children, active = false }: { label: string; onClick: () => void; children: React.ReactNode; active?: boolean }) {
   return (
     <motion.button type="button" aria-label={label} title={label} onClick={onClick} whileTap={{ scale: 0.86 }}
-      className={`grid size-9 shrink-0 place-items-center rounded-full transition-colors hover:bg-white/12 ${active ? "text-accent" : "text-white"}`}>
+      className={`grid size-9 shrink-0 place-items-center rounded-full transition-colors sm:touch:size-11 hover:bg-white/12 ${active ? "text-accent" : "text-white"}`}>
       {children}
     </motion.button>
   );
@@ -349,7 +349,10 @@ export function VideoPlayer({ path, src, fallback, thumb, chrome, cloud, subtitl
   }, [resumed]);
 
   useEffect(() => {
-    const onChange = (): void => setFullscreen(document.fullscreenElement === root.current);
+    const onChange = (): void => {
+      setFullscreen(document.fullscreenElement === root.current);
+      if (!document.fullscreenElement) try { screen.orientation?.unlock?.(); } catch { /* not locked */ }
+    };
     document.addEventListener("fullscreenchange", onChange);
     return () => document.removeEventListener("fullscreenchange", onChange);
   }, []);
@@ -381,8 +384,15 @@ export function VideoPlayer({ path, src, fallback, thumb, chrome, cloud, subtitl
   const toggleFullscreen = (): void => {
     const element = video() as (HTMLVideoElement & { webkitEnterFullscreen?: () => void }) | null;
     if (document.fullscreenElement) { void document.exitFullscreen(); return; }
-    if (root.current?.requestFullscreen) void root.current.requestFullscreen().catch(() => element?.webkitEnterFullscreen?.());
+    if (root.current?.requestFullscreen) void root.current.requestFullscreen().then(landscape, () => element?.webkitEnterFullscreen?.());
     else element?.webkitEnterFullscreen?.(); // iPhone: only the video element itself can go full screen
+  };
+  // A phone held upright turns a wide video sideways in full screen (Android; elsewhere the lock is refused).
+  const landscape = (): void => {
+    const element = video();
+    const orientation = screen.orientation as ScreenOrientation & { lock?: (o: string) => Promise<void> };
+    if (!element || element.videoWidth <= element.videoHeight || !matchMedia("(pointer: coarse) and (max-width: 639px)").matches) return;
+    void orientation?.lock?.("landscape").catch(() => undefined);
   };
 
   const pip = typeof document !== "undefined" && document.pictureInPictureEnabled;
@@ -647,26 +657,26 @@ export function VideoPlayer({ path, src, fallback, thumb, chrome, cloud, subtitl
             {cloudInfo ? (
               <div className="relative">
                 <motion.button type="button" whileTap={{ scale: 0.9 }} onClick={() => { setQualityMenu(open => !open); setSpeedMenu(false); setSubMenu(false); }} aria-label="清晰度"
-                  className="flex h-9 items-center gap-1.5 rounded-full px-2.5 text-[12.5px] font-medium text-white transition-colors hover:bg-white/12">
+                  className="flex h-9 items-center gap-1.5 rounded-full px-2.5 sm:touch:h-11 text-[12.5px] font-medium text-white transition-colors hover:bg-white/12">
                   {source?.kind === "cloud" && <span className="size-1.5 rounded-full bg-accent" aria-hidden />}
                   {source?.kind === "cloud" ? source.quality.name : "原画"}
                 </motion.button>
                 <AnimatePresence>
                   {qualityMenu && (
-                    <motion.div className="absolute bottom-11 right-0 w-44 overflow-hidden rounded-[12px] bg-black/80 p-1 backdrop-blur-xl" style={{ boxShadow: "inset 0 0 0 1px rgb(255 255 255 / 0.1)", transformOrigin: "100% 100%" }}
+                    <motion.div className="absolute bottom-11 right-0 sm:touch:bottom-13 w-44 overflow-hidden rounded-[12px] bg-black/80 p-1 backdrop-blur-xl" style={{ boxShadow: "inset 0 0 0 1px rgb(255 255 255 / 0.1)", transformOrigin: "100% 100%" }}
                       initial={{ opacity: 0, scale: 0.85, y: 6 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.9 }} transition={spring.snappy}>
                       <p className="px-3 pb-1 pt-1.5 text-[11px] text-white/45">网盘云端转码</p>
                       {[...cloudInfo.qualities].sort((a, b) => b.height - a.height).map(q => {
                         const active = source?.kind === "cloud" && source.quality.id === q.id;
                         return (
-                          <button key={q.id} className={`flex w-full items-center justify-between rounded-[8px] px-3 py-1.5 text-left text-[13px] hover:bg-white/12 ${active ? "text-accent" : "text-white"}`}
+                          <button key={q.id} className={`flex w-full items-center justify-between rounded-[8px] px-3 py-1.5 text-left text-[13px] touch:py-2.5 hover:bg-white/12 ${active ? "text-accent" : "text-white"}`}
                             onClick={() => { if (!active) switchTo({ kind: "cloud", quality: q }); else setQualityMenu(false); }}>
                             {q.name}<span className="font-mono text-[11px] text-white/40">{(q.bandwidth / 1e6).toFixed(1)}M</span>
                           </button>
                         );
                       })}
                       <div className="mx-2 my-1 h-px bg-white/10" />
-                      <button className={`flex w-full items-center justify-between rounded-[8px] px-3 py-1.5 text-left text-[13px] hover:bg-white/12 ${source?.kind === "origin" ? "text-accent" : "text-white"}`}
+                      <button className={`flex w-full items-center justify-between rounded-[8px] px-3 py-1.5 text-left text-[13px] touch:py-2.5 hover:bg-white/12 ${source?.kind === "origin" ? "text-accent" : "text-white"}`}
                         onClick={() => { if (source?.kind !== "origin") switchTo({ kind: "origin" }); else setQualityMenu(false); }}>
                         原画<span className="text-[11px] text-white/40">原文件</span>
                       </button>
@@ -677,15 +687,15 @@ export function VideoPlayer({ path, src, fallback, thumb, chrome, cloud, subtitl
             ) : size ? <span className="mr-1 rounded-md bg-white/10 px-1.5 py-0.5 font-mono text-[10.5px] text-white/70 max-sm:hidden">{size.split("×")[1]}p</span> : null}
             <div className="relative">
               <motion.button type="button" whileTap={{ scale: 0.9 }} onClick={() => { setSpeedMenu(open => !open); setQualityMenu(false); setSubMenu(false); }} aria-label="播放速度"
-                className={`h-9 rounded-full px-2.5 font-mono text-[12.5px] font-medium transition-colors hover:bg-white/12 ${speed !== 1 ? "text-accent" : "text-white"}`}>
+                className={`h-9 rounded-full px-2.5 font-mono sm:touch:h-11 text-[12.5px] font-medium transition-colors hover:bg-white/12 ${speed !== 1 ? "text-accent" : "text-white"}`}>
                 {speed}×
               </motion.button>
               <AnimatePresence>
                 {speedMenu && (
-                  <motion.div className="absolute bottom-11 right-0 flex flex-col overflow-hidden rounded-[12px] bg-black/80 p-1 backdrop-blur-xl" style={{ boxShadow: "inset 0 0 0 1px rgb(255 255 255 / 0.1)", transformOrigin: "100% 100%" }}
+                  <motion.div className="absolute bottom-11 right-0 sm:touch:bottom-13 flex flex-col overflow-hidden rounded-[12px] bg-black/80 p-1 backdrop-blur-xl" style={{ boxShadow: "inset 0 0 0 1px rgb(255 255 255 / 0.1)", transformOrigin: "100% 100%" }}
                     initial={{ opacity: 0, scale: 0.85, y: 6 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.9 }} transition={spring.snappy}>
                     {SPEEDS.map(value => (
-                      <button key={value} className={`rounded-[8px] px-4 py-1.5 text-left font-mono text-[12.5px] hover:bg-white/12 ${value === speed ? "text-accent" : "text-white"}`}
+                      <button key={value} className={`rounded-[8px] px-4 py-1.5 text-left font-mono touch:py-2.5 text-[12.5px] hover:bg-white/12 ${value === speed ? "text-accent" : "text-white"}`}
                         onClick={() => { const v = video(); if (v) v.playbackRate = value; setSpeedMenu(false); }}>
                         {value}×
                       </button>

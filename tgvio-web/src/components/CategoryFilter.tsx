@@ -17,7 +17,7 @@ export function CategoryFilter({ path, counts, total, value, onChange }: {
         const active = key === value;
         return (
           <button key={key} aria-pressed={active} onClick={() => { flip.capture(); onChange(key); }}
-            className={`relative h-8 shrink-0 rounded-full px-3 transition-colors ${active ? "text-accent-ink" : "text-muted hover:text-ink"}`}>
+            className={`relative h-8 shrink-0 rounded-full px-3 touch:h-10 transition-colors ${active ? "text-accent-ink" : "text-muted hover:text-ink"}`}>
             {active && <motion.span layoutId={`cat-${path}`} className="absolute inset-0 rounded-full bg-accent" transition={spring.snappy} />}
             <span className="relative tabular">{label}<span className={`ml-1 text-[11.5px] ${active ? "opacity-70" : "text-faint"}`}>{n}</span></span>
           </button>

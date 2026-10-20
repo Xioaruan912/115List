@@ -28,7 +28,7 @@ function Crumb({ label, path, current }: { label: React.ReactNode; path: string;
   };
   return (
     <button
-      className={`max-w-[18ch] truncate rounded-lg px-2 py-1 text-[13.5px] transition duration-200 ${current ? "font-medium text-ink" : "text-muted hover:bg-[var(--hover)] hover:text-ink"} ${over ? "scale-110 bg-accent text-accent-ink" : ""}`}
+      className={`max-w-[18ch] truncate rounded-lg px-2 py-1 text-[13.5px] touch:py-2 transition duration-200 ${current ? "font-medium text-ink" : "text-muted hover:bg-[var(--hover)] hover:text-ink"} ${over ? "scale-110 bg-accent text-accent-ink" : ""}`}
       onClick={() => !current && navigate(encodePath(path))}
       onDragOver={event => { if (!current && event.dataTransfer.types.includes("application/x-tgvio")) { event.preventDefault(); setOver(true); } }}
       onDragLeave={() => setOver(false)}
@@ -81,7 +81,7 @@ function ViewToggle() {
   return (
     <div className="relative flex rounded-[11px] p-0.5 hairline" role="group" aria-label="视图">
       {(["grid", "list", "cinema"] as const).map(mode => (
-        <button key={mode} className={`relative grid size-8 place-items-center rounded-[9px] transition-colors ${view === mode ? "text-ink" : "text-muted hover:text-ink"}`}
+        <button key={mode} className={`relative grid size-8 place-items-center rounded-[9px] touch:size-10 transition-colors ${view === mode ? "text-ink" : "text-muted hover:text-ink"}`}
           onClick={() => setView(mode)} aria-pressed={view === mode} aria-label={VIEW_LABEL[mode]} title={VIEW_LABEL[mode]}>
           {view === mode && <motion.span layoutId="view-thumb" className="absolute inset-0 rounded-[9px] bg-raised" style={{ boxShadow: "var(--shadow-lift)" }} transition={spring.pop} />}
           <span className="relative">{VIEW_ICON[mode]}</span>
@@ -123,7 +123,7 @@ function Account() {
   return (
     <>
       <button
-        className="grid size-8 place-items-center rounded-[10px] bg-raised text-[13px] font-semibold hairline transition-transform active:scale-95"
+        className="grid size-8 place-items-center rounded-[10px] bg-raised text-[13px] touch:size-10 font-semibold hairline transition-transform active:scale-95"
         aria-label="账户"
         onClick={event => { const r = event.currentTarget.getBoundingClientRect(); setMenu({ x: r.right, y: r.bottom + 8 }); }}
       >
@@ -184,7 +184,7 @@ export function TopBar({ path }: { path: string }) {
           <motion.button
             layoutId="palette"
             onClick={() => setPalette(true)}
-            className="flex h-9 items-center gap-2 rounded-[11px] bg-surface px-3 text-muted hairline transition-colors hover:text-ink sm:w-60"
+            className="flex h-9 items-center gap-2 rounded-[11px] bg-surface px-3 touch:h-11 text-muted hairline transition-colors hover:text-ink sm:w-44 lg:w-60"
             transition={spring.sheet}
             aria-label="搜索"
           >
@@ -193,7 +193,7 @@ export function TopBar({ path }: { path: string }) {
             <kbd className="hidden rounded-md px-1.5 font-mono text-[11px] text-faint hairline sm:block">/</kbd>
           </motion.button>
         )}
-        {palette && <span className="h-9 sm:w-60" />}
+        {palette && <span className="h-9 touch:h-11 sm:w-44 lg:w-60" />}
         {library.enabled && (
           <motion.button className="icon-btn" aria-label="片库" title="片库" onClick={() => navigate("/@library")} whileTap={{ scale: 0.9 }}>
             <FilmReelIcon size={18} />

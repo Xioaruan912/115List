@@ -83,7 +83,7 @@ export default function Settings() {
       <PageHeader title="设置" />
       <div className="-mx-1 mb-6 flex gap-1 overflow-x-auto px-1 pb-1 [scrollbar-width:none]">
         {GROUPS.map(([id, label]) => (
-          <button key={id} className={`relative h-9 shrink-0 rounded-[10px] px-3.5 text-[13.5px] ${group === id ? "text-accent-ink" : "text-muted hover:text-ink"}`} onClick={() => setGroup(id)}>
+          <button key={id} className={`relative h-9 shrink-0 rounded-[10px] px-3.5 touch:h-11 text-[13.5px] ${group === id ? "text-accent-ink" : "text-muted hover:text-ink"}`} onClick={() => setGroup(id)}>
             {group === id && <motion.span layoutId="settings-group" className="absolute inset-0 rounded-[10px] bg-accent" transition={spring.snappy} />}
             <span className="relative">{label}</span>
           </button>

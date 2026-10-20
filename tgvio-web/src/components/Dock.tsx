@@ -176,7 +176,7 @@ export function Dock({ path }: { path: string }) {
       {can(me, Perm.Copy) && (
         <button className="icon-btn size-10 max-sm:hidden" aria-label="复制" title="复制到" onClick={() => openDialog({ kind: "transfer", mode: "copy", dir: path, names: [...(selected ?? [])] })}><CopyIcon size={19} /></button>
       )}
-      <button className="icon-btn size-10 sm:hidden" aria-label="更多" onClick={event => {
+      <button className="icon-btn size-10 sm:[@media(pointer:fine)]:hidden" aria-label="更多" onClick={event => {
         const r = event.currentTarget.getBoundingClientRect();
         const target = chosen[0];
         if (target) useUi.getState().openMenu({ x: r.left, y: r.top, dir: path, obj: target });

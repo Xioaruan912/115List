@@ -62,7 +62,7 @@ function SortControl({ path, media }: { path: string; media: boolean }) {
         return (
           <button
             key={key}
-            className={`relative h-8 rounded-lg px-2.5 transition-colors ${active ? "text-ink" : "text-muted hover:text-ink"}`}
+            className={`relative h-8 rounded-lg px-2.5 transition-colors touch:h-10 ${active ? "text-ink" : "text-muted hover:text-ink"}`}
             onClick={() => { flip.capture(); setSort(key); }}
             aria-pressed={active}
           >

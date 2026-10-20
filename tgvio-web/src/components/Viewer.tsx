@@ -44,9 +44,11 @@ function useViewport() {
 }
 
 function fit(aspect: number, vw: number, vh: number, mobile: boolean, strip: boolean): Box {
-  const padX = mobile ? 0 : 80;
-  const top = mobile ? 60 : 72;
-  const bottom = strip ? (mobile ? 92 : 104) : mobile ? 24 : 40;
+  // A phone on its side: the picture takes the whole screen, the bars float over it.
+  const short = vh < 500;
+  const padX = mobile || short ? 0 : 80;
+  const top = short ? 0 : mobile ? 60 : 72;
+  const bottom = short ? 0 : strip ? (mobile ? 92 : 104) : mobile ? 24 : 40;
   const bw = Math.max(80, vw - padX * 2);
   const bh = Math.max(80, vh - top - bottom);
   let width = bw;
@@ -258,7 +260,7 @@ function ViewerBody({ dir, name, origin }: { dir: string; name: string; origin: 
     const videos = sortObjs(files.filter(item => kindOf(item) === "video"), "name", false);
     return videos[videos.findIndex(item => item.name === videoName) + 1];
   }, [videoName, files]);
-  const strip = media && gallery.length > 1 && gallery.some(item => item.thumb) && !mobile;
+  const strip = media && gallery.length > 1 && gallery.some(item => item.thumb) && !mobile && vh >= 500;
   const [aspects, setAspects] = useState<Record<string, number>>({});
   // Videos start 16:9 (the tile they came from may be a square icon) until the metadata says otherwise.
   const aspect = obj ? aspects[obj.name] ?? (origin && kind !== "video" ? origin.width / origin.height : 16 / 9) : 16 / 9;
@@ -484,7 +486,7 @@ function ViewerBody({ dir, name, origin }: { dir: string; name: string; origin: 
           style={{ pointerEvents: "none" }}
         >
           <motion.div
-            className={`pointer-events-auto absolute overflow-hidden ${media ? "rounded-[14px] max-sm:rounded-none" : ""} ${blur && media ? "" : ""}`}
+            className={`pointer-events-auto absolute overflow-hidden ${media ? "rounded-[14px] max-sm:rounded-none [@media(max-height:499px)]:rounded-none" : ""} ${blur && media ? "" : ""}`}
             style={{ x, y, scale: combinedScale, touchAction: "none" }}
             animate={{ left: box.left, top: box.top, width: box.width, height: box.height }}
             initial={false}
@@ -531,28 +533,28 @@ function ViewerBody({ dir, name, origin }: { dir: string; name: string; origin: 
         transition={spring.snappy}
         style={{ pointerEvents: chrome ? "auto" : "none" }}
       >
-        <button className={`grid size-9 place-items-center rounded-full ${tone.chip} backdrop-blur-md transition-transform ${tone.hover} active:scale-90`} onClick={close} aria-label="关闭"><XIcon size={18} /></button>
+        <button className={`grid size-9 place-items-center rounded-full touch:size-10 ${tone.chip} backdrop-blur-md transition-transform ${tone.hover} active:scale-90`} onClick={close} aria-label="关闭"><XIcon size={18} /></button>
         <div className="min-w-0 flex-1 px-1">
           <p className="truncate text-[14px] font-medium">{obj.name}</p>
-          <p className={`text-[12px] ${tone.sub} tabular`}>{current + 1} / {files.length}，{formatBytes(obj.size)}{extname(obj.name) ? `，${extname(obj.name).toUpperCase()}` : ""}</p>
+          <p className={`truncate text-[12px] ${tone.sub} tabular`}>{current + 1} / {files.length}，{formatBytes(obj.size)}{extname(obj.name) ? `，${extname(obj.name).toUpperCase()}` : ""}</p>
         </div>
         {kind === "image" && !mobile && (
-          <button className={`grid size-9 place-items-center rounded-full ${tone.hover}`} aria-label={zoomed ? "缩小" : "放大"}
+          <button className={`grid size-9 place-items-center rounded-full touch:size-10 ${tone.hover}`} aria-label={zoomed ? "缩小" : "放大"}
             onClick={() => { if (zoomed) resetZoom(); else { animate(zoom, 2, spring.snappy); setZoomed(true); } }}>
             {zoomed ? <MagnifyingGlassMinusIcon size={18} /> : <MagnifyingGlassPlusIcon size={18} />}
           </button>
         )}
-        <a className={`grid size-9 place-items-center rounded-full ${tone.hover}`} href={src} target="_blank" rel="noreferrer" aria-label="新标签页打开"><ArrowSquareOutIcon size={18} /></a>
-        <button className={`grid size-9 place-items-center rounded-full ${tone.hover}`} onClick={() => actions.download(dir, obj)} aria-label="下载"><DownloadSimpleIcon size={18} /></button>
-        <button className={`grid size-9 place-items-center rounded-full ${tone.hover}`} onClick={() => void actions.copyLinks(dir, [obj])} aria-label="复制链接"><LinkIcon size={18} /></button>
+        <a className={`grid size-9 place-items-center rounded-full touch:size-10 ${tone.hover}`} href={src} target="_blank" rel="noreferrer" aria-label="新标签页打开"><ArrowSquareOutIcon size={18} /></a>
+        <button className={`grid size-9 place-items-center rounded-full touch:size-10 ${tone.hover}`} onClick={() => actions.download(dir, obj)} aria-label="下载"><DownloadSimpleIcon size={18} /></button>
+        <button className={`grid size-9 place-items-center rounded-full touch:size-10 ${tone.hover}`} onClick={() => void actions.copyLinks(dir, [obj])} aria-label="复制链接"><LinkIcon size={18} /></button>
         {can(me, Perm.Share) && (
-          <button className={`grid size-9 place-items-center rounded-full ${tone.hover} max-sm:hidden`} onClick={() => openDialog({ kind: "share", dir, names: [obj.name] })} aria-label="分享"><ShareNetworkIcon size={18} /></button>
+          <button className={`grid size-9 place-items-center rounded-full touch:size-10 ${tone.hover} max-sm:hidden`} onClick={() => openDialog({ kind: "share", dir, names: [obj.name] })} aria-label="分享"><ShareNetworkIcon size={18} /></button>
         )}
-        <button className={`grid size-9 place-items-center rounded-full ${tone.hover} max-sm:hidden`} onClick={() => openDialog({ kind: "info", dir, obj })} aria-label="属性"><InfoIcon size={18} /></button>
-        <button className={`grid size-9 place-items-center rounded-full ${tone.hover} sm:hidden`} aria-label="更多"
+        <button className={`grid size-9 place-items-center rounded-full touch:size-10 ${tone.hover} max-sm:hidden`} onClick={() => openDialog({ kind: "info", dir, obj })} aria-label="属性"><InfoIcon size={18} /></button>
+        <button className={`grid size-9 place-items-center rounded-full touch:size-10 ${tone.hover} sm:hidden`} aria-label="更多"
           onClick={() => setMore(true)}><DotsThreeIcon size={20} weight="bold" /></button>
         {can(me, Perm.Remove) && (
-          <button className={`grid size-9 place-items-center rounded-full ${tone.danger} ${tone.hover} max-sm:hidden`} aria-label="删除"
+          <button className={`grid size-9 place-items-center rounded-full touch:size-10 ${tone.danger} ${tone.hover} max-sm:hidden`} aria-label="删除"
             onClick={() => openDialog({ kind: "delete", dir, names: [obj.name] })}><TrashIcon size={18} /></button>
         )}
       </motion.header>

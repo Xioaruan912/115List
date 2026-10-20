@@ -292,7 +292,7 @@ export default function PosterSettings() {
               const active = config.language === value;
               return (
                 <button key={value} type="button" role="radio" aria-checked={active}
-                  className={`relative h-8 rounded-[9px] px-3 text-[12.5px] font-medium transition-colors ${active ? "text-ink" : "text-muted hover:text-ink"}`}
+                  className={`relative h-8 rounded-[9px] px-3 touch:h-10 text-[12.5px] font-medium transition-colors ${active ? "text-ink" : "text-muted hover:text-ink"}`}
                   onClick={() => { if (!active) void save({ config: { ...config, language: value } }, `已改为${label}`); }}>
                   {active && <motion.span layoutId="poster-language" className="absolute inset-0 rounded-[9px] bg-raised" style={{ boxShadow: "var(--shadow-lift)" }} transition={spring.pop} />}
                   <span className="relative">{label}</span>
