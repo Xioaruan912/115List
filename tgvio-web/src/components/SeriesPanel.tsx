@@ -87,7 +87,7 @@ export function SeriesPanel({ path, items }: { path: string; items: Obj[] }) {
             <h2 className="text-[clamp(24px,3.4vw,38px)] font-semibold leading-tight tracking-[-0.03em]">{base.title}</h2>
             <p className="mt-1.5 flex flex-wrap items-center gap-x-3 text-[13px] text-white/70 tabular">
               {base.year ? <span>{base.year}</span> : null}
-              {data.season ? <span>第 {data.season} 季 · 有 {have}/{data.episodes.length} 集</span> : <span>{data.seasons.filter(s => s.season > 0).length} 季</span>}
+              {data.season ? <span>第 {data.season} 季{data.episodes.length ? ` · 有 ${have}/${data.episodes.length} 集` : ""}</span> : <span>{data.seasons.filter(s => s.season > 0).length} 季</span>}
               {base.rating ? <span className="inline-flex items-center gap-1"><StarIcon size={12} weight="fill" className="text-accent" />{base.rating.toFixed(1)}</span> : null}
             </p>
             {(subject.overview || base.overview) && <p className="mt-3 line-clamp-3 text-[13.5px] leading-relaxed text-white/75">{subject.overview || base.overview}</p>}

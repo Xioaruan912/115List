@@ -1,175 +1,124 @@
 <div align="center">
-  <img src="https://raw.githubusercontent.com/OpenListTeam/Logo/main/logo.svg" width="128" height="128" alt="logo" />
 
-  <p><em>OpenList is a resilient, long-term governance, community-driven fork of AList — built to defend open source against trust-based attacks.</em></p>
+# 115List
 
-  <img src="https://goreportcard.com/badge/github.com/OpenListTeam/OpenList/v3" alt="latest version" />
-  <a href="https://github.com/OpenListTeam/OpenList/blob/main/LICENSE"><img src="https://img.shields.io/github/license/OpenListTeam/OpenList" alt="License" /></a>
-  <a href="https://github.com/OpenListTeam/OpenList/actions?query=workflow%3ABuild"><img src="https://img.shields.io/github/actions/workflow/status/OpenListTeam/OpenList/build.yml?branch=main" alt="Build status" /></a>
-  <a href="https://github.com/OpenListTeam/OpenList/releases"><img src="https://img.shields.io/github/release/OpenListTeam/OpenList" alt="latest version" /></a>
+**把 115 网盘变成自己的私人影院。**
 
-  <a href="https://github.com/OpenListTeam/OpenList/discussions"><img src="https://img.shields.io/github/discussions/OpenListTeam/OpenList?color=%23ED8936" alt="discussions" /></a>
-  <a href="https://github.com/OpenListTeam/OpenList/releases"><img src="https://img.shields.io/github/downloads/OpenListTeam/OpenList/total?color=%239F7AEA&logo=github" alt="Downloads" /></a>
+在 [OpenList](https://github.com/OpenListTeam/OpenList) 的基础上改的：换了一套全新的网页界面，并针对 115 网盘做了很多加强。电影、剧集自动配上海报，进度跨设备同步，手机、iPad、电视都能用。
+
 </div>
+
+![影院模式](docs/screenshots/cinema.jpg)
 
 ---
 
-- English | [中文](./README/README_cn.md) | [日本語](./README/README_ja.md) | [Dutch](./README/README_nl.md) | [한국어](./README/README_ko.md) | [Deutsch](./README/README_de.md) | [Русский](./README/README_ru.md) | [Français](./README/README_fr.md) | [Español](./README/README_es.md) | [العربية](./README/README_ar.md)
+## 它能做什么
 
-- [Contributing](./CONTRIBUTING.md)
-- [CODE OF CONDUCT](./CODE_OF_CONDUCT.md)
-- [LICENSE](./LICENSE)
+### 像视频网站一样看网盘里的片子
 
-## Disclaimer
+- **自动配海报**：根据文件夹和视频的名字，到 TMDB（一个公开的影视资料库）找到对应的电影或剧集，配上海报、剧照、简介和评分。
+- **影院模式**：大幅海报随机推荐一部片，下面是海报墙。
+- **片库**：把所有认出来的电影、剧集集中到一页，可以按电影 / 电视剧 / 动漫 / 综艺 / 纪录片筛选，按评分、年份排序。
+- **剧集详情**：打开一部剧的文件夹，能看到每一季、每一集的剧照和简介，哪集看过一目了然，「继续看第 N 集」一键接着看。
 
-OpenList is an open-source project independently maintained by the OpenList Team, following the AGPL-3.0 license and committed to maintaining complete code openness and modification transparency.
+![片库](docs/screenshots/library.jpg)
 
-We have noticed the emergence of some third-party projects in the community with names similar to this project, such as OpenListApp/OpenListApp, as well as some paid proprietary software using the same or similar naming. To avoid user confusion, we hereby declare:
+![剧集详情](docs/screenshots/series.jpg)
 
-- OpenList has no official association with any third-party derivative projects.
+### 好用的播放器
 
-- All software, code, and services of this project are maintained by the OpenList Team and are freely available on GitHub.
+- 自动加载同名字幕（ASS 特效字幕也能正常显示），可以调字幕时间。
+- 没有字幕时，可以在线搜索射手网的字幕，选中后直接保存到视频旁边。
+- 一集放完自动播下一集。
+- 115 的视频默认用网盘自己的转码播放，4K / 1080P 可切换，大文件也能流畅拖动。
+- 浏览器放不了的格式，一键用 Infuse、nPlayer、VLC、PotPlayer 等外部播放器打开。
+- **看到哪里自动记住**，换手机、换电脑都能接着看。
+- 手机锁屏也能控制播放，支持投屏到电视（AirPlay / Chrome 投屏）。
 
-- Project documentation and API services primarily rely on charitable resources provided by Cloudflare. There are currently no paid plans or commercial deployments, and the use of existing features does not involve any costs.
+![播放器](docs/screenshots/player.jpg)
 
-We respect the community's rights to free use and derivative development, but we also strongly urge downstream projects:
+### 找资源、一键下载
 
-- Should not use the "OpenList" name for impersonation promotion or commercial gain;
+在片库点「找资源」，输入片名：
 
-- Must not distribute OpenList-based code in a closed-source manner or violate AGPL license terms.
+1. 一键打开资源网站（默认支持 SeedHub）搜索这部片。
+2. 把网站上的磁力链接复制回来粘贴（也可以框选整个列表直接复制）。如果网站允许，也可以设置成由服务器直接读取，不用复制。
+3. **带中文字幕的排在最前面**，其次是国语 / 粤语，再按清晰度排序。
+4. 勾选想要的，选好保存到哪个文件夹，交给 115 离线下载。
+5. 一部剧的多个资源可以放进同一个「合集」文件夹，下载完一键按 TMDB 把文件名整理规范。
 
-To better maintain healthy ecosystem development, we recommend:
+资源网站在设置里可以随时添加、更换或关闭，也能检测网站现在是否打得开。
 
-- Clearly indicate the project source and choose appropriate open-source licenses in accordance with the open-source spirit;
+![找资源](docs/screenshots/resources.jpg)
 
-- If involving commercial use, please avoid using "OpenList" or any confusing naming as the project name;
+### 整理文件
 
-- If you need to use materials located under OpenListTeam/Logo, you may modify and use them under compliance with the agreement.
+- **按 TMDB 整理命名**：电影改成「片名 (年份)」，剧集改成「剧名 - S01E05 - 集名」，字幕跟着视频一起改；会先列出改名计划，你确认后才动手。
+- 转存别人的 115 分享链接。
+- 离线下载（磁力、链接），直接下到 115 里。
+- 上传支持断点续传，大文件关掉浏览器也不怕。
+- 在网页里直接浏览、解压 zip / rar / 7z 压缩包。
+- 生成分享链接，可以设有效期、提取码，带二维码。
 
-Thank you for your support and understanding of the OpenList project.
+![文件浏览](docs/screenshots/files.jpg)
 
-## Features
+### 手机、iPad 都好用
 
-- [x] Multiple storages
-  - [x] Local storage
-  - [x] [Aliyundrive](https://www.alipan.com)
-  - [x] OneDrive / Sharepoint ([Global](https://www.microsoft.com/en-us/microsoft-365/onedrive/online-cloud-storage), [CN](https://portal.partner.microsoftonline.cn), DE, US)
-  - [x] [189cloud](https://cloud.189.cn) (Personal, Family)
-  - [x] [GoogleDrive](https://drive.google.com)
-  - [x] [123pan](https://www.123pan.com)
-  - [x] [FTP / SFTP](https://en.wikipedia.org/wiki/File_Transfer_Protocol)
-  - [x] [PikPak](https://www.mypikpak.com)
-  - [x] [S3](https://aws.amazon.com/s3)
-  - [x] [Seafile](https://seafile.com)
-  - [x] [UPYUN Storage Service](https://www.upyun.com/products/file-storage)
-  - [x] [WebDAV](https://en.wikipedia.org/wiki/WebDAV)
-  - [x] Teambition([China](https://www.teambition.com), [International](https://us.teambition.com))
-  - [x] [MediaFire](https://www.mediafire.com)
-  - [x] [Mediatrack](https://www.mediatrack.cn)
-  - [x] [ProtonDrive](https://proton.me/drive)
-  - [x] [139yun](https://yun.139.com) (Personal, Family, Group, Share)
-  - [x] [YandexDisk](https://disk.yandex.com)
-  - [x] [BaiduNetdisk](http://pan.baidu.com)
-  - [x] [Terabox](https://www.terabox.com/main)
-  - [x] [UC](https://drive.uc.cn)
-  - [x] [Quark](https://pan.quark.cn)
-  - [x] [Thunder](https://pan.xunlei.com)
-  - [x] [Lanzou](https://www.lanzou.com)
-  - [x] [ILanzou](https://www.ilanzou.com)
-  - [x] [Google photo](https://photos.google.com)
-  - [x] [Mega.nz](https://mega.nz)
-  - [x] [Baidu photo](https://photo.baidu.com)
-  - [x] [SMB](https://en.wikipedia.org/wiki/Server_Message_Block)
-  - [x] [115](https://115.com)
-  - [X] [Cloudreve](https://cloudreve.org)
-  - [x] [Dropbox](https://www.dropbox.com)
-  - [x] [FeijiPan](https://www.feijipan.com)
-  - [x] [dogecloud](https://www.dogecloud.com/product/oss)
-  - [x] [Azure Blob Storage](https://azure.microsoft.com/products/storage/blobs)
-  - [x] [Chaoxing](https://www.chaoxing.com)
-  - [x] [CNB](https://cnb.cool/)
-  - [x] [Degoo](https://degoo.com)
-  - [x] [Doubao](https://www.doubao.com)
-  - [x] [Febbox](https://www.febbox.com)
-  - [x] [GitHub](https://github.com)
-  - [x] [OpenList](https://github.com/OpenListTeam/OpenList)
-  - [x] [Teldrive](https://github.com/tgdrive/teldrive)
-  - [x] [Weiyun](https://www.weiyun.com)
-  - [x] [DingTalk Docs](https://alidocs.dingtalk.com/)
-- [x] Easy to deploy and out-of-the-box
-- [x] File preview (PDF, markdown, code, plain text, ...)
-- [x] Image preview in gallery mode
-- [x] Video and audio preview, support lyrics and subtitles
-- [x] Office documents preview (docx, pptx, xlsx, ...)
-- [x] `README.md` preview rendering
-- [x] File permalink copy and direct file download
-- [x] Dark mode
-- [x] I18n
-- [x] Protected routes (password protection and authentication)
-- [x] WebDAV
-- [x] Docker Deploy
-- [x] Cloudflare Workers proxy
-- [x] File/Folder package download
-- [x] Web upload(Can allow visitors to upload), delete, mkdir, rename, move and copy
-- [x] Offline download
-- [x] Copy files between two storage
-- [x] Multi-thread downloading acceleration for single-thread download/stream
+- 手机上长按多选，菜单从屏幕底部弹出，双指捏合调整每行几个。
+- iPad 上按钮都放大到手指好点的尺寸。
+- 横着拿手机看视频自动铺满全屏。
+- 可以「添加到主屏幕」，像 App 一样全屏使用。
 
-## Document
+<p align="center">
+  <img src="docs/screenshots/phone-cinema.jpg" width="300" alt="手机上的影院模式" />
+  &nbsp;&nbsp;
+  <img src="docs/screenshots/phone-library.jpg" width="300" alt="手机上的片库" />
+</p>
 
-- 📘 [Docs](https://doc.oplist.org)
-- 🌏 [CN Mirror](https://doc.oplist.org.cn)
-- ⚖️ [Terms of Use](https://doc.oplist.org/terms)
-- 🔒 [Privacy Policy](https://doc.oplist.org/privacy)
+### 其他
 
-## Demo
+- 深色、浅色主题跟随系统。
+- 封面默认模糊，鼠标移上去（或长按）才显示，不怕被旁人看到。
+- 访客模式：不登录也能看你开放的文件夹。
+- 登录设备管理：能看到在哪些设备登录过，可以一键退出。
+- 115 加强：限速和自动避让风控，减少 405 报错；下载链接缓存；批量删除更可靠；回收站清理。
 
-- 🌎 [Global Demo](https://demo.oplist.org)
-- 🇨🇳 [CN Demo](https://demo.oplist.org.cn)
+![浅色主题](docs/screenshots/light.jpg)
 
-## Discussion
+![登录页](docs/screenshots/login.jpg)
 
-Please refer to [*Discussions*](https://github.com/OpenListTeam/OpenList/discussions) for raising general questions, ***Issues* is for bug reports and feature requests only.**
+---
 
-## Sponsor
+## 怎么用
 
-[![VPS.Town](https://vps.town/static/images/sponsor.png)](https://vps.town "VPS.Town - Trust, Effortlessly. Your Cloud, Reimagined.")
+### 安装
 
-## Donors
+和官方 OpenList 一样，是一个程序文件，下载后直接运行：
 
-Thanks to the following donors for their generous support:
+```sh
+./openlist server
+```
 
-- [HisAtri](https://github.com/HisAtri)
-- 爱发电用户_7jTh
-- suka
+然后在浏览器打开 `http://你的服务器地址:5244`，用管理员账号登录，在「管理 › 存储」里添加 115 网盘。
 
-## License
+想自己从源码构建，见 [技术说明](tgvio/README.md#构建)。
 
-The `OpenList` is open-source software licensed under the [AGPL-3.0](https://www.gnu.org/licenses/agpl-3.0.txt) license.
+### 打开影视功能
 
-## Disclaimer
+进入「管理 › 设置 › 影视库」：
 
-- This project is a free and open-source software designed to facilitate file sharing via net disks, primarily intended to support the downloading and learning of the Go programming language.
-- Please comply with all applicable laws and regulations when using this software. Any form of misuse is strictly prohibited.
-- The software is based on official SDKs or APIs without any modification, disruption, or interference with their behavior.
-- It only performs HTTP 302 redirects or traffic forwarding, and does not intercept, store, or tamper with any user data.
-- This project is not affiliated with any official platform or service provider.
-- The software is provided "as is", without any warranties of any kind, either express or implied, including but not limited to warranties of merchantability or fitness for a particular purpose.
-- The maintainers are not liable for any direct or indirect damages arising from the use of, or inability to use, this software.
-- You are solely responsible for any risks associated with using this software, including but not limited to account bans or download speed limitations.
-- This project is licensed under the [AGPL-3.0](https://www.gnu.org/licenses/agpl-3.0.txt) License. Please see the [LICENSE](./LICENSE) file for details.
+1. **TMDB 令牌**：到 [themoviedb.org](https://www.themoviedb.org/settings/api) 免费申请，填进去，海报就有了。
+2. **生效目录**：选放电影、剧集的文件夹，影视功能只在这些文件夹里起作用，其他文件夹保持普通网盘的样子。
+3. **射手网字幕令牌**（可选）：到 [assrt.net](https://assrt.net/usercp.php) 免费注册获取，播放器就能在线搜字幕。
+4. **资源搜索**（可选）：打开开关，片库里就会出现「找资源」。
 
-## Contact Us
+令牌只保存在你的服务器上，不会显示出来，也不会上传到任何地方。
 
-- [@GitHub](https://github.com/OpenListTeam)
-- [Telegram Group](https://t.me/OpenListTeam)
-- [Telegram Channel](https://t.me/OpenListOfficial)
+---
 
-## Contributors
+## 说明
 
-We sincerely thank the author [Xhofe](https://github.com/Xhofe) of the original project [AlistGo/alist](https://github.com/AlistGo/alist) and all other contributors.
-
-Thanks goes to these wonderful people:
-
-[![Contributors](https://contrib.rocks/image?repo=OpenListTeam/OpenList)](https://github.com/OpenListTeam/OpenList/graphs/contributors)
-
+- 本项目基于 [OpenList](https://github.com/OpenListTeam/OpenList)，遵循 [AGPL-3.0](LICENSE) 协议开源，与 OpenList 官方团队没有关联。
+- 网页界面在 `tgvio-web/` 目录，是重新写的，只通过 OpenList 原有的接口工作，WebDAV 等功能不受影响。
+- 改了哪些地方、各个接口和部署细节，见 [技术说明](tgvio/README.md)。
+- 「找资源」只是帮你打开第三方网站、整理你自己复制回来的链接，本项目不提供、不存储任何影视资源。请遵守当地法律，支持正版。
