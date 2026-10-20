@@ -1,8 +1,11 @@
-import { ArrowCounterClockwiseIcon, ArrowsClockwiseIcon, MagnetIcon, PlusIcon, TrashIcon } from "@phosphor-icons/react";
+import { ArrowCounterClockwiseIcon, ArrowsClockwiseIcon, FolderSimpleIcon, MagnetIcon, PlusIcon, TrashIcon } from "@phosphor-icons/react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { resourceAdmin, type ProbeResult, type ResourceConfig, type ResourceSite } from "../../api/resources";
+import { FolderPicker } from "../../components/Dialogs";
 import { ErrorState } from "../../components/ErrorState";
+import { Sheet } from "../../components/Sheet";
+import { useLibraryScope } from "../../hooks/useLibraryScope";
 import { toast } from "../../stores/toast";
 
 /**
@@ -22,6 +25,9 @@ export function ResourceSettings() {
   const query = useQuery({ queryKey: ["resource-admin"], queryFn: resourceAdmin.get });
   const [draft, setDraft] = useState<ResourceConfig | null>(null);
   const [probe, setProbe] = useState<{ busy: boolean; results: ProbeResult[] }>({ busy: false, results: [] });
+  const library = useLibraryScope();
+  const [picking, setPicking] = useState(false);
+  const [target, setTarget] = useState("/");
   useEffect(() => { if (query.data && !draft) setDraft(query.data.config); }, [query.data, draft]);
 
   const save = async (config: ResourceConfig, done: string): Promise<boolean> => {
@@ -60,6 +66,29 @@ export function ResourceSettings() {
         <button type="button" role="switch" aria-checked={draft.enabled} aria-label="启用资源搜索" className="switch mt-1 shrink-0"
           onClick={() => void save({ ...saved, enabled: !draft.enabled }, draft.enabled ? "已关闭资源搜索" : "已打开资源搜索")} />
       </div>
+
+      {/* Where downloads go: each title gets a folder of its own name inside. */}
+      <div className="mt-4 flex flex-col gap-3 rounded-[14px] p-3.5 hairline sm:flex-row sm:items-center sm:justify-between">
+        <div className="min-w-0">
+          <p className="text-[13.5px] font-medium">默认保存位置</p>
+          <p className="mt-0.5 text-[12.5px] leading-relaxed text-muted">
+            下载时在这里新建一个以片名命名的文件夹，内容放在里面，比如 <span className="font-mono text-[12px]">{(saved.folder || library.paths[0] || "/115/我要看").replace(/\/$/, "")}/瘴气营地的青春性事与死亡</span>。每次下载前也可以临时换。
+          </p>
+        </div>
+        <div className="flex shrink-0 items-center gap-2">
+          <span className="inline-flex max-w-[16rem] items-center gap-1.5 truncate text-[13px]" title={saved.folder}>
+            <FolderSimpleIcon size={16} weight="duotone" className="shrink-0 text-accent-text" />
+            {saved.folder || <span className="text-faint">{library.paths[0] ? `影视库第一个目录（${library.paths[0]}）` : "未设置"}</span>}
+          </span>
+          <button className="btn btn-line h-9 px-3.5 text-[13px]" onClick={() => { setTarget(saved.folder || library.paths[0] || "/"); setPicking(true); }}>更改</button>
+        </div>
+      </div>
+      <Sheet open={picking} onClose={() => setPicking(false)} width={520} title="默认保存位置"
+        footer={<><button className="btn btn-ghost" onClick={() => setPicking(false)}>取消</button>
+          <button className="btn btn-primary" onClick={async () => { if (await save({ ...saved, folder: target }, "已保存默认保存位置")) setPicking(false); }}>保存到这里</button></>}>
+        <FolderPicker start={saved.folder || library.paths[0] || "/"} value={target} onChange={setTarget} />
+        <p className="mt-2 text-[12px] text-faint">{target}</p>
+      </Sheet>
 
       <ul className="mt-4 space-y-2">
         {draft.sites.map((site, index) => {

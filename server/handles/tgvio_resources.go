@@ -5,6 +5,8 @@ import (
 	"time"
 
 	"github.com/OpenListTeam/OpenList/v4/cmd/flags"
+	"github.com/OpenListTeam/OpenList/v4/internal/conf"
+	"github.com/OpenListTeam/OpenList/v4/internal/model"
 	"github.com/OpenListTeam/OpenList/v4/internal/tgvio"
 	"github.com/OpenListTeam/OpenList/v4/server/common"
 	"github.com/gin-gonic/gin"
@@ -31,7 +33,7 @@ func TgvioResources(c *gin.Context) {
 			sites = append(sites, resourceSiteView{ID: p.ID, Name: p.Name, Search: p.Search, Reader: p.Reader})
 		}
 	}
-	common.SuccessResp(c, gin.H{"enabled": cfg.Enabled && len(sites) > 0, "sites": sites})
+	common.SuccessResp(c, gin.H{"enabled": cfg.Enabled && len(sites) > 0, "sites": sites, "folder": showFolder(c, cfg.Folder)})
 }
 
 // TgvioResourcesAdmin: GET/POST /api/admin/tgvio/resources {enabled, sites}
@@ -132,4 +134,21 @@ func TgvioResourceMagnets(c *gin.Context) {
 		out = append(out, found{Seed: seed, URL: magnet})
 	}
 	common.SuccessResp(c, gin.H{"items": out})
+}
+
+// showFolder is the default download folder as this user sees it (their root
+// may be below it); empty when it is outside what they can see.
+func showFolder(c *gin.Context, folder string) string {
+	if folder == "" {
+		return ""
+	}
+	user, ok := c.Request.Context().Value(conf.UserKey).(*model.User)
+	if !ok {
+		return ""
+	}
+	shown, ok := user.ShowPath(folder)
+	if !ok {
+		return ""
+	}
+	return shown
 }

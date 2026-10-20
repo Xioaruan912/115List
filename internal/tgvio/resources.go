@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -46,6 +47,8 @@ type ResourceSite struct {
 type ResourceConfig struct {
 	Enabled bool           `json:"enabled"`
 	Sites   []ResourceSite `json:"sites"`
+	// Folder: where downloads go by default, each title in its own folder inside ("/115/我要看").
+	Folder string `json:"folder,omitempty"`
 }
 
 // ProbeResult says how a site answered the server.
@@ -196,6 +199,12 @@ func (r *Resources) Save(cfg ResourceConfig) (ResourceConfig, error) {
 		sites = append(sites, site)
 	}
 	cfg.Sites = sites
+	if folder := strings.TrimSpace(cfg.Folder); folder != "" {
+		if !strings.HasPrefix(folder, "/") {
+			return cfg, fmt.Errorf("the default folder must be a path starting with /")
+		}
+		cfg.Folder = path.Clean(folder)
+	}
 	raw, _ := json.MarshalIndent(cfg, "", "  ")
 	if err := os.MkdirAll(filepath.Dir(r.path), 0o700); err != nil {
 		return cfg, err

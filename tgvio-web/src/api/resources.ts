@@ -5,12 +5,13 @@ import { get, post } from "../lib/api";
 export interface ResourceSite { id: string; name: string; search: string; enabled?: boolean; reader?: "" | "seedhub" }
 export interface ResourceTitle { id: string; title: string; year?: number; kind?: string; info?: string; image?: string; rating?: number; url: string }
 export interface ResourceSeed { id: string; title: string; size?: string; features?: string[]; date?: string }
-export interface ResourceConfig { enabled: boolean; sites: ResourceSite[] }
+/** folder: where downloads go by default, each title in its own folder inside. */
+export interface ResourceConfig { enabled: boolean; sites: ResourceSite[]; folder?: string }
 /** How a site answered the server: ok, a bot check (fine in a browser), or nothing. */
 export interface ProbeResult { id: string; state: "ok" | "challenge" | "down"; status?: number; ms: number; message?: string }
 
 export const resources = {
-  list: () => get<{ enabled: boolean; sites: ResourceSite[] }>("/tgvio/resources"),
+  list: () => get<{ enabled: boolean; sites: ResourceSite[]; folder?: string }>("/tgvio/resources"),
   titles: (site: string, q: string) => post<{ items: ResourceTitle[] }>("/tgvio/resources/titles", { site, q }),
   seeds: (site: string, id: string) => post<{ items: ResourceSeed[] }>("/tgvio/resources/seeds", { site, id }),
   magnets: (site: string, seeds: string[]) => post<{ items: { seed: string; url?: string; error?: string }[] }>("/tgvio/resources/magnets", { site, seeds }),

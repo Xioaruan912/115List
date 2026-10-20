@@ -53,6 +53,12 @@ func TestResourcesSave(t *testing.T) {
 	if cfg.Sites[0].ID != "seedhub-cc" || cfg.Sites[1].ID != "seedhub-cc-2" {
 		t.Fatalf("ids: %+v", cfg.Sites)
 	}
+	if cfg, err := r.Save(ResourceConfig{Folder: "/115/我要看/"}); err != nil || cfg.Folder != "/115/我要看" {
+		t.Fatalf("folder: %v %q", err, cfg.Folder)
+	}
+	if _, err := r.Save(ResourceConfig{Folder: "115"}); err == nil {
+		t.Fatal("a relative folder should be refused")
+	}
 	if _, err := r.Save(ResourceConfig{Sites: []ResourceSite{{Name: "x", Search: "https://example.com/"}}}); err == nil {
 		t.Fatal("an address without {q} should be refused")
 	}

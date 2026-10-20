@@ -31,14 +31,14 @@ import { Sheet } from "./Sheet";
  *      best one of each already ticked; the folder is already chosen. 下载
  *      sends them to the drive's offline download.
  *
- * One title goes into its own folder ("潜伏 (2009)") when it is a series or
- * several releases are ticked; several titles go into a series folder with a
- * folder per title inside ("潜伏 系列/潜伏2 (2013)"). TMDB is matched behind
+ * Downloads go to the default folder of 设置 › 影视库 › 资源搜索, each title
+ * in a folder of its own name ("我要看/瘴气营地的青春性事与死亡"); several
+ * titles go into a series folder with a folder per title inside
+ * ("潜伏 系列/潜伏2"). TMDB is matched behind
  * the scenes for each title, so the folders get posters and 按 TMDB 整理命名
  * works once the files arrive.
  */
 
-const BASE_KEY = "tgvio-web:resources-folder";
 const PASTED = "粘贴的磁力";
 
 /**
@@ -64,6 +64,12 @@ async function matchTMDB(title: string, year: number | undefined, tv: boolean | 
     }
     return best;
   } catch { return null; }
+}
+
+/** A readable title out of a release name: "潜伏.2009.1080p…" → "潜伏", "[字幕组] 名字 - 01 …" → "名字". */
+function plainTitle(release: string): string {
+  const cut = release.replace(/^\s*(\[[^\]]*\]\s*)+/, "").split(/[.\[(【_]|\s-\s|\s(?=S\d|\d{4}\b)/)[0].trim();
+  return (cut || release).slice(0, 60);
 }
 
 /** A title and its releases, as shown in step 2. */
@@ -182,9 +188,10 @@ export function ResourceFinder({ initialQuery = "", initialItems, onClose }: { i
   // Long lists show their best few until opened (74 releases of one film would bury the next one).
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
 
-  // Where it goes: the remembered (or first library) folder.
-  const [base, setBase] = useState(() => localStorage.getItem(BASE_KEY) ?? "");
-  useEffect(() => { if (!base && library.paths.length) setBase(library.paths[0]); }, [base, library.paths]);
+  // Where it goes: the default folder from 设置 (else the first library folder); changeable per download.
+  const [base, setBase] = useState("");
+  const defaultBase = sites.data?.folder || library.paths[0] || "";
+  useEffect(() => { if (!base && defaultBase) setBase(defaultBase); }, [base, defaultBase]);
   const [where, setWhere] = useState(false);
   const [ownFolder, setOwnFolder] = useState<boolean | null>(null);
   const [name, setName] = useState<string | null>(null);
@@ -257,9 +264,17 @@ export function ResourceFinder({ initialQuery = "", initialItems, onClose }: { i
   const active = (groups ?? []).map(group => ({ group, chosen: group.items.filter(item => ticked.has(item.hash)) })).filter(entry => entry.chosen.length);
   const total = active.reduce((sum, entry) => sum + entry.chosen.length, 0);
   const several = active.length > 1;
-  const nameOf = (group: Group): string => group.subject ? folderName(group.subject.title, group.subject.year) : folderName(group.title === PASTED ? query.trim() || PASTED : group.title, group.year);
+  /** A title's folder: its name ("瘴气营地的青春性事与死亡"), with the year only when two picked titles share a name. */
+  const titleOf = (group: Group): string => group.subject?.title
+    ?? (group.title === PASTED ? query.trim() || plainTitle(group.items.find(item => ticked.has(item.hash))?.title ?? group.items[0]?.title ?? "") : group.title);
+  const nameOf = (group: Group): string => {
+    const title = titleOf(group);
+    const twin = active.some(entry => entry.group !== group && titleOf(entry.group) === title);
+    return folderName(title, twin ? group.subject?.year ?? group.year : undefined);
+  };
   const one = active[0]?.group;
-  const wantsFolder = ownFolder ?? (several || (!!one && (one.tv || one.subject?.kind === "tv" || active[0].chosen.length > 1)));
+  // Every download gets a folder named after the title, inside the default folder.
+  const wantsFolder = ownFolder ?? true;
   const folder = (name ?? (several ? seriesName(active.map(entry => entry.group.subject?.title ?? entry.group.title)) : one ? nameOf(one) : "")).trim();
   const parentDir = wantsFolder && folder ? join(base, folder) : base;
   /** Each group's folder: inside the series folder when there are several, else the one folder. */
@@ -294,7 +309,6 @@ export function ResourceFinder({ initialQuery = "", initialItems, onClose }: { i
         sent += urls.length;
       }
       if (!sent) throw new Error("没能取到磁力链接，换一个资源试试");
-      try { localStorage.setItem(BASE_KEY, base); } catch { /* ignore */ }
       if (failed) toast.error(`${failed} 个资源没取到磁力`, "其余的已经开始下载");
       toast.success(`已开始下载 ${sent} 个`, wantsFolder && folder ? `保存在「${folder}」，下好后打开可以一键整理命名` : `保存到 ${base}`);
       onClose();
