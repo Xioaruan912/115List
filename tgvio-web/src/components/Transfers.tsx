@@ -1,11 +1,11 @@
 import { ArrowClockwiseIcon, CheckCircleIcon, PauseIcon, PlayIcon, TrashIcon, WarningCircleIcon, XIcon } from "@phosphor-icons/react";
 import { useQueries, useQueryClient } from "@tanstack/react-query";
 import { AnimatePresence, motion } from "motion/react";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { tasks, TASK_TYPES, type TaskType } from "../api/admin";
 import { useIsMobile } from "../hooks/useMedia";
-import { formatBytes, formatDate, formatRate } from "../lib/format";
+import { formatBytes, formatDate, formatDuration, formatRate } from "../lib/format";
 import type { StagedSnapshot } from "../lib/upload";
 import { kindOf } from "../lib/kind";
 import { spring } from "../lib/motion";
@@ -15,6 +15,7 @@ import { useUi } from "../stores/ui";
 import { useUploads, type UploadJob } from "../stores/uploads";
 import { KindIcon } from "./KindIcon";
 import { reason } from "../lib/errors";
+import { taskName } from "../lib/taskName";
 
 function Bar({ value, tone = "accent" }: { value: number; tone?: "accent" | "danger" | "muted" }) {
   const color = tone === "danger" ? "var(--danger)" : tone === "muted" ? "var(--faint)" : "var(--accent)";
@@ -60,55 +61,134 @@ function JobRow({ job }: { job: UploadJob }) {
 }
 
 const STATE_LABEL: Record<number, string> = { 0: "等待", 1: "运行中", 2: "已完成", 3: "取消中", 4: "已取消", 5: "出错，将重试", 6: "失败中", 7: "失败", 8: "等待重试", 9: "准备重试" };
+const RUNNING = new Set([0, 1, 3, 5, 6, 8, 9]);
 
-function TaskRow({ type, task }: { type: TaskType; task: TaskInfo }) {
+/**
+ * Server tasks, live: the unfinished ones every 2 s (they move), the finished
+ * ones every 15 s and right after something finishes. Shared by the transfer
+ * panel and 管理 › 任务, so the tab can count what is running.
+ */
+export function useServerTasks() {
   const client = useQueryClient();
-  const refresh = (): void => void client.invalidateQueries({ queryKey: ["tasks"] });
+  const undone = useQueries({
+    queries: TASK_TYPES.map(([type]) => ({ queryKey: ["tasks", type, "undone"], queryFn: async () => (await tasks.undone(type)) ?? [], refetchInterval: 2000, retry: false })),
+  });
+  const done = useQueries({
+    queries: TASK_TYPES.map(([type]) => ({ queryKey: ["tasks", type, "done"], queryFn: async () => (await tasks.done(type)) ?? [], refetchInterval: 15_000, retry: false })),
+  });
+  // Something left the running list: fetch the finished ones now instead of in up to 15 s.
+  const running = undone.reduce((sum, result) => sum + (result.data?.length ?? 0), 0);
+  const last = useRef(running);
+  useEffect(() => {
+    if (running < last.current) void client.invalidateQueries({ queryKey: ["tasks"] });
+    last.current = running;
+  }, [running, client]);
+  const groups = TASK_TYPES.map(([type, label], index) => ({
+    type, label,
+    list: [...(undone[index].data ?? []), ...(done[index].data ?? [])],
+  })).filter(group => group.list.length);
+  return {
+    pending: undone.every(result => result.isPending) && done.every(result => result.isPending),
+    groups,
+    running,
+    finished: groups.some(group => group.list.some(task => !RUNNING.has(task.state))),
+    refresh: () => client.invalidateQueries({ queryKey: ["tasks"] }),
+    clearFinished: async () => {
+      await Promise.all(groups.filter(group => group.list.some(task => !RUNNING.has(task.state))).map(group => tasks.clearDone(group.type)));
+      await client.invalidateQueries({ queryKey: ["tasks"] });
+    },
+  };
+}
+
+function since(start: string | null): number {
+  const at = start ? Date.parse(start) : NaN;
+  return Number.isFinite(at) && at > 0 ? (Date.now() - at) / 1000 : 0;
+}
+
+function TaskRow({ type, task, onChange }: { type: TaskType; task: TaskInfo; onChange: () => void }) {
   const failed = task.state === 7 || (task.state >= 5 && !!task.error);
   const done = task.state === 2;
-  const act = (fn: () => Promise<unknown>) => () => void fn().then(refresh).catch(error => toast.error("操作失败", error));
+  const live = RUNNING.has(task.state) && !failed;
+  const progress = Math.max(0, Math.min(100, task.progress || 0));
+  const bytes = task.total_bytes ? task.total_bytes * progress / 100 : 0;
+  // Speed from the last two looks at this task, smoothed.
+  const sample = useRef<{ bytes: number; at: number; rate: number }>({ bytes, at: Date.now(), rate: 0 });
+  const [rate, setRate] = useState(0);
+  useEffect(() => {
+    const s = sample.current;
+    const now = Date.now();
+    const dt = (now - s.at) / 1000;
+    if (dt > 0.5 && bytes >= s.bytes) {
+      const next = s.rate ? s.rate * 0.5 + ((bytes - s.bytes) / dt) * 0.5 : (bytes - s.bytes) / dt;
+      sample.current = { bytes, at: now, rate: next };
+      setRate(next);
+    }
+  }, [bytes]);
+  const act = (fn: () => Promise<unknown>) => () => void fn().then(onChange).catch(error => toast.error("操作失败", error));
+  const elapsed = since(task.start_time);
+  const detail = live
+    ? [
+        `${Math.floor(progress)}%`,
+        task.total_bytes ? `${formatBytes(bytes)} / ${formatBytes(task.total_bytes)}` : "",
+        rate > 1024 ? formatRate(rate) : "",
+        elapsed > 1 ? `已用 ${formatDuration(elapsed)}` : "",
+      ].filter(Boolean).join("，")
+    : [STATE_LABEL[task.state] ?? String(task.state), task.total_bytes ? formatBytes(task.total_bytes) : "", task.end_time ? formatDate(task.end_time) : ""].filter(Boolean).join("，");
   return (
-    <motion.li layout className="rounded-xl px-2 py-2.5" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} transition={spring.snappy}>
-      <div className="flex items-start gap-2">
-        <p className="min-w-0 flex-1 break-all text-[13px] leading-snug">{task.name}</p>
-        {!done && !failed && <button className="icon-btn size-7" onClick={act(() => tasks.cancel(type, task.id))} aria-label="取消"><PauseIcon size={14} /></button>}
-        {failed && <button className="icon-btn size-7" onClick={act(() => tasks.retry(type, task.id))} aria-label="重试"><ArrowClockwiseIcon size={14} /></button>}
-        {(done || failed || task.state === 4) && <button className="icon-btn size-7" onClick={act(() => tasks.remove(type, task.id))} aria-label="删除"><TrashIcon size={14} /></button>}
+    <motion.li layout className="rounded-xl px-2 py-2.5" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, x: 40, transition: { duration: 0.2 } }} transition={spring.snappy}>
+      <div className="flex items-start gap-2.5">
+        <span className="mt-[5px] grid size-2.5 shrink-0 place-items-center" aria-hidden>
+          {live ? <span className="relative flex size-2"><span className="absolute inset-0 animate-ping rounded-full bg-accent opacity-60" /><span className="relative size-2 rounded-full bg-accent" /></span>
+            : done ? <CheckCircleIcon size={12} weight="fill" className="text-accent-text" />
+            : failed ? <WarningCircleIcon size={12} weight="fill" className="text-danger" />
+            : <span className="size-2 rounded-full bg-faint" />}
+        </span>
+        <div className="min-w-0 flex-1">
+          <p className="break-all text-[13px] leading-snug">{taskName(task.name)}</p>
+          <p className={`mt-0.5 text-[12px] tabular ${failed ? "text-danger" : live ? "text-ink/80" : "text-muted"}`}>
+            {live && task.state !== 1 ? `${STATE_LABEL[task.state]}，` : ""}{detail}{task.error ? <span title={task.error}>：{reason(task.error)}</span> : ""}
+          </p>
+          {live && task.status && <p className="mt-0.5 truncate text-[11.5px] text-faint" title={task.status}>{task.status}</p>}
+          {live && <div className="mt-1.5"><Bar value={progress / 100} tone={task.state === 1 ? "accent" : "muted"} /></div>}
+        </div>
+        {live && <button className="icon-btn size-7" onClick={act(() => tasks.cancel(type, task.id))} aria-label="取消" title="取消"><XIcon size={14} /></button>}
+        {failed && <button className="icon-btn size-7" onClick={act(() => tasks.retry(type, task.id))} aria-label="重试" title="重试"><ArrowClockwiseIcon size={14} /></button>}
+        {!live && <button className="icon-btn size-7" onClick={act(() => tasks.remove(type, task.id))} aria-label="删除" title="删除"><TrashIcon size={14} /></button>}
       </div>
-      <p className={`mt-0.5 text-[12px] tabular ${failed ? "text-danger" : "text-muted"}`}>
-        {STATE_LABEL[task.state] ?? task.state}{task.total_bytes ? `，${formatBytes(task.total_bytes)}` : ""}{task.error ? <span title={task.error}>：{reason(task.error)}</span> : ""}
-      </p>
-      {!done && !failed && <div className="mt-1.5"><Bar value={task.progress / 100} /></div>}
     </motion.li>
   );
 }
 
-export function ServerTasks() {
-  const results = useQueries({
-    queries: TASK_TYPES.map(([type]) => ({
-      queryKey: ["tasks", type],
-      queryFn: async () => [...(await tasks.undone(type) ?? []), ...(await tasks.done(type) ?? [])],
-      refetchInterval: 2500,
-      retry: false,
-    })),
-  });
-  const client = useQueryClient();
-  const groups = TASK_TYPES.map(([type, label], index) => ({ type, label, list: results[index].data ?? [] })).filter(group => group.list.length);
-  if (results.every(result => result.isPending)) return <div className="space-y-2 p-2">{[0, 1, 2].map(i => <div key={i} className="skeleton h-12 rounded-xl" />)}</div>;
-  if (!groups.length) return <p className="px-3 py-10 text-center text-muted">没有服务器任务</p>;
+type TasksState = ReturnType<typeof useServerTasks>;
+
+/** The list; given the panel's state, or polling on its own (管理 › 任务). */
+export function ServerTasks({ state }: { state?: TasksState }) {
+  return state ? <TaskList state={state} /> : <OwnTaskList />;
+}
+
+function OwnTaskList() {
+  return <TaskList state={useServerTasks()} />;
+}
+
+function TaskList({ state }: { state: TasksState }) {
+  const { pending, groups, refresh } = state;
+  if (pending) return <div className="space-y-2 p-2">{[0, 1, 2].map(i => <div key={i} className="skeleton h-12 rounded-xl" />)}</div>;
+  if (!groups.length) return <p className="px-3 py-10 text-center text-muted">没有服务器任务。离线下载、复制、解压都会出现在这里。</p>;
   return (
     <div className="space-y-4">
       {groups.map(group => (
         <section key={group.type}>
-          <div className="flex items-center justify-between px-2 pb-1">
-            <h3 className="text-[12.5px] font-medium text-muted">{group.label}</h3>
-            <button className="text-[12px] text-faint hover:text-ink" onClick={() => void tasks.clearDone(group.type).then(() => client.invalidateQueries({ queryKey: ["tasks"] }))}>清除已结束</button>
-          </div>
-          <ul><AnimatePresence initial={false}>{group.list.map(task => <TaskRow key={task.id} type={group.type} task={task} />)}</AnimatePresence></ul>
+          <h3 className="px-2 pb-1 text-[12px] font-medium text-muted">{group.label}</h3>
+          <ul><AnimatePresence initial={false}>{group.list.map(task => <TaskRow key={task.id} type={group.type} task={task} onChange={() => void refresh()} />)}</AnimatePresence></ul>
         </section>
       ))}
     </div>
   );
+}
+
+/** The one 清除已结束 style, for uploads and server tasks alike. */
+function ClearButton({ onClick }: { onClick: () => void }) {
+  return <button className="h-8 rounded-lg px-2.5 text-[12.5px] text-muted transition-colors hover:bg-[var(--hover)] hover:text-ink" onClick={onClick}>清除已结束</button>;
 }
 
 /**
@@ -166,12 +246,7 @@ function Unfinished() {
 
 export function Transfers() {
   const open = useUi(state => state.uploads);
-  const setOpen = useUi(state => state.setUploads);
-  const jobs = useUploads(state => state.jobs);
-  const unfinished = useUploads(state => state.resumable.length);
-  const clearFinished = useUploads(state => state.clearFinished);
   const mobile = useIsMobile();
-  const [tab, setTab] = useState<"local" | "server">("local");
   return createPortal(
     <AnimatePresence>
       {open && (
@@ -184,31 +259,49 @@ export function Transfers() {
           exit={{ opacity: 0, scale: 0.94, y: 16, transition: { duration: 0.16 } }}
           transition={spring.sheet}
         >
-          <header className="flex items-center gap-1 border-b border-line p-2">
-            {(["local", "server"] as const).map(key => (
-              <button key={key} className={`relative h-8 rounded-lg px-3 text-[13px] font-medium ${tab === key ? "text-ink" : "text-muted"}`} onClick={() => setTab(key)}>
-                {tab === key && <motion.span layoutId="transfer-tab" className="absolute inset-0 rounded-lg bg-[var(--hover)]" transition={spring.snappy} />}
-                <span className="relative">{key === "local" ? `上传${jobs.length + unfinished ? ` ${jobs.length + unfinished}` : ""}` : "服务器任务"}</span>
-              </button>
-            ))}
-            <span className="flex-1" />
-            {tab === "local" && jobs.some(job => job.state !== "running" && job.state !== "queued") && (
-              <button className="h-8 rounded-lg px-2 text-[12.5px] text-muted hover:text-ink" onClick={clearFinished}>清除已结束</button>
-            )}
-            <button className="icon-btn size-8" onClick={() => setOpen(false)} aria-label="关闭"><XIcon size={15} /></button>
-          </header>
-          <div className="min-h-0 flex-1 overflow-y-auto p-2">
-            {tab === "local" ? (
-              <>
-                <Unfinished />
-                {jobs.length ? <ul><AnimatePresence initial={false}>{[...jobs].reverse().map(job => <JobRow key={job.id} job={job} />)}</AnimatePresence></ul>
-                  : !unfinished && <p className="px-3 py-10 text-center text-muted">还没有上传。把文件拖进窗口即可开始。</p>}
-              </>
-            ) : <ServerTasks />}
-          </div>
+          <Panel />
         </motion.aside>
       )}
     </AnimatePresence>,
     document.body,
+  );
+}
+
+/** The open panel: server tasks poll only while it is open, once for the tab count, the clear button and the list. */
+function Panel() {
+  const setOpen = useUi(state => state.setUploads);
+  const jobs = useUploads(state => state.jobs);
+  const unfinished = useUploads(state => state.resumable.length);
+  const clearFinished = useUploads(state => state.clearFinished);
+  const server = useServerTasks();
+  const [tab, setTab] = useState<"local" | "server">(() => !jobs.length && !unfinished ? "server" : "local");
+  return (
+    <>
+      <header className="flex items-center gap-1 border-b border-line p-2">
+        {(["local", "server"] as const).map(key => (
+          <button key={key} className={`relative h-8 rounded-lg px-3 text-[13px] font-medium ${tab === key ? "text-ink" : "text-muted"}`} onClick={() => setTab(key)}>
+            {tab === key && <motion.span layoutId="transfer-tab" className="absolute inset-0 rounded-lg bg-[var(--hover)]" transition={spring.snappy} />}
+            <span className="relative">
+              {key === "local"
+                ? `上传${jobs.length + unfinished ? ` ${jobs.length + unfinished}` : ""}`
+                : <>服务器任务{server.running ? <span className="ml-1 text-accent-text tabular">{server.running}</span> : null}</>}
+            </span>
+          </button>
+        ))}
+        <span className="flex-1" />
+        {tab === "local" && jobs.some(job => job.state !== "running" && job.state !== "queued") && <ClearButton onClick={clearFinished} />}
+        {tab === "server" && server.finished && <ClearButton onClick={() => void server.clearFinished().catch(error => toast.error("没有清除", error))} />}
+        <button className="icon-btn size-8" onClick={() => setOpen(false)} aria-label="关闭"><XIcon size={15} /></button>
+      </header>
+      <div className="min-h-0 flex-1 overflow-y-auto p-2">
+        {tab === "local" ? (
+          <>
+            <Unfinished />
+            {jobs.length ? <ul><AnimatePresence initial={false}>{[...jobs].reverse().map(job => <JobRow key={job.id} job={job} />)}</AnimatePresence></ul>
+              : !unfinished && <p className="px-3 py-10 text-center text-muted">还没有上传。把文件拖进窗口即可开始。</p>}
+          </>
+        ) : <ServerTasks state={server} />}
+      </div>
+    </>
   );
 }
