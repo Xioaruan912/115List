@@ -9,7 +9,7 @@ import { isGuest } from "../lib/perm";
  * the library page, thumbnails): only inside the 影视库 paths set by the admin.
  * The server enforces it; this hides the entry points elsewhere.
  */
-export function useLibraryScope(): { enabled: boolean; has: (path: string) => boolean } {
+export function useLibraryScope(): { enabled: boolean; paths: string[]; has: (path: string) => boolean } {
   const me = useSession(state => state.me);
   const query = useQuery({
     queryKey: ["library-scope", me?.id],
@@ -19,5 +19,5 @@ export function useLibraryScope(): { enabled: boolean; has: (path: string) => bo
     retry: false,
   });
   const paths = query.data?.enabled ? query.data.paths : [];
-  return { enabled: paths.length > 0, has: path => paths.some(root => root === "/" || path === root || isInside(path, root)) };
+  return { enabled: paths.length > 0, paths, has: path => paths.some(root => root === "/" || path === root || isInside(path, root)) };
 }

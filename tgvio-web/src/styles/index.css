@@ -257,6 +257,9 @@
   .field, input, textarea, select { font-size: 16px; }
 }
 button, a, [role="button"] { touch-action: manipulation; }
+/* Files and posters: a long press is ours (select), not Safari's save-image / copy callout. */
+[data-name], .tile, .poster-cell { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
+[data-name] img, .tile img, .poster-cell img { -webkit-user-drag: none; }
 /* Touch screens: controls at least 44px, the size a fingertip hits reliably.
    min-* wins over the h-8 / size-9 utilities without changing the mouse layout. */
 @media (pointer: coarse) {

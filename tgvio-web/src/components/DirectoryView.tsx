@@ -8,6 +8,7 @@ import { dirKey, needsPassword, prefetchDir, rememberPassword, useDir } from "..
 import { usePosters } from "../hooks/usePosters";
 import { categoryCounts, categoryOf, type Category } from "../api/posters";
 import { CategoryFilter } from "./CategoryFilter";
+import { RenameNudge } from "./RenameNudge";
 import { SeriesPanel } from "./SeriesPanel";
 import { useThumbs } from "../hooks/useThumbs";
 import { useIsMobile } from "../hooks/useMedia";
@@ -539,6 +540,7 @@ export function DirectoryView({ path }: { path: string }) {
             </div>
           </div>
         </motion.header>
+        {query.data && <RenameNudge path={path} items={listed} />}
         {view !== "cinema" && query.data && <SeriesPanel path={path} items={listed} />}
         <div ref={listRef}>{body}</div>
       </div>

@@ -7,6 +7,7 @@ import { useState, type ReactNode } from "react";
 import { posterAdmin, posters, type PosterLanguage, type PosterSettings as Settings } from "../../api/posters";
 import { subtitleAdmin } from "../../api/subtitles";
 import { FolderPicker } from "../../components/Dialogs";
+import { ResourceSettings } from "./ResourceSettings";
 import { ErrorState } from "../../components/ErrorState";
 import { Sheet } from "../../components/Sheet";
 import { NumberRoll } from "../../components/NumberRoll";
@@ -351,6 +352,8 @@ export default function PosterSettings() {
           </AnimatePresence>
         </motion.ul>
       </section>
+
+      <ResourceSettings />
     </div>
   );
 }

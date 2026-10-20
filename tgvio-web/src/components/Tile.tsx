@@ -56,7 +56,7 @@ function spotlight(event: PointerEvent<HTMLElement>): void {
   element.style.setProperty("--my", `${event.clientY - rect.top}px`);
 }
 
-function useLongPress(onLong: (x: number, y: number) => void) {
+export function useLongPress(onLong: (x: number, y: number) => void) {
   const state = useRef({ timer: 0, fired: false, start: null as { x: number; y: number } | null });
   const s = state.current;
   return {

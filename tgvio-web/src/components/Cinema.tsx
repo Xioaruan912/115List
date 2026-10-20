@@ -13,7 +13,7 @@ import type { Obj } from "../lib/types";
 import { useUi } from "../stores/ui";
 import { KindIcon } from "./KindIcon";
 import { NamedPoster } from "./PosterWall";
-import type { TileHandlers } from "./Tile";
+import { useLongPress, type TileHandlers } from "./Tile";
 
 /**
  * Cinema mode: the folder as a media library. A billboard up top recommends
@@ -90,18 +90,24 @@ const Poster = memo(function Poster({ dir, obj, art, index, handlers, onFocus }:
   };
   const onLeave = (): void => { lift.set(0); px.set(0.5); py.set(0.5); clearTimeout(hoverTimer.current); };
   useEffect(() => () => clearTimeout(hoverTimer.current), []);
+  // Touch: a long press selects, like the grid's tiles (iOS has no contextmenu event).
+  const press = useLongPress((x, y) => handlers.onLongPress(obj, x, y));
 
   return (
     <motion.div
       data-name={obj.name}
       data-flip={obj.name}
+      onPointerDown={press.onPointerDown}
+      onPointerMove={press.onPointerMove}
+      onPointerUp={press.onPointerUp}
+      onPointerCancel={press.onPointerCancel}
       className="poster-cell group/poster relative cursor-pointer select-none"
       initial={reduced ? false : { opacity: 0, y: 48, rotateX: 28 }}
       whileInView={{ opacity: 1, y: 0, rotateX: 0 }}
       viewport={{ once: true, margin: "0px 0px -40px 0px" }}
       transition={{ ...spring.soft, delay: Math.min(index % 12, 11) * 0.035 }}
       style={{ transformPerspective: 900 }}
-      onClick={(event: MouseEvent<HTMLDivElement>) => handlers.onActivate(obj, event, event.currentTarget)}
+      onClick={(event: MouseEvent<HTMLDivElement>) => { if (!press.consumed()) handlers.onActivate(obj, event, event.currentTarget); }}
       onContextMenu={event => { event.preventDefault(); handlers.onMenu(obj, event.clientX, event.clientY); }}
       onKeyDown={event => { if (event.key === "Enter") handlers.onActivate(obj, event as unknown as MouseEvent<HTMLElement>, event.currentTarget); }}
       tabIndex={0}
