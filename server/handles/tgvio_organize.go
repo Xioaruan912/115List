@@ -1,6 +1,9 @@
 package handles
 
 import (
+	"context"
+	"time"
+
 	"github.com/OpenListTeam/OpenList/v4/cmd/flags"
 	"github.com/OpenListTeam/OpenList/v4/internal/conf"
 	"github.com/OpenListTeam/OpenList/v4/internal/errs"
@@ -51,4 +54,33 @@ func TgvioOrganizeMark(c *gin.Context) {
 		}
 	}
 	common.SuccessResp(c)
+}
+
+type organizeCheckReq struct {
+	Dir     string   `json:"dir"`
+	Folders []string `json:"folders"`
+	Files   []string `json:"files"`
+}
+
+// TgvioOrganizeCheck: POST /api/tgvio/organize/check {dir, folders, files} — what 按 TMDB 整理命名 would call each.
+func TgvioOrganizeCheck(c *gin.Context) {
+	var req organizeCheckReq
+	if err := c.ShouldBindJSON(&req); err != nil || len(req.Folders)+len(req.Files) > 2000 {
+		common.ErrorStrResp(c, "bad request", 400)
+		return
+	}
+	user := c.Request.Context().Value(conf.UserKey).(*model.User)
+	dir, err := user.JoinPath(req.Dir)
+	if err != nil {
+		common.ErrorResp(c, errs.PermissionDenied, 403)
+		return
+	}
+	t := posters()
+	if !t.InLibrary(dir) {
+		common.SuccessResp(c, gin.H{"wants": gin.H{}})
+		return
+	}
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 60*time.Second)
+	defer cancel()
+	common.SuccessResp(c, gin.H{"wants": t.Wants(ctx, dir, req.Folders, req.Files)})
 }

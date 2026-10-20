@@ -211,6 +211,7 @@ export function TmdbRename({ targets: chosen, onClose }: { targets: RenameTarget
       if (failed === failedBefore && !target.only) organized.push(target.path, finalPath);
     }
     if (organized.length) void organize.mark([...new Set(organized)], false).then(() => client.invalidateQueries({ queryKey: ["organize"] })).catch(() => undefined);
+    void client.invalidateQueries({ queryKey: ["organize-check"] });
     setRunning(false);
     setFinished(true);
     for (const path of touched) void actions.reload(path, false);

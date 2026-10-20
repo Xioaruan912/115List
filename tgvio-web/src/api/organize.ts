@@ -6,4 +6,6 @@ export const organize = {
   pending: (dir: string) => get<{ names: string[]; done: string[]; self: "" | "pending" | "done" }>("/tgvio/organize", { dir }),
   /** pending true: waiting; false: organized. */
   mark: (paths: string[], pending: boolean) => post<null>("/tgvio/organize", { paths, pending }),
+  /** What 按 TMDB 整理命名 would call each (same rules as the server's planner): "" unknown to TMDB, "~" a series' episode. */
+  check: (dir: string, folders: string[], files: string[]) => post<{ wants: Record<string, string> }>("/tgvio/organize/check", { dir, folders, files }),
 };

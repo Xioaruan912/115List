@@ -9,7 +9,7 @@ import { usePosters } from "../hooks/usePosters";
 import { useResourceRoot } from "../hooks/useResourceRoot";
 import { useLibraryScope } from "../hooks/useLibraryScope";
 import { organize } from "../api/organize";
-import { needsOrganizing } from "../lib/organized";
+import { judged, needsOrganizing } from "../lib/organized";
 import { categoryCounts, categoryOf, type Category } from "../api/posters";
 import { CategoryFilter } from "./CategoryFilter";
 import { RenameNudge } from "./RenameNudge";
@@ -170,8 +170,19 @@ export function DirectoryView({ path }: { path: string }) {
   const pendingQuery = useQuery({ queryKey: ["organize", path], queryFn: () => organize.pending(path), enabled: organizable, staleTime: 30_000, retry: false });
   const pending = useMemo(() => new Set(pendingQuery.data?.names ?? []), [pendingQuery.data]);
   const done = useMemo(() => new Set(pendingQuery.data?.done ?? []), [pendingQuery.data]);
-  const items = useMemo(() => organizing ? byCategory.filter(item => needsOrganizing(item, posterMap[item.name], pending, done)) : byCategory,
-    [byCategory, organizing, posterMap, pending, done]);
+  // The names 按 TMDB 整理命名 would give, from the server (same rules), asked once posters have answered.
+  const checkNames = useMemo(() => listed.filter(judged), [listed]);
+  const wantsQuery = useQuery({
+    queryKey: ["organize-check", path, checkNames.length, Object.keys(posterMap).length],
+    queryFn: () => organize.check(path, checkNames.filter(item => item.is_dir).map(item => item.name), checkNames.filter(item => !item.is_dir).map(item => item.name)),
+    enabled: organizing && checkNames.length > 0,
+    staleTime: 60_000,
+    placeholderData: previous => previous,
+    retry: false,
+  });
+  const wants = wantsQuery.data?.wants;
+  const items = useMemo(() => organizing ? byCategory.filter(item => needsOrganizing(item, wants?.[item.name], pending, done)) : byCategory,
+    [byCategory, organizing, wants, pending, done]);
   const thumbMap = useThumbs(path, items);
   // Videos the drive lists without a picture get the one made for them; only
   // those objects change, so the other tiles keep their memo.
@@ -455,6 +466,8 @@ export function DirectoryView({ path }: { path: string }) {
     body = <PasswordGate path={path} onUnlock={() => void client.resetQueries({ queryKey: dirKey(path) })} />;
   } else if (query.isError) {
     body = <ErrorState className="mt-8" error={query.error} onRetry={() => actions.reload(path)} />;
+  } else if (organizing && !wants && checkNames.length > 0) {
+    body = <p className="mt-6 flex items-center gap-2 text-muted enter"><span className="loader-bars scale-50" aria-hidden><i /><i /><i /><i /></span>正在检查哪些还没整理好…</p>;
   } else if (items.length === 0 && organizing && listed.length > 0) {
     body = (
       <div className="mt-6 flex flex-col items-start gap-3 enter">
