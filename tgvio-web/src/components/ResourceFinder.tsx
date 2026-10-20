@@ -13,7 +13,7 @@ import { formatBytes } from "../lib/format";
 import { bookmarklet, folderName, fromHTML, fromSeed, fromText, rank, seriesName, type Magnet } from "../lib/magnets";
 import { spring } from "../lib/motion";
 import { join } from "../lib/path";
-import { markPendingRename } from "../lib/pendingRename";
+import { organize } from "../api/organize";
 import { toast } from "../stores/toast";
 import { FolderPicker } from "./Dialogs";
 import { ErrorState } from "./ErrorState";
@@ -301,7 +301,7 @@ export function ResourceFinder({ initialQuery = "", initialItems, onClose }: { i
         const tool = tools.find(item => fs.nativeOfflineTools.includes(item)) ?? tools[0];
         if (!tool) throw new Error("这个文件夹所在的网盘不支持离线下载");
         await fs.offlineDownload(target, urls, tool, "delete_on_upload_succeed");
-        if (own) markPendingRename(target);
+        if (own) await organize.mark([target], true).catch(() => undefined);
         sent += urls.length;
       }
       if (!sent) throw new Error("没能取到磁力链接，换一个资源试试");

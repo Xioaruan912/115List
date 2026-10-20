@@ -15,6 +15,7 @@ import { toast } from "../stores/toast";
 import { useUi } from "../stores/ui";
 import { ErrorState } from "./ErrorState";
 import { Sheet } from "./Sheet";
+import { organize } from "../api/organize";
 
 /**
  * Rename a folder's videos after TMDB. The plan arrives as a departures board:
@@ -163,8 +164,11 @@ export function TmdbRename({ targets: chosen, onClose }: { targets: RenameTarget
     const touched = new Set<string>();
     // Deepest folders first: renaming a folder moves everything below it.
     const order = [...sections].sort((a, b) => b.target.depth - a.target.depth);
+    const organized: string[] = [];
     for (const { target, files, folder, plan } of order) {
       const password = passwordFor(target.path);
+      const failedBefore = failed;
+      let finalPath = target.path;
       for (const item of files) {
         const key = rowKey(target.path, item.old);
         if (!item.new || off.has(key)) continue;
@@ -189,6 +193,7 @@ export function TmdbRename({ targets: chosen, onClose }: { targets: RenameTarget
           if (out.results[0]?.error) throw new Error(out.results[0].error);
           done++;
           const moved = out.path || join(parent(target.path), folder.new);
+          finalPath = moved;
           touched.delete(target.path);
           touched.add(moved);
           touched.add(parent(target.path));
@@ -202,7 +207,10 @@ export function TmdbRename({ targets: chosen, onClose }: { targets: RenameTarget
           setRows(prev => ({ ...prev, [folderKey]: { status: "error", message: reason(error) } }));
         }
       }
+      // Gone through without a failure: no longer waiting to be organized (整理模式, the download nudge).
+      if (failed === failedBefore && !target.only) organized.push(target.path, finalPath);
     }
+    if (organized.length) void organize.mark([...new Set(organized)], false).then(() => client.invalidateQueries({ queryKey: ["organize"] })).catch(() => undefined);
     setRunning(false);
     setFinished(true);
     for (const path of touched) void actions.reload(path, false);

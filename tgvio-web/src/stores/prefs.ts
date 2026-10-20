@@ -13,6 +13,9 @@ interface Prefs {
   blur: boolean;
   theme: Theme;
   phoneCols: 2 | 3 | 4;
+  /** 整理模式: library folders show only what is not organized yet. */
+  organizing: boolean;
+  setOrganizing: (on: boolean) => void;
   setPhoneCols: (cols: 2 | 3 | 4) => void;
   setView: (view: ViewMode) => void;
   setSort: (key: SortKey) => void;
@@ -27,6 +30,8 @@ export const usePrefs = create<Prefs>()(persist(set => ({
   blur: true,
   theme: "system",
   phoneCols: 3,
+  organizing: false,
+  setOrganizing: organizing => set({ organizing }),
   setPhoneCols: phoneCols => set({ phoneCols }),
   setView: view => set({ view }),
   setSort: key => set(state => state.sortKey === key ? { sortDesc: !state.sortDesc } : { sortKey: key, sortDesc: key !== "name" }),
@@ -35,7 +40,7 @@ export const usePrefs = create<Prefs>()(persist(set => ({
     try { localStorage.setItem("tgvio-web:theme", theme); } catch { /* ignore */ }
     set({ theme });
   },
-}), { name: "tgvio-web:prefs", partialize: ({ view, sortKey, sortDesc, blur, theme, phoneCols }) => ({ view, sortKey, sortDesc, blur, theme, phoneCols }) }));
+}), { name: "tgvio-web:prefs", partialize: ({ view, sortKey, sortDesc, blur, theme, phoneCols, organizing }) => ({ view, sortKey, sortDesc, blur, theme, phoneCols, organizing }) }));
 
 export function resolvedTheme(theme: Theme): "dark" | "light" {
   if (theme !== "system") return theme;

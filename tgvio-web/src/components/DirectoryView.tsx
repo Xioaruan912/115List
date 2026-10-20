@@ -1,5 +1,5 @@
-import { ArrowClockwiseIcon, FolderPlusIcon, LockIcon, MagnetIcon, UploadSimpleIcon } from "@phosphor-icons/react";
-import { useQueryClient } from "@tanstack/react-query";
+import { ArrowClockwiseIcon, BroomIcon, FolderPlusIcon, LockIcon, MagnetIcon, SparkleIcon, UploadSimpleIcon } from "@phosphor-icons/react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { animate, motion, useIsPresent, useMotionValue, useScroll, useTransform } from "motion/react";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type DragEvent, type FormEvent, type MouseEvent, type PointerEvent } from "react";
@@ -7,6 +7,9 @@ import { useLocation } from "wouter";
 import { dirKey, needsPassword, prefetchDir, rememberPassword, useDir } from "../hooks/useDir";
 import { usePosters } from "../hooks/usePosters";
 import { useResourceRoot } from "../hooks/useResourceRoot";
+import { useLibraryScope } from "../hooks/useLibraryScope";
+import { organize } from "../api/organize";
+import { needsOrganizing } from "../lib/organized";
 import { categoryCounts, categoryOf, type Category } from "../api/posters";
 import { CategoryFilter } from "./CategoryFilter";
 import { RenameNudge } from "./RenameNudge";
@@ -157,8 +160,18 @@ export function DirectoryView({ path }: { path: string }) {
   const counts = useMemo(() => categoryCounts(listed.map(item => item.name), posterMap), [listed, posterMap]);
   const [catState, setCatState] = useState<{ path: string; cat: Category | "all" }>({ path, cat: "all" });
   const chosenCat = catState.path === path && counts.some(([cat]) => cat === catState.cat) ? catState.cat : "all";
-  const items = useMemo(() => chosenCat === "all" ? sorted : sorted.filter(item => categoryOf(posterMap[item.name]) === chosenCat),
+  const byCategory = useMemo(() => chosenCat === "all" ? sorted : sorted.filter(item => categoryOf(posterMap[item.name]) === chosenCat),
     [sorted, chosenCat, posterMap]);
+  // 整理模式 (library folders only): just what 按 TMDB 整理命名 still has to do, and downloads not organized yet.
+  const library = useLibraryScope();
+  const organizable = library.has(path) && path !== "/";
+  const organizing = usePrefs(state => state.organizing) && organizable;
+  const setOrganizing = usePrefs(state => state.setOrganizing);
+  const pendingQuery = useQuery({ queryKey: ["organize", path], queryFn: () => organize.pending(path), enabled: organizable, staleTime: 30_000, retry: false });
+  const pending = useMemo(() => new Set(pendingQuery.data?.names ?? []), [pendingQuery.data]);
+  const done = useMemo(() => new Set(pendingQuery.data?.done ?? []), [pendingQuery.data]);
+  const items = useMemo(() => organizing ? byCategory.filter(item => needsOrganizing(item, posterMap[item.name], pending, done)) : byCategory,
+    [byCategory, organizing, posterMap, pending, done]);
   const thumbMap = useThumbs(path, items);
   // Videos the drive lists without a picture get the one made for them; only
   // those objects change, so the other tiles keep their memo.
@@ -442,6 +455,13 @@ export function DirectoryView({ path }: { path: string }) {
     body = <PasswordGate path={path} onUnlock={() => void client.resetQueries({ queryKey: dirKey(path) })} />;
   } else if (query.isError) {
     body = <ErrorState className="mt-8" error={query.error} onRetry={() => actions.reload(path)} />;
+  } else if (items.length === 0 && organizing && listed.length > 0) {
+    body = (
+      <div className="mt-6 flex flex-col items-start gap-3 enter">
+        <p className="flex items-center gap-2 text-[15px]"><SparkleIcon size={18} weight="fill" className="text-accent-text" />这里都整理好了</p>
+        <button className="btn btn-line" onClick={() => setOrganizing(false)}>退出整理模式</button>
+      </div>
+    );
   } else if (items.length === 0) {
     body = (
       <div className="mt-6 flex flex-col items-start gap-4 enter">
@@ -546,10 +566,23 @@ export function DirectoryView({ path }: { path: string }) {
             <div className="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-2">
               {counts.length > 1 && <CategoryFilter path={path} counts={counts} total={listed.length} value={chosenCat} onChange={cat => setCatState({ path, cat })} />}
               {listed.length > 1 && <SortControl path={path} media={Object.keys(posterMap).length > 0} />}
+              {organizable && listed.length > 0 && (
+                <button aria-pressed={organizing} onClick={() => { flip.capture(); setOrganizing(!organizing); }}
+                  className={`inline-flex h-8 items-center gap-1.5 rounded-full px-3 text-[13px] transition-colors touch:h-10 ${organizing ? "bg-accent text-accent-ink" : "text-muted hairline hover:text-ink"}`}>
+                  <BroomIcon size={14} />整理模式{organizing && query.data ? <span className="tabular opacity-70">{items.length}</span> : null}
+                </button>
+              )}
             </div>
           </div>
         </motion.header>
-        {query.data && <RenameNudge path={path} items={listed} />}
+        {query.data && !organizing && <RenameNudge path={path} items={listed} />}
+        {organizing && items.length > 0 && can(me, Perm.Rename) && (
+          <div className="mb-6 flex flex-wrap items-center gap-3 rounded-[14px] bg-accent-soft px-4 py-3" style={{ boxShadow: "inset 0 0 0 1px color-mix(in srgb, var(--accent) 40%, transparent)" }}>
+            <BroomIcon size={18} weight="fill" className="shrink-0 text-accent-text" />
+            <p className="min-w-0 flex-1 text-[13.5px]">还有 {items.length} 项没整理好：名字不规范、没对上 TMDB，或者下载完还没整理。</p>
+            <button className="btn btn-primary h-9 px-3.5 text-[13px]" onClick={() => useUi.getState().openDialog({ kind: "tmdb-rename", targets: actions.tmdbTargets(path, items) })}>全部按 TMDB 整理</button>
+          </div>
+        )}
         {view !== "cinema" && query.data && <SeriesPanel path={path} items={listed} />}
         <div ref={listRef}>{body}</div>
       </div>

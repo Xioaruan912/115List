@@ -1,9 +1,13 @@
 import {
-  ArrowSquareOutIcon, ArrowsLeftRightIcon, CheckSquareIcon, CopyIcon, DownloadSimpleIcon, FolderPlusIcon, InfoIcon,
+  ArrowSquareOutIcon, ArrowsLeftRightIcon, CheckCircleIcon, CheckSquareIcon, CopyIcon, DownloadSimpleIcon, FolderPlusIcon, InfoIcon,
   FilmSlateIcon, LinkIcon, TextAaIcon, PencilSimpleIcon, ShareNetworkIcon, TrashIcon, UploadSimpleIcon, ArrowClockwiseIcon,
 } from "@phosphor-icons/react";
 import { useLocation } from "wouter";
 import { useLibraryScope } from "../hooks/useLibraryScope";
+import { organize } from "../api/organize";
+import { queryClient } from "../lib/query";
+import { toast } from "../stores/toast";
+import { usePrefs } from "../stores/prefs";
 import { useDir } from "../hooks/useDir";
 import * as actions from "../lib/actions";
 import { encodePath, join } from "../lib/path";
@@ -25,6 +29,11 @@ export function ContextMenu() {
   const [, navigate] = useLocation();
   const ui = useUi.getState;
   const library = useLibraryScope();
+  const organizing = usePrefs(state => state.organizing);
+  /** 整理模式: settle things that need no renaming (a collection, an empty or non-film folder). */
+  const markOrganized = (dir: string, names: string[]) => () => void organize.mark(names.map(name => join(dir, name)), false)
+    .then(() => { void queryClient.invalidateQueries({ queryKey: ["organize", dir] }); toast.success("已标为整理好", names.length > 1 ? `${names.length} 项` : names[0]); })
+    .catch(error => toast.error("没有标记成功", error));
 
   let entries: MenuEntry[] = [];
   if (menu) {
@@ -52,6 +61,7 @@ export function ContextMenu() {
         { label: "复制链接", icon: <LinkIcon size={15} />, disabled: !chosen.some(item => !item.is_dir), run: () => void actions.copyLinks(dir, chosen.filter(item => !item.is_dir)) },
         ...(can(me, Perm.Share) ? [{ label: "分享", icon: <ShareNetworkIcon size={15} />, run: () => ui().openDialog({ kind: "share", dir, names }) }] : []),
         ...(can(me, Perm.Rename) && !isGuest(me) && library.has(dir) && actions.tmdbTargets(dir, chosen).length ? [{ label: "按 TMDB 整理命名", icon: <TextAaIcon size={15} />, run: () => ui().openDialog({ kind: "tmdb-rename", targets: actions.tmdbTargets(dir, chosen) }) }] : []),
+        ...(organizing && !isGuest(me) && library.has(dir) && dir !== "/" ? [{ label: "标为已整理", icon: <CheckCircleIcon size={15} />, run: markOrganized(dir, names) }] : []),
         { label: "移动到…", icon: <ArrowsLeftRightIcon size={15} />, disabled: !can(me, Perm.Move), run: () => ui().openDialog({ kind: "transfer", mode: "move", dir, names }) },
         { label: "复制到…", icon: <CopyIcon size={15} />, disabled: !can(me, Perm.Copy), run: () => ui().openDialog({ kind: "transfer", mode: "copy", dir, names }) },
         "divider",
@@ -72,6 +82,7 @@ export function ContextMenu() {
         ...(can(me, Perm.Share) ? [{ label: "分享", icon: <ShareNetworkIcon size={15} />, run: () => ui().openDialog({ kind: "share", dir, names: [obj.name] }) }] : []),
         ...((obj.is_dir || isFilm(obj)) && !isGuest(me) && library.has(join(dir, obj.name)) ? [{ label: "更换封面", icon: <FilmSlateIcon size={15} />, run: () => ui().openDialog({ kind: "poster", name: obj.name }) }] : []),
         ...(obj.is_dir && can(me, Perm.Rename) && !isGuest(me) && library.has(join(dir, obj.name)) ? [{ label: "按 TMDB 整理命名", icon: <TextAaIcon size={15} />, run: () => ui().openDialog({ kind: "tmdb-rename", targets: [{ path }] }) }] : []),
+        ...(organizing && !isGuest(me) && library.has(dir) && dir !== "/" ? [{ label: "标为已整理", icon: <CheckCircleIcon size={15} />, run: markOrganized(dir, [obj.name]) }] : []),
         { label: "选择", icon: <CheckSquareIcon size={15} />, run: () => ui().toggle(dir, obj.name) },
         "divider",
         { label: "重命名", icon: <PencilSimpleIcon size={15} />, hint: "F2", disabled: !can(me, Perm.Rename), run: () => ui().openDialog({ kind: "rename", dir, obj }) },
