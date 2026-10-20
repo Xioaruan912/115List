@@ -72,7 +72,7 @@ export function ResourceSettings() {
         <div className="min-w-0">
           <p className="text-[13.5px] font-medium">默认保存位置</p>
           <p className="mt-0.5 text-[12.5px] leading-relaxed text-muted">
-            下载时在这里新建一个以片名命名的文件夹，内容放在里面，比如 <span className="font-mono text-[12px]">{(saved.folder || library.paths[0] || "/115/我要看").replace(/\/$/, "")}/瘴气营地的青春性事与死亡</span>。每次下载前也可以临时换。
+            下载时在这里按 TMDB 新建一个「片名 (年份)」文件夹，内容放在里面，比如 <span className="font-mono text-[12px]">{(saved.folder || library.paths[0] || "/115/我要看").replace(/\/$/, "")}/瘴气营地的青春性事与死亡 (2026)</span>。每次下载前也可以临时换。
           </p>
         </div>
         <div className="flex shrink-0 items-center gap-2">

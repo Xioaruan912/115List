@@ -32,7 +32,7 @@ import { Sheet } from "./Sheet";
  *      sends them to the drive's offline download.
  *
  * Downloads go to the default folder of 设置 › 影视库 › 资源搜索, each title
- * in a folder of its own name ("我要看/瘴气营地的青春性事与死亡"); several
+ * in a folder named the TMDB way ("我要看/瘴气营地的青春性事与死亡 (2026)"); several
  * titles go into a series folder with a folder per title inside
  * ("潜伏 系列/潜伏2"). TMDB is matched behind
  * the scenes for each title, so the folders get posters and 按 TMDB 整理命名
@@ -264,14 +264,10 @@ export function ResourceFinder({ initialQuery = "", initialItems, onClose }: { i
   const active = (groups ?? []).map(group => ({ group, chosen: group.items.filter(item => ticked.has(item.hash)) })).filter(entry => entry.chosen.length);
   const total = active.reduce((sum, entry) => sum + entry.chosen.length, 0);
   const several = active.length > 1;
-  /** A title's folder: its name ("瘴气营地的青春性事与死亡"), with the year only when two picked titles share a name. */
+  /** A title's folder, named the TMDB way: "瘴气营地的青春性事与死亡 (2026)" (TMDB's title and year when matched, else the site's). */
   const titleOf = (group: Group): string => group.subject?.title
     ?? (group.title === PASTED ? query.trim() || plainTitle(group.items.find(item => ticked.has(item.hash))?.title ?? group.items[0]?.title ?? "") : group.title);
-  const nameOf = (group: Group): string => {
-    const title = titleOf(group);
-    const twin = active.some(entry => entry.group !== group && titleOf(entry.group) === title);
-    return folderName(title, twin ? group.subject?.year ?? group.year : undefined);
-  };
+  const nameOf = (group: Group): string => folderName(titleOf(group), group.subject ? group.subject.year : group.year);
   const one = active[0]?.group;
   // Every download gets a folder named after the title, inside the default folder.
   const wantsFolder = ownFolder ?? true;
