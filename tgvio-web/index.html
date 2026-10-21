@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#0c0c0d" media="(prefers-color-scheme: dark)" />
+    <meta name="theme-color" content="#f2f3f4" media="(prefers-color-scheme: light)" />
+    <meta name="referrer" content="same-origin" />
+    <link rel="icon" href="https://res.oplist.org/logo/logo.svg" />
+    <link rel="manifest" href="/manifest.json" />
+    <link rel="apple-touch-icon" href="/tgvio/icon/apple-touch-icon.png" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <title>Loading...</title>
+    <script>
+      // OpenList fills these placeholders when it serves index.html.
+      window.OPENLIST_CONFIG = { cdn: undefined, base_path: undefined, api: undefined, main_color: undefined };
+      (function () {
+        try {
+          var t = localStorage.getItem("tgvio-web:theme");
+          var dark = t === "dark" || (t !== "light" && matchMedia("(prefers-color-scheme: dark)").matches);
+          document.documentElement.dataset.theme = dark ? "dark" : "light";
+        } catch (e) { document.documentElement.dataset.theme = "dark"; }
+      })();
+    </script>
+    <script>
+      // Browsers without @layer (Chrome < 99) ignore the whole stylesheet; give them
+      // the flattened copy the build writes next to it. The original link stays, so
+      // lazy chunks see it and do not add it again.
+      if (!window.CSSLayerBlockRule) {
+        var legacy = new MutationObserver(function () {
+          document.querySelectorAll('link[rel="stylesheet"]:not([data-legacy])').forEach(function (l) {
+            var h = l.getAttribute("href") || "";
+            if (!/\/assets\/[^/]+\.css$/.test(h)) return;
+            l.setAttribute("data-legacy", "");
+            var copy = document.createElement("link");
+            copy.rel = "stylesheet";
+            copy.href = h.replace(/\.css$/, ".legacy.css");
+            copy.setAttribute("data-legacy", "");
+            l.after(copy);
+          });
+          if (document.body) legacy.disconnect();
+        });
+        legacy.observe(document.documentElement, { childList: true, subtree: true });
+      }
+      // aspect-ratio arrived in Chrome 88; size the few aspect boxes by hand before that.
+      if (window.CSS && !CSS.supports("aspect-ratio", "1") && window.ResizeObserver) {
+        var ratios = { "aspect-[2/3]": 1.5, "aspect-[4/3]": 0.75, "aspect-video": 0.5625 };
+        var sized = new ResizeObserver(function (entries) {
+          entries.forEach(function (e) {
+            var el = e.target, w = e.contentRect.width;
+            for (var k in ratios) if (el.classList.contains(k) && w > 0) el.style.height = w * ratios[k] + "px";
+          });
+        });
+        var seen = new WeakSet();
+        var scan = function () {
+          document.querySelectorAll('[class*="aspect-"]').forEach(function (el) { if (!seen.has(el)) { seen.add(el); sized.observe(el); } });
+        };
+        new MutationObserver(scan).observe(document.documentElement, { childList: true, subtree: true });
+      }
+    </script>
+    <script>
+      // Small polyfills for old Chromium cores (Chrome 86+): the bundle and its
+      // libraries call these. A classic script runs before any module chunk.
+      (function () {
+        var def = function (o, k, v) { if (o && !o[k]) Object.defineProperty(o, k, { value: v, writable: true, configurable: true }); };
+        def(Object, "hasOwn", function (o, k) { return Object.prototype.hasOwnProperty.call(o, k); });
+        var at = function (i) { i = Math.trunc(i) || 0; if (i < 0) i += this.length; return i < 0 || i >= this.length ? undefined : this[i]; };
+        def(Array.prototype, "at", at); def(String.prototype, "at", at);
+        if (window.Int8Array) def(Object.getPrototypeOf(Int8Array.prototype), "at", at);
+        def(Array.prototype, "findLast", function (f, t) { for (var i = this.length - 1; i >= 0; i--) if (f.call(t, this[i], i, this)) return this[i]; });
+        def(Array.prototype, "findLastIndex", function (f, t) { for (var i = this.length - 1; i >= 0; i--) if (f.call(t, this[i], i, this)) return i; return -1; });
+        if (window.crypto && crypto.getRandomValues) def(crypto, "randomUUID", function () {
+          var b = crypto.getRandomValues(new Uint8Array(16)); b[6] = (b[6] & 15) | 64; b[8] = (b[8] & 63) | 128;
+          var h = Array.prototype.map.call(b, function (x) { return (x + 256).toString(16).slice(1); }).join("");
+          return h.slice(0, 8) + "-" + h.slice(8, 12) + "-" + h.slice(12, 16) + "-" + h.slice(16, 20) + "-" + h.slice(20);
+        });
+      })();
+    </script>
+    <!-- customize head -->
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+    <!-- customize body -->
+  </body>
+</html>
