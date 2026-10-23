@@ -54,6 +54,9 @@ type RenamePlan struct {
 	// Inherited: the folder found nothing of its own (or is part of the series
 	// above it) and is named after the folder above.
 	Inherited bool `json:"inherited,omitempty"`
+	// Film: the folder is one film's (not a series or a shelf of several):
+	// what is below it is that film too.
+	Film bool `json:"film,omitempty"`
 }
 
 // RenameInherit is what the folder above a subfolder was planned as, for
@@ -62,6 +65,9 @@ type RenameInherit struct {
 	Kind   string `json:"kind"`
 	ID     int    `json:"id"`
 	Season int    `json:"season,omitempty"`
+	// Film: the folder above is one film's folder (RenamePlan.Film); a film
+	// above that is a series or a shelf says nothing about its subfolders.
+	Film bool `json:"film,omitempty"`
 }
 
 var (
@@ -415,22 +421,17 @@ func (t *TMDB) PlanRenameIn(ctx context.Context, dir string, entries []RenameEnt
 	// A folder named like no film ("[DBD-Raws][潜伏3][1080P]…", a release's own
 	// folder) inside a film's folder is that film. Asked before what the folders
 	// further up were planned as: that may be a whole series of films.
-	if up := stdpath.Dir(dir); subject.None && (inherit == nil || inherit.Kind == "movie") && up != "/" && !Skip(pathBase(up)) {
+	if up := stdpath.Dir(dir); subject.None && inherit == nil && up != "/" && !Skip(pathBase(up)) {
 		if p, err := t.resolve(ctx, pathBase(up), stdpath.Dir(up)); err == nil && !p.None && p.Kind == "movie" {
 			subject, plan.Inherited = p, true
 		}
 	}
-	// A release folder's own lookup can find the series' first film for a
-	// sequel ("[DBD-Raws][潜伏3]…" -> 潜伏): the folder above (潜伏3) wins when
-	// its title goes further and the folder's name has all of it.
-	if inherit != nil && inherit.Kind == "movie" && !subject.None && subject.Kind == "movie" && subject.ID != inherit.ID {
-		if above, err := t.cachedDetails(ctx, "movie", inherit.ID); err == nil && sequelOf(above, subject, pathBase(dir)) {
-			subject, plan.Inherited = above, true
-		}
-	}
 	ownSeason := true
+	// Below a series everything is that series; below one film's folder everything
+	// is that film, whatever its own name finds ("[DBD-Raws][潜伏3]…" can find
+	// the series' first film, "q伏2.2013…" another). Below a shelf, nothing.
 	if inherit != nil && inherit.ID > 0 && (subject.None || subject.ID != inherit.ID || subject.Kind != inherit.Kind) &&
-		(subject.None || inherit.Kind == "tv") {
+		(inherit.Kind == "tv" || inherit.Kind == "movie" && inherit.Film) {
 		above, err := t.Details(ctx, inherit.Kind, inherit.ID)
 		if err != nil {
 			return nil, err
@@ -759,6 +760,7 @@ func (t *TMDB) PlanRenameIn(ctx context.Context, dir string, entries []RenameEnt
 	}
 
 	plan.Season = folderSeason
+	plan.Film = subject.Kind == "movie" && !multi
 	markConflicts(plan, entries)
 	freeingFirst(plan)
 	return plan, nil

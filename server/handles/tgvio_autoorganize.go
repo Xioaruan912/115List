@@ -155,7 +155,7 @@ func autoOrganize(ctx context.Context, root string) (done bool, final string, er
 		for _, above := range folders {
 			if strings.HasPrefix(f.Path, above.path+"/") && above.plan.Subject != nil && len(above.path) > len(nearest) {
 				nearest = above.path
-				inherit = &tgvio.RenameInherit{Kind: above.plan.Subject.Kind, ID: above.plan.Subject.ID, Season: above.plan.Season}
+				inherit = &tgvio.RenameInherit{Kind: above.plan.Subject.Kind, ID: above.plan.Subject.ID, Season: above.plan.Season, Film: above.plan.Film}
 			}
 		}
 		plan, err := store.PlanRenameIn(ctx, f.Path, entries, 0, inherit)

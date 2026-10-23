@@ -68,7 +68,7 @@ function inheritFor(path: string, list: Entry[], plans: Record<string, Loaded>):
     if (!state.plan.subject || state.plan.reason) continue;
     if (!best || entry.path.length > best.at.length) best = { at: entry.path, plan: state.plan };
   }
-  return best?.plan.subject ? { kind: best.plan.subject.kind, id: best.plan.subject.id, season: best.plan.season || undefined } : undefined;
+  return best?.plan.subject ? { kind: best.plan.subject.kind, id: best.plan.subject.id, season: best.plan.season || undefined, film: best.plan.film || undefined } : undefined;
 }
 
 export function TmdbRename({ targets: chosen, onClose }: { targets: RenameTarget[]; onClose: () => void }) {
