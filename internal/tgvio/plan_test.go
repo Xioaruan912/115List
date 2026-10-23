@@ -359,3 +359,15 @@ func TestPlanTwoDiscsAreParts(t *testing.T) {
 		t.Fatalf("disc 1 -> %+v", got)
 	}
 }
+
+func TestPlanSequelIsNoSecondDisc(t *testing.T) {
+	tm := planTMDB(t, []tmdbItem{film(2, "灵魂战车2：复仇时刻", "2011-12-11", 1, "")},
+		map[string]int{"灵魂战车1.iso": 2, "灵魂战车2.iso": 2})
+	plan, err := tm.PlanRenameIn(context.Background(), "/lib/灵魂战车合集", []RenameEntry{{Name: "灵魂战车1.iso"}, {Name: "灵魂战车2.iso"}}, 0, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := find(plan, "灵魂战车1.iso"); strings.Contains(got.New, "CD") {
+		t.Fatalf("sequel taken for a disc -> %+v", got)
+	}
+}
