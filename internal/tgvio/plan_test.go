@@ -343,7 +343,7 @@ func TestDiscTags(t *testing.T) {
 
 func TestPlanTwoDiscsAreParts(t *testing.T) {
 	tm := planTMDB(t, []tmdbItem{film(120, "指环王1：护戒使者", "2001-12-18", 1, ""), film(121, "指环王2：双塔奇兵", "2002-12-18", 1, "")},
-		map[string]int{"指环王：魔戒再现1.iso": 120, "指环王：魔戒再现2.iso": 120, "指环王：双塔奇兵1.iso": 121})
+		map[string]int{"指环王：魔戒再现1.iso": 120, "指环王：双塔奇兵1.iso": 121})
 	plan, err := tm.PlanRenameIn(context.Background(), "/lib/指环王合集", []RenameEntry{
 		{Name: "指环王：魔戒再现1.iso"}, {Name: "指环王：魔戒再现2.iso"}, {Name: "指环王：双塔奇兵1.iso"}}, 0, nil)
 	if err != nil {

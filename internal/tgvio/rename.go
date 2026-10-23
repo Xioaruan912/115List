@@ -681,6 +681,7 @@ func (t *TMDB) PlanRenameIn(ctx context.Context, dir string, entries []RenameEnt
 			id                       int
 		}
 		var list []placed
+		var unmatched []string
 		for i, v := range videos {
 			if len(videos) == 1 && !shelf {
 				list = append(list, placed{video: v, name: whole, title: title, id: subject.ID})
@@ -704,7 +705,7 @@ func (t *TMDB) PlanRenameIn(ctx context.Context, dir string, entries []RenameEnt
 				own = subject // the folder's film in parts
 			}
 			if own == nil {
-				add(RenameItem{Old: v, Kind: "video", Reason: "several"})
+				unmatched = append(unmatched, v)
 				continue
 			}
 			p := placed{video: v, name: titleYear(SafeName(own.Title), own.Year), title: SafeName(own.Title), part: part, id: own.ID}
@@ -712,6 +713,24 @@ func (t *TMDB) PlanRenameIn(ctx context.Context, dir string, entries []RenameEnt
 				p.name, p.title = whole, title
 			}
 			list = append(list, p)
+		}
+		// "魔戒再现2.iso" found nothing (it searches like a sequel) beside a
+		// "魔戒再现1.iso" that did: its second disc.
+		for _, v := range unmatched {
+			stem := mediaExt.ReplaceAllString(v, "")
+			found := false
+			if strings.HasSuffix(stem, "2") {
+				for _, p := range list {
+					if mediaExt.ReplaceAllString(p.video, "") == stem[:len(stem)-1]+"1" && p.part == "" {
+						list = append(list, placed{video: v, name: p.name, title: p.title, id: p.id})
+						found = true
+						break
+					}
+				}
+			}
+			if !found {
+				add(RenameItem{Old: v, Kind: "video", Reason: "several"})
+			}
 		}
 		for _, p := range list {
 			films[p.id], filmTitles[p.id] = true, p.title
