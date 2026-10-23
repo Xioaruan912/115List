@@ -312,9 +312,9 @@ func unwrapFolder(ctx context.Context, dir, name string) error {
 	}
 	for i, obj := range objs {
 		if i > 0 {
-			time.Sleep(250 * time.Millisecond)
+			time.Sleep(time.Second) // 115 moves folders in the background, one after another
 		}
-		if _, err := fs.Move(ctx, stdpath.Join(inner, obj.GetName()), dir); err != nil {
+		if err := moveRetrying(ctx, stdpath.Join(inner, obj.GetName()), dir); err != nil {
 			return err
 		}
 	}
@@ -410,4 +410,20 @@ func placeFile(ctx context.Context, dir, oldName, newName, into string) error {
 	}
 	_, err := fs.Move(ctx, stdpath.Join(dir, newName), folder)
 	return err
+}
+
+// moveRetrying moves src into dst; while 115 is still busy with an earlier move
+// ("移动[…]操作尚未执行完成，请稍后再试", errno 990009) it waits and tries again.
+func moveRetrying(ctx context.Context, src, dst string) error {
+	for wait := 3 * time.Second; ; wait *= 2 {
+		_, err := fs.Move(ctx, src, dst)
+		if err == nil || wait > 48*time.Second || !(strings.Contains(err.Error(), "990009") || strings.Contains(err.Error(), "尚未执行完成")) {
+			return err
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(wait):
+		}
+	}
 }
