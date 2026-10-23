@@ -129,7 +129,7 @@ func seriesFolder(titles []string, collection string) string {
 			prefix = string(a[:i])
 		}
 	}
-	prefix = strings.TrimRight(prefix, " 0123456789:：·.-_（(【[之的")
+	prefix = strings.TrimRight(prefix, " 0123456789:：·.-_（(【[之的与和")
 	if prefix != "" {
 		return SafeName(prefix)
 	}
@@ -681,6 +681,7 @@ func (t *TMDB) PlanRenameIn(ctx context.Context, dir string, entries []RenameEnt
 			id                       int
 		}
 		var list []placed
+		var unmatched []string
 		for i, v := range videos {
 			if len(videos) == 1 && !shelf {
 				list = append(list, placed{video: v, name: whole, title: title, id: subject.ID})
@@ -704,7 +705,7 @@ func (t *TMDB) PlanRenameIn(ctx context.Context, dir string, entries []RenameEnt
 				own = subject // the folder's film in parts
 			}
 			if own == nil {
-				add(RenameItem{Old: v, Kind: "video", Reason: "several"})
+				unmatched = append(unmatched, v)
 				continue
 			}
 			p := placed{video: v, name: titleYear(SafeName(own.Title), own.Year), title: SafeName(own.Title), part: part, id: own.ID}
@@ -712,6 +713,24 @@ func (t *TMDB) PlanRenameIn(ctx context.Context, dir string, entries []RenameEnt
 				p.name, p.title = whole, title
 			}
 			list = append(list, p)
+		}
+		// "魔戒再现2.iso" found nothing (it searches like a sequel) beside a
+		// "魔戒再现1.iso" that did: its second disc.
+		for _, v := range unmatched {
+			stem := mediaExt.ReplaceAllString(v, "")
+			found := false
+			if strings.HasSuffix(stem, "2") {
+				for _, p := range list {
+					if mediaExt.ReplaceAllString(p.video, "") == stem[:len(stem)-1]+"1" && p.part == "" {
+						list = append(list, placed{video: v, name: p.name, title: p.title, id: p.id})
+						found = true
+						break
+					}
+				}
+			}
+			if !found {
+				add(RenameItem{Old: v, Kind: "video", Reason: "several"})
+			}
 		}
 		for _, p := range list {
 			films[p.id], filmTitles[p.id] = true, p.title
@@ -758,6 +777,18 @@ func (t *TMDB) PlanRenameIn(ctx context.Context, dir string, entries []RenameEnt
 		for _, group := range byFilm {
 			if len(group) < 2 {
 				continue
+			}
+			// "魔戒再现1.iso", "魔戒再现2.iso": the two discs of one film, parts.
+			if len(group) == 2 && list[group[0]].part == "" {
+				a, b := mediaExt.ReplaceAllString(list[group[0]].video, ""), mediaExt.ReplaceAllString(list[group[1]].video, "")
+				if a > b {
+					a, b = b, a
+					group[0], group[1] = group[1], group[0]
+				}
+				if len(a) == len(b) && strings.HasSuffix(a, "1") && strings.HasSuffix(b, "2") && a[:len(a)-1] == b[:len(b)-1] {
+					list[group[0]].part, list[group[1]].part = " - CD1", " - CD2"
+					continue
+				}
 			}
 			sort.SliceStable(group, func(a, b int) bool { return size[list[group[a]].video] > size[list[group[b]].video] })
 			names := make([]string, len(group))
@@ -953,14 +984,46 @@ func RenameWorthy(name string) bool {
 // names say different ones ("2160p"), else by number ("版本2").
 func versionTag(names []string, i int) string {
 	seen := map[string]bool{}
+	byResolution := true
 	for _, name := range names {
 		r := strings.ToLower(resolutionTag.FindString(name))
 		if r == "" || seen[r] {
-			return "版本" + strconv.Itoa(i+1)
+			byResolution = false
+			break
 		}
 		seen[r] = true
 	}
-	return strings.ToLower(resolutionTag.FindString(names[i]))
+	if byResolution {
+		return strings.ToLower(resolutionTag.FindString(names[i]))
+	}
+	// Discs of one film in a box: say what each is ("3D", "4K") when the names tell them apart.
+	if tags := discTags(names); tags != nil {
+		return tags[i]
+	}
+	return "版本" + strconv.Itoa(i+1)
+}
+
+var discTag = regexp.MustCompile(`(?i)3d|4k|2160p|imax`)
+
+// discTags names each version by its disc ("3D", "4K", "标准" for one that says
+// nothing), or nil when two names would get the same.
+func discTags(names []string) []string {
+	out := make([]string, len(names))
+	seen := map[string]bool{}
+	for i, name := range names {
+		tag := strings.ToUpper(discTag.FindString(mediaExt.ReplaceAllString(name, "")))
+		if tag == "2160P" {
+			tag = "4K"
+		}
+		if tag == "" {
+			tag = "标准"
+		}
+		if seen[tag] {
+			return nil
+		}
+		seen[tag], out[i] = true, tag
+	}
+	return out
 }
 
 // seasonsWithEpisodes counts a series' real seasons (specials, season 0, aside).

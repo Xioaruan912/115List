@@ -644,8 +644,15 @@ func (t *TMDB) lookupBase(ctx context.Context, name string) (*Poster, error) {
 	if err != nil {
 		return nil, err
 	}
-	if len(results) == 0 || results[0].Poster == "" {
+	// "雷神1", "蚁人1": the first film, which TMDB names without the 1.
+	firstFilm := func() (*Poster, error) {
+		if q := []rune(query); len(q) > 2 && q[len(q)-1] == '1' && unicode.Is(unicode.Han, q[len(q)-2]) {
+			return t.lookupBase(ctx, string(q[:len(q)-1])+yearSuffix(year))
+		}
 		return none, nil
+	}
+	if len(results) == 0 || results[0].Poster == "" {
+		return firstFilm()
 	}
 	best := results[0]
 	// Require some agreement between the name and the title found. A numbered
@@ -659,12 +666,12 @@ func (t *TMDB) lookupBase(ctx context.Context, name string) (*Poster, error) {
 		}
 	}
 	if runsOn(query, best.Title) {
-		return none, nil
+		return firstFilm()
 	}
 	// A Chinese name against a title TMDB has not translated for this language
 	// ("蜘蛛侠：英雄无归" finds "Spider-Man: No Way Home"): its Chinese titles
 	// from the other regions, and the titles it is also known by.
-	if !isLatin(query) && year > 0 && best.Year == year {
+	if !isLatin(query) && (year == 0 || best.Year == year) {
 		for _, title := range t.otherTitles(ctx, best.Kind, best.ID) {
 			if agrees(query, title) {
 				return best, nil
@@ -681,7 +688,7 @@ func (t *TMDB) lookupBase(ctx context.Context, name string) (*Poster, error) {
 			}
 		}
 	}
-	return none, nil
+	return firstFilm()
 }
 
 // otherTitles are a film's or series' Chinese translations and alternative titles.
@@ -751,7 +758,41 @@ func agrees(query string, titles ...string) bool {
 			return true
 		}
 	}
+	// A title and subtitle worded a little differently ("霍比特人 五军之战" is
+	// "霍比特人3：五军之战", "星球大战前传1 幽灵的威胁" is "星球大战1：幽灵的威胁"):
+	// every word in it, or its subtitle in it and the same start.
+	words := strings.Fields(query)
+	if len(words) < 2 {
+		return false
+	}
+	for _, title := range titles {
+		got := normalizeTitle(title)
+		all, sub := true, false
+		for _, w := range words {
+			n := strings.TrimRight(normalizeTitle(w), "0123456789") // "魔戒再现1": a disc of it
+			if n == "" {
+				continue
+			}
+			if !strings.Contains(got, n) {
+				all = false
+			} else if len([]rune(n)) >= 4 {
+				sub = true
+			}
+		}
+		head := []rune(normalizeTitle(words[0]))
+		if all || sub && len(head) >= 2 && strings.HasPrefix(got, string(head[:2])) {
+			return true
+		}
+	}
 	return false
+}
+
+// yearSuffix gives back a name's year for a second lookup.
+func yearSuffix(year int) string {
+	if year > 0 {
+		return " (" + strconv.Itoa(year) + ")"
+	}
+	return ""
 }
 
 func isLatin(s string) bool {

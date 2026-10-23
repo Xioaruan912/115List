@@ -246,6 +246,9 @@ func TestIsJunkAndSeriesFolder(t *testing.T) {
 	if got := seriesFolder([]string{"复仇者联盟", "复仇者联盟2：奥创纪元"}, ""); got != "复仇者联盟" {
 		t.Errorf("series = %q", got)
 	}
+	if got := seriesFolder([]string{"哈利·波特与魔法石", "哈利·波特与密室"}, ""); got != "哈利·波特" {
+		t.Errorf("series = %q", got)
+	}
 	if got := seriesFolder([]string{"蜘蛛侠", "超凡蜘蛛侠"}, "蜘蛛侠（系列）"); got != "蜘蛛侠" {
 		t.Errorf("series from collection = %q", got)
 	}
@@ -329,5 +332,30 @@ func TestRunsOn(t *testing.T) {
 		if got := runsOn(c.q, c.title); got != c.want {
 			t.Errorf("runsOn(%q, %q) = %v", c.q, c.title, got)
 		}
+	}
+}
+
+func TestDiscTags(t *testing.T) {
+	if got := discTags([]string{"生化危机4 4K.iso", "生化危机4 3D.iso", "生化危机4.iso"}); strings.Join(got, ",") != "4K,3D,标准" {
+		t.Errorf("tags = %v", got)
+	}
+	if got := discTags([]string{"指环王：魔戒再现1.iso", "指环王：魔戒再现2.iso"}); got != nil {
+		t.Errorf("tags = %v", got)
+	}
+}
+
+func TestPlanTwoDiscsAreParts(t *testing.T) {
+	tm := planTMDB(t, []tmdbItem{film(120, "指环王1：护戒使者", "2001-12-18", 1, ""), film(121, "指环王2：双塔奇兵", "2002-12-18", 1, "")},
+		map[string]int{"指环王：魔戒再现1.iso": 120, "指环王：双塔奇兵1.iso": 121})
+	plan, err := tm.PlanRenameIn(context.Background(), "/lib/指环王合集", []RenameEntry{
+		{Name: "指环王：魔戒再现1.iso"}, {Name: "指环王：魔戒再现2.iso"}, {Name: "指环王：双塔奇兵1.iso"}}, 0, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := find(plan, "指环王：魔戒再现2.iso"); got.New != "指环王1：护戒使者 (2001) - CD2.iso" || got.Reason != "" {
+		t.Fatalf("disc 2 -> %+v", got)
+	}
+	if got := find(plan, "指环王：魔戒再现1.iso"); got.New != "指环王1：护戒使者 (2001) - CD1.iso" {
+		t.Fatalf("disc 1 -> %+v", got)
 	}
 }
