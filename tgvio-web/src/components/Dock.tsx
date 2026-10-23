@@ -174,7 +174,7 @@ export function Dock({ path }: { path: string }) {
         <button className="icon-btn size-10" aria-label="重命名" title="重命名" onClick={() => openDialog({ kind: "rename", dir: path, obj: single })}><PencilSimpleIcon size={19} /></button>
       )}
       {can(me, Perm.Rename) && !isGuest(me) && library.has(path) && actions.tmdbTargets(path, chosen).length > 0 && (
-        <button className="icon-btn size-10" aria-label="按 TMDB 整理命名" title="按 TMDB 整理命名"
+        <button className="icon-btn size-10" aria-label="整理" title="整理"
           onClick={() => openDialog({ kind: "tmdb-rename", targets: actions.tmdbTargets(path, chosen) })}><TextAaIcon size={19} /></button>
       )}
       {can(me, Perm.Move) && (

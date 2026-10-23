@@ -6,7 +6,7 @@ export interface ResourceSite { id: string; name: string; search: string; enable
 export interface ResourceTitle { id: string; title: string; year?: number; kind?: string; info?: string; image?: string; rating?: number; url: string }
 export interface ResourceSeed { id: string; title: string; size?: string; features?: string[]; date?: string }
 /** folder: where downloads go by default, each title in its own folder inside. */
-export interface ResourceConfig { enabled: boolean; sites: ResourceSite[]; folder?: string }
+export interface ResourceConfig { enabled: boolean; sites: ResourceSite[]; folder?: string; manual_organize?: boolean }
 /** How a site answered the server: ok, a bot check (fine in a browser), or nothing. */
 export interface ProbeResult { id: string; state: "ok" | "challenge" | "down"; status?: number; ms: number; message?: string }
 

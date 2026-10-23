@@ -5,7 +5,9 @@ import type { Poster } from "./posters";
 export interface RenameItem {
   old: string;
   new?: string;
-  kind: "video" | "subtitle" | "extra" | "folder";
+  kind: "video" | "subtitle" | "extra" | "folder" | "junk" | "unwrap";
+  /** A row that is no rename: delete an ad or leftover, or open a folder wrapped around the film. */
+  action?: "delete" | "unwrap";
   season?: number;
   episode?: number;
   /** Size of a version of an episode. */
@@ -31,6 +33,9 @@ export interface RenameInherit { kind: string; id: number; season?: number }
 
 export interface RenameResult { old: string; new: string; error?: string }
 
+/** Whether a row proposes something: a new name, a deletion or an unwrap. */
+export const doable = (item: RenameItem): boolean => !!item.new || !!item.action;
+
 export const tmdbRename = {
   /** `only`: just these files of the folder, each named by its own match. */
   plan: (path: string, password: string, only?: string[], season?: number, inherit?: RenameInherit) =>
@@ -38,6 +43,7 @@ export const tmdbRename = {
   /** The folder and its subfolders holding videos or subtitles, parents first. */
   tree: (path: string, password: string) => post<{ folders: { path: string; depth: number }[] }>("/tgvio/rename/tree", { path, password }),
   /** `subject`: what the plan named the folder after, so its new name gets that poster at once. */
-  apply: (path: string, password: string, items: { old: string; new: string }[], folder = "", subject?: RenameInherit) =>
-    post<{ results: RenameResult[]; path: string }>("/tgvio/rename/apply", { path, password, items, folder, subject }),
+  apply: (path: string, password: string, items: { old: string; new: string }[], folder = "", subject?: RenameInherit,
+    extra?: { remove?: string[]; unwrap?: string[] }) =>
+    post<{ results: RenameResult[]; path: string }>("/tgvio/rename/apply", { path, password, items, folder, subject, ...extra }),
 };

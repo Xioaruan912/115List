@@ -593,7 +593,7 @@ export function DirectoryView({ path }: { path: string }) {
           <div className="mb-6 flex flex-wrap items-center gap-3 rounded-[14px] bg-accent-soft px-4 py-3" style={{ boxShadow: "inset 0 0 0 1px color-mix(in srgb, var(--accent) 40%, transparent)" }}>
             <BroomIcon size={18} weight="fill" className="shrink-0 text-accent-text" />
             <p className="min-w-0 flex-1 text-[13.5px]">还有 {items.length} 项没整理好：名字不规范、没对上 TMDB，或者下载完还没整理。</p>
-            <button className="btn btn-primary h-9 px-3.5 text-[13px]" onClick={() => useUi.getState().openDialog({ kind: "tmdb-rename", targets: actions.tmdbTargets(path, items) })}>全部按 TMDB 整理</button>
+            <button className="btn btn-primary h-9 px-3.5 text-[13px]" onClick={() => useUi.getState().openDialog({ kind: "tmdb-rename", targets: actions.tmdbTargets(path, items) })}>整理全部 {items.length} 项</button>
           </div>
         )}
         {view !== "cinema" && query.data && <SeriesPanel path={path} items={listed} />}

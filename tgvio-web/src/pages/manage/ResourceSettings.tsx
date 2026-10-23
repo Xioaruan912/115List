@@ -83,6 +83,15 @@ export function ResourceSettings() {
           <button className="btn btn-line h-9 px-3.5 text-[13px]" onClick={() => { setTarget(saved.folder || library.paths[0] || "/"); setPicking(true); }}>更改</button>
         </div>
       </div>
+      {/* Downloads 找资源 sent: organized by the server once done, unless turned off. */}
+      <div className="mt-2 flex items-center justify-between gap-4 rounded-[14px] p-3.5 hairline">
+        <div className="min-w-0">
+          <p className="text-[13.5px] font-medium">下载完自动整理</p>
+          <p className="mt-0.5 text-[12.5px] leading-relaxed text-muted">改成规范的名字，删掉广告文件，拆掉多余的一层文件夹。拿不准的留给你在整理模式里看。</p>
+        </div>
+        <button type="button" role="switch" aria-checked={!saved.manual_organize} aria-label="下载完自动整理" className="switch shrink-0"
+          onClick={() => void save({ ...saved, manual_organize: !saved.manual_organize }, saved.manual_organize ? "下载完会自动整理" : "下载完不再自动整理")} />
+      </div>
       <Sheet open={picking} onClose={() => setPicking(false)} width={520} title="默认保存位置"
         footer={<><button className="btn btn-ghost" onClick={() => setPicking(false)}>取消</button>
           <button className="btn btn-primary" onClick={async () => { if (await save({ ...saved, folder: target }, "已保存默认保存位置")) setPicking(false); }}>保存到这里</button></>}>
