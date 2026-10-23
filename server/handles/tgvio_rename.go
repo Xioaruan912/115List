@@ -96,7 +96,7 @@ func TgvioRenamePlan(c *gin.Context) {
 		return
 	}
 	common.SuccessResp(c, gin.H{"subject": toPosterOut(plan.Subject), "season": plan.Season, "items": plan.Items, "reason": plan.Reason,
-		"need": plan.Need, "inherited": plan.Inherited})
+		"need": plan.Need, "inherited": plan.Inherited, "film": plan.Film})
 }
 
 type renameTreeReq struct {

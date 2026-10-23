@@ -26,10 +26,12 @@ export interface RenamePlan {
   need?: "season";
   /** Named after the folder above (it found nothing of its own, or is part of that series). */
   inherited?: boolean;
+  /** One film's folder (not a series or a shelf): what is below it is that film. */
+  film?: boolean;
 }
 
 /** What the folder above a subfolder was planned as. */
-export interface RenameInherit { kind: string; id: number; season?: number }
+export interface RenameInherit { kind: string; id: number; season?: number; film?: boolean }
 
 export interface RenameResult { old: string; new: string; error?: string }
 

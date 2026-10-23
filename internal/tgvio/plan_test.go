@@ -74,8 +74,7 @@ func TestPlanReleaseFolderInsideFilmOfSeries(t *testing.T) {
 	tm := planTMDB(t, []tmdbItem{film(1, "潜伏", "2011-01-01", 9, ""), film(3, "潜伏3", "2015-01-01", 9, "")},
 		map[string]int{"潜伏 (2011)": 1, "潜伏3 (2015)": 3})
 	dir := "/lib/潜伏 (2011)/潜伏3 (2015)/[DBD-Raws][潜伏3][1080P][BDRip][HEVC-10bit][中英外挂][FLAC][MKV]"
-	plan, err := tm.PlanRenameIn(context.Background(), dir, []RenameEntry{{Name: "潜伏 (2011).mkv"}, {Name: "潜伏 (2011).ass"}}, 0,
-		&RenameInherit{Kind: "movie", ID: 1})
+	plan, err := tm.PlanRenameIn(context.Background(), dir, []RenameEntry{{Name: "潜伏 (2011).mkv"}, {Name: "潜伏 (2011).ass"}}, 0, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -93,7 +92,7 @@ func TestPlanReleaseFolderFindingFirstFilm(t *testing.T) {
 	tm := planTMDB(t, []tmdbItem{film(1, "潜伏", "2011-01-01", 9, ""), film(3, "潜伏3", "2015-01-01", 9, "")},
 		map[string]int{dbd: 1, "潜伏3 (2015)": 3})
 	plan, err := tm.PlanRenameIn(context.Background(), "/lib/潜伏 (2011)/潜伏3 (2015)/"+dbd, []RenameEntry{{Name: "潜伏 (2011).mkv"}}, 0,
-		&RenameInherit{Kind: "movie", ID: 3})
+		&RenameInherit{Kind: "movie", ID: 3, Film: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -119,6 +118,41 @@ func TestPlanReleaseFolderFindingFirstFilm(t *testing.T) {
 	}
 	if plan.Subject == nil || plan.Subject.ID != 3 {
 		t.Fatalf("subject -> %+v", plan.Subject)
+	}
+}
+
+func TestPlanBelowShelfInheritsNothing(t *testing.T) {
+	// 蜘蛛侠 (2002) is a shelf: a film below it found nothing of its own and stays so.
+	tm := planTMDB(t, []tmdbItem{film(1, "蜘蛛侠", "2002-05-01", 1, "")}, nil)
+	plan, err := tm.PlanRenameIn(context.Background(), "/lib/蜘蛛侠 (2002)/原盘ISO/蜘蛛侠：英雄无归 (2021)",
+		[]RenameEntry{{Name: "Spider-Man No Way Home (2021).iso"}}, 0, &RenameInherit{Kind: "movie", ID: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if plan.Reason != "no-match" {
+		t.Fatalf("plan -> %+v", plan)
+	}
+	// Below one film's folder, a release folder named like another film is still that film.
+	tm = planTMDB(t, []tmdbItem{film(1, "潜伏", "2011-01-01", 9, ""), film(2, "潜伏2", "2013-01-01", 9, "")},
+		map[string]int{"q伏2.2013.BD1080p.中英双字.mp4": 1})
+	plan, err = tm.PlanRenameIn(context.Background(), "/lib/潜伏/潜伏2 (2013)/q伏2.2013.BD1080p.中英双字.mp4",
+		[]RenameEntry{{Name: "潜伏 (2011).mp4"}}, 0, &RenameInherit{Kind: "movie", ID: 2, Film: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := find(plan, "潜伏 (2011).mp4").New; got != "潜伏2 (2013).mp4" {
+		t.Fatalf("video -> %q", got)
+	}
+	// ... and 潜伏2 (2013) opens it up, although its name found 潜伏.
+	tm = planTMDB(t, []tmdbItem{film(1, "潜伏", "2011-01-01", 9, ""), film(2, "潜伏2", "2013-01-01", 9, "")},
+		map[string]int{"q伏2.2013.BD1080p.中英双字.mp4": 1, "潜伏2 (2013)": 2})
+	plan, err = tm.PlanRenameIn(context.Background(), "/lib/潜伏/潜伏2 (2013)",
+		[]RenameEntry{{Name: "q伏2.2013.BD1080p.中英双字.mp4", IsDir: true}}, 0, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := find(plan, "q伏2.2013.BD1080p.中英双字.mp4"); got.Action != "unwrap" {
+		t.Fatalf("wrapper -> %+v", got)
 	}
 }
 
