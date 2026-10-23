@@ -5,6 +5,7 @@ import { onUnauthorized, setToken } from "../lib/api";
 import { queryClient } from "../lib/query";
 import type { Me, Settings } from "../lib/types";
 import { reason } from "../lib/errors";
+import { forgetPasswords } from "../hooks/useDir";
 
 type Status = "loading" | "ready" | "login" | "error";
 
@@ -56,6 +57,7 @@ export const useSession = create<SessionState>((set, getState) => ({
   async signOut() {
     await auth.logout();
     setToken("");
+    forgetPasswords();
     queryClient.clear();
     set({ me: null, status: "login" });
   },

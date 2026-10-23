@@ -7,6 +7,7 @@ import { ErrorState } from "../../components/ErrorState";
 import { Sheet } from "../../components/Sheet";
 import { spring } from "../../lib/motion";
 import { toast } from "../../stores/toast";
+import { Select } from "../../components/Select";
 
 /**
  * Pick a 115 folder by clicking through the drive, using the account of a 115
@@ -142,9 +143,8 @@ export function Mount115Sheet({ onClose }: { onClose: () => void }) {
           {sources.data.length > 1 && (
             <div>
               <label className="label" htmlFor="m115-source">用哪个存储的登录</label>
-              <select id="m115-source" className="field" value={source} onChange={event => { setSource(Number(event.target.value)); setFolder({ id: "0", name: "115 网盘" }); }}>
-                {sources.data.map(item => <option key={item.id} value={item.id}>{item.mount_path}{item.status === "work" ? "" : "（异常）"}</option>)}
-              </select>
+              <Select label="用哪个存储的登录" value={String(source)} onChange={next => { setSource(Number(next)); setFolder({ id: "0", name: "115 网盘" }); }}
+                options={sources.data.map(item => [String(item.id), `${item.mount_path}${item.status === "work" ? "" : "（异常）"}`] as const)} />
               <p className="mt-1.5 text-[12.5px] text-faint">同一个账号的存储看到的是同一个网盘，选哪个都行；新存储会沿用它的登录和设置。</p>
             </div>
           )}

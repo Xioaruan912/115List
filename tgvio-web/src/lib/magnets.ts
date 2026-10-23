@@ -161,7 +161,7 @@ export function folderName(title: string, year?: number): string {
 
 /**
  * A folder name for several titles of one series: what their names share
- * ("潜伏", "潜伏2", "潜伏3：…" → "潜伏 系列"), else the first title's.
+ * ("招魂", "招魂2", "招魂3：…" → "招魂"), else the first title's.
  */
 export function seriesName(titles: string[]): string {
   if (!titles.length) return "";
@@ -172,7 +172,7 @@ export function seriesName(titles: string[]): string {
     prefix = prefix.slice(0, i);
   }
   prefix = prefix.replace(/[\s\d:：·.\-_（(【\[]+$/u, "").trim();
-  return folderName(prefix.length >= 1 ? `${prefix} 系列` : titles[0]);
+  return folderName(prefix.length >= 1 ? prefix : titles[0]);
 }
 
 /**

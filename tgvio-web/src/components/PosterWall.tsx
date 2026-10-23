@@ -1,4 +1,4 @@
-import { motion, useMotionValue, useReducedMotion, useSpring, useTransform } from "motion/react";
+import { motion, useMotionValue, useReducedMotionConfig, useSpring, useTransform } from "motion/react";
 import { memo, useEffect, useMemo, useState, type CSSProperties } from "react";
 
 /**
@@ -154,7 +154,7 @@ function useCanDrift(enabled: boolean): boolean {
 }
 
 export function PosterWall({ leaving = false }: { leaving?: boolean }) {
-  const reduced = useReducedMotion();
+  const reduced = useReducedMotionConfig();
   const drift = useCanDrift(!reduced) && !reduced;
   const columns = useColumns();
   const perColumn = columns <= 7 ? 7 : 8;

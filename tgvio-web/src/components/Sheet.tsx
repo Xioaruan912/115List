@@ -20,9 +20,13 @@ export function Sheet({ open, onClose, title, children, footer, width = 460 }: {
   const mobile = useIsMobile();
   const panel = useRef<HTMLDivElement>(null);
 
+  // The latest onClose, without making the effect below run again: it moves the
+  // focus, and running it on every render (a ticked box) scrolled the sheet back to the top.
+  const closeRef = useRef(onClose);
+  closeRef.current = onClose;
   useEffect(() => {
     if (!open) return;
-    const onKey = (event: KeyboardEvent): void => { if (event.key === "Escape") { event.stopPropagation(); onClose(); } };
+    const onKey = (event: KeyboardEvent): void => { if (event.key === "Escape") { event.stopPropagation(); closeRef.current(); } };
     window.addEventListener("keydown", onKey, true);
     const restore = document.activeElement as HTMLElement | null;
     requestAnimationFrame(() => {
@@ -30,7 +34,7 @@ export function Sheet({ open, onClose, title, children, footer, width = 460 }: {
       target?.focus();
     });
     return () => { window.removeEventListener("keydown", onKey, true); restore?.focus?.(); };
-  }, [open, onClose]);
+  }, [open]);
 
   const onDragEnd = (_: unknown, info: PanInfo): void => {
     if (info.offset.y > 110 || info.velocity.y > 600) onClose();

@@ -1,4 +1,4 @@
-import { animate, useMotionValue, useReducedMotion, useTransform, motion } from "motion/react";
+import { animate, useMotionValue, useReducedMotionConfig, useTransform, motion } from "motion/react";
 import { useEffect } from "react";
 
 /** A number that springs to its new value; digits stay still thanks to tabular figures. */
@@ -7,7 +7,7 @@ export function NumberRoll({ value, format = (n: number) => String(Math.round(n)
   format?: (n: number) => string;
   className?: string;
 }) {
-  const reduced = useReducedMotion();
+  const reduced = useReducedMotionConfig();
   const motionValue = useMotionValue(reduced ? value : 0);
   const text = useTransform(motionValue, format);
   useEffect(() => {

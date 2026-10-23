@@ -7,6 +7,7 @@ import { ErrorState } from "../../components/ErrorState";
 import { Sheet } from "../../components/Sheet";
 import { useLibraryScope } from "../../hooks/useLibraryScope";
 import { toast } from "../../stores/toast";
+import { Select } from "../../components/Select";
 
 /**
  * 资源搜索: on or off, the sites (a name and a search address with {q}), and
@@ -60,7 +61,7 @@ export function ResourceSettings() {
         <div className="min-w-0 flex-1">
           <h3 className="text-[15px] font-semibold">资源搜索</h3>
           <p className="mt-0.5 max-w-[60ch] text-[12.5px] leading-relaxed text-muted">
-            片库里的「找资源」：一键在下面的网站搜片名，带中文字幕的磁力排在前面，勾选、选好文件夹就用 115 离线下载，多个可以放进一个合集。网站默认在用户自己的浏览器里打开，复制磁力回来粘贴；SeedHub 也可以改成由服务器直接读取、直接列出磁力。
+            影视库根目录里的「找资源」：搜片名，带中文字幕的排前面，勾选后用 115 离线下载。
           </p>
         </div>
         <button type="button" role="switch" aria-checked={draft.enabled} aria-label="启用资源搜索" className="switch mt-1 shrink-0"
@@ -72,8 +73,7 @@ export function ResourceSettings() {
         <div className="min-w-0">
           <p className="text-[13.5px] font-medium">默认保存位置</p>
           <p className="mt-0.5 text-[12.5px] leading-relaxed text-muted">
-            下载时在这里按 TMDB 新建一个「片名 (年份)」文件夹，内容放在里面，比如 <span className="font-mono text-[12px]">{(saved.folder || library.paths[0] || "/115/我要看").replace(/\/$/, "")}/瘴气营地的青春性事与死亡 (2026)</span>。每次下载前也可以临时换。
-          </p>
+            下载时在这里新建「片名 (年份)」文件夹，内容放在里面。</p>
         </div>
         <div className="flex shrink-0 items-center gap-2">
           <span className="inline-flex max-w-[16rem] items-center gap-1.5 truncate text-[13px]" title={saved.folder}>
@@ -100,11 +100,9 @@ export function ResourceSettings() {
                 <input className="field h-9 w-36 shrink-0 text-[13px]" value={site.name} onChange={event => edit(index, { name: event.target.value })} aria-label="网站名称" placeholder="名称" />
                 <input className="field h-9 min-w-0 flex-1 basis-60 font-mono text-[12px]" value={site.search} onChange={event => edit(index, { search: event.target.value })}
                   aria-label="搜索地址" placeholder="https://example.com/search/{q}" spellCheck={false} />
-                <select className="field h-9 w-auto shrink-0 text-[13px]" value={site.reader ?? ""} aria-label="打开方式"
-                  onChange={event => edit(index, { reader: event.target.value as ResourceSite["reader"] })}>
-                  <option value="">浏览器打开</option>
-                  <option value="seedhub">服务器直接读取（SeedHub）</option>
-                </select>
+                <Select label="打开方式" className="h-9 w-[11.5rem] shrink-0 text-[13px]" value={site.reader ?? ""}
+                  options={[["", "浏览器打开"], ["seedhub", "服务器直接搜"]] as const}
+                  onChange={reader => edit(index, { reader })} />
                 <button type="button" role="switch" aria-checked={site.enabled !== false} aria-label={`启用 ${site.name}`} className="switch shrink-0"
                   onClick={() => edit(index, { enabled: site.enabled === false })} />
                 <button className="icon-btn size-9 hover:text-danger" aria-label={`删除 ${site.name}`} onClick={() => setDraft({ ...draft, sites: draft.sites.filter((_, i) => i !== index) })}><TrashIcon size={16} /></button>
@@ -120,8 +118,7 @@ export function ResourceSettings() {
           );
         })}
       </ul>
-      <p className="mt-2 text-[12px] leading-relaxed text-faint">「浏览器打开」适用于任何网站：在用户的浏览器里打开搜索页，复制磁力回来粘贴。「服务器直接读取」只认 SeedHub 的网页格式：服务器替你搜、直接列出磁力，网站改版或开了人机验证就会失效，到时换回浏览器打开即可。</p>
-      <p className="mt-1.5 text-[12px] text-faint">搜索地址里用 <span className="font-mono">{"{q}"}</span> 代表片名，比如 <span className="font-mono">{"https://www.seedhub.cc/s/{q}/"}</span>。以后想加别的网站，照这个格式填就行。</p>
+      <p className="mt-2 text-[12px] leading-relaxed text-faint">地址里的 <span className="font-mono">{"{q}"}</span> 会换成片名。「服务器直接搜」只支持 SeedHub，失效时改回「浏览器打开」。</p>
 
       <div className="mt-3 flex flex-wrap gap-2">
         <button className="btn btn-line h-9 px-3.5 text-[13px]" onClick={() => setDraft({ ...draft, sites: [...draft.sites, { id: "", name: "", search: "https://", enabled: true }] })}><PlusIcon size={15} />添加网站</button>

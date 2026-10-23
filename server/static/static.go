@@ -205,6 +205,8 @@ func Static(r *gin.RouterGroup, noRoute func(handlers ...gin.HandlerFunc)) {
 					c.Header("Cache-Control", "public, max-age=15552000")
 				}
 			}
+			// TGVIO: text assets go out gzipped (tgvio_gzip.go).
+			serveGzipped(c, static)
 		})
 		for _, folder := range folders {
 			sub, err := fs.Sub(static, folder)

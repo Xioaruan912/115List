@@ -2,7 +2,7 @@ import {
   ArrowsClockwiseIcon, CheckIcon, CopyIcon, LinkBreakIcon, LockSimpleIcon, ShareNetworkIcon, TrashIcon,
 } from "@phosphor-icons/react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { AnimatePresence, LayoutGroup, motion, useReducedMotion } from "motion/react";
+import { AnimatePresence, LayoutGroup, motion, useReducedMotionConfig } from "motion/react";
 import { memo, useMemo, useState, type CSSProperties, type ReactNode } from "react";
 import { encode } from "uqr";
 import { randomCode, shares, shareUrl, type Share } from "../api/share";
@@ -22,7 +22,7 @@ import { ErrorState } from "./ErrorState";
  * per-module delay), so a 1 000-module code costs no React work after mount.
  */
 export const QrCode = memo(function QrCode({ text, size = 196 }: { text: string; size?: number }) {
-  const reduced = useReducedMotion();
+  const reduced = useReducedMotionConfig();
   const { cells, n } = useMemo(() => {
     const qr = encode(text, { ecc: "H", border: 0 });
     const count = qr.size;

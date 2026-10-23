@@ -33,8 +33,8 @@ import { Sheet } from "./Sheet";
  *
  * Downloads go to the default folder of 设置 › 影视库 › 资源搜索, each title
  * in a folder named the TMDB way ("我要看/瘴气营地的青春性事与死亡 (2026)"); several
- * titles go into a series folder with a folder per title inside
- * ("潜伏 系列/潜伏2"). TMDB is matched behind
+ * titles go into a folder named after what they share, with a folder per
+ * title inside ("招魂/招魂2 (2016)"). TMDB is matched behind
  * the scenes for each title, so the folders get posters and 按 TMDB 整理命名
  * works once the files arrive.
  */
@@ -452,8 +452,8 @@ export function ResourceFinder({ initialQuery = "", initialItems, base: fixedBas
                       <FolderPicker start={base || library.paths[0] || "/"} value={base || "/"} onChange={setBase} />
                       {!library.has(base) && base && <p className="mt-2 text-[12px] text-faint">这个文件夹不在影视库的生效目录里，下载后不会配海报。</p>}
                       <label className="mt-3 flex cursor-pointer items-center gap-2.5 text-[13.5px]">
-                        <button type="button" role="switch" aria-checked={wantsFolder} className="switch" onClick={() => setOwnFolder(!wantsFolder)} aria-label={several ? "放进系列文件夹" : "放进单独的文件夹"} />
-                        {several ? "放进一个系列文件夹" : "放进单独的文件夹"}
+                        <button type="button" role="switch" aria-checked={wantsFolder} className="switch" onClick={() => setOwnFolder(!wantsFolder)} aria-label={several ? "放进总文件夹" : "放进单独的文件夹"} />
+                        {several ? "放进一个总文件夹" : "放进单独的文件夹"}
                       </label>
                       {wantsFolder && <input className="field mt-2" value={folder} onChange={event => setName(event.target.value)} aria-label="文件夹名" placeholder="比如：潜伏 (2009)" />}
                       {several && (

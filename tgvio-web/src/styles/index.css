@@ -367,3 +367,12 @@ button, a, [role="button"] { touch-action: manipulation; }
   text-shadow: 0 0 2px rgb(0 0 0 / 0.95), 0 0 6px rgb(0 0 0 / 0.75), 0 2px 3px rgb(0 0 0 / 0.9);
   overflow-wrap: anywhere;
 }
+
+/* 精简动效 (lib/lite.ts): the GPU-heavy show goes, everything else stays.
+   No blur behind bars and menus (solid instead), no grain, no slow zoom,
+   no staggered entrances, no hover spotlight or drifting covers. */
+:root[data-motion="lite"] .glass { -webkit-backdrop-filter: none; backdrop-filter: none; background: var(--raised); }
+:root[data-motion="lite"] *, :root[data-motion="lite"] *::before, :root[data-motion="lite"] *::after { -webkit-backdrop-filter: none !important; backdrop-filter: none !important; }
+:root[data-motion="lite"] .grain, :root[data-motion="lite"] .spot::before { display: none; }
+:root[data-motion="lite"] .ken-burns, :root[data-motion="lite"] .enter, :root[data-motion="lite"] .enter-soft, :root[data-motion="lite"] .cover-cell, :root[data-motion="lite"] .peek { animation: none !important; }
+:root[data-motion="lite"] .poster-backdrop, :root[data-motion="lite"] .poster-card, :root[data-motion="lite"] .cover-img, :root[data-motion="lite"] .folder-sheet { transition: none !important; }

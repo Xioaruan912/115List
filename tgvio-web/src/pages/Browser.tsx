@@ -102,7 +102,7 @@ export function Browser({ path }: { path: string }) {
   return (
     <div className={blur ? "cover-blur" : ""}
       onContextMenu={event => {
-        if ((event.target as Element).closest(".tile, input, textarea, a, [role=dialog]")) return;
+        if ((event.target as Element).closest(".tile, .poster-cell, input, textarea, a, [role=dialog]")) return;
         event.preventDefault();
         useUi.getState().openMenu({ x: event.clientX, y: event.clientY, dir: path, obj: null });
       }}>

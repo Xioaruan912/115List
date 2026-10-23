@@ -82,7 +82,7 @@ export function Menu({ open, x, y, onClose, entries, width = 220 }: {
         <motion.div
           ref={ref}
           role="menu"
-          className="glass fixed z-40 rounded-2xl p-1.5 hairline"
+          className="glass fixed z-[66] rounded-2xl p-1.5 hairline"
           style={{ left: place.left, top: place.top, width, boxShadow: "var(--shadow-float)", transformOrigin: `${place.originX * 100}% ${place.originY * 100}%` }}
           initial={{ opacity: 0, scale: 0.88, filter: "blur(4px)" }}
           animate={{ opacity: 1, scale: 1, filter: "blur(0px)" }}
