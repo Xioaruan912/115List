@@ -16,7 +16,7 @@ ping_ok() {
     done
     return 1
 }
-"$new_bin" version | grep -q 'Version: v4.2.6-tgvio'
+"$new_bin" version | grep -qE 'Version: v4\.2\.[67]-tgvio'
 python3 "$probe" list > /dev/null  # credentials and site reachable before touching anything
 mkdir -p "$backup"
 cp -a /opt/openlist/openlist "$backup/openlist.previous"

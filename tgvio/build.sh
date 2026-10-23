@@ -48,6 +48,6 @@ esac
 pkg=github.com/OpenListTeam/OpenList/v4/internal/conf
 (cd "$repo" && go build -o "$out/openlist-$commit" -tags=jsoniter -ldflags="-w -s \
     -X '$pkg.BuiltAt=$(date -u '+%F %T %z')' -X '$pkg.GitAuthor=Xioaruan912' \
-    -X '$pkg.GitCommit=$commit' -X '$pkg.Version=v4.2.6-tgvio' -X '$pkg.WebVersion=$label'" .)
+    -X '$pkg.GitCommit=$commit' -X '$pkg.Version=v4.2.7-tgvio' -X '$pkg.WebVersion=$label'" .)
 "$out/openlist-$commit" version | grep -E 'Commit|Version'
 echo "built: $out/openlist-$commit (ui: $ui)"

@@ -44,14 +44,7 @@ func Search(c *gin.Context) {
 		return
 	}
 	nodes, total, err := search.SearchFiltered(c, req.SearchReq, func(node model.SearchNode) bool {
-		if !user.Sees(node.Parent) {
-			return false
-		}
-		meta, err := op.GetNearestMeta(node.Parent)
-		if err != nil && !errors.Is(errors.Cause(err), errs.MetaNotFound) {
-			return false
-		}
-		return webCanAccess(user, meta, path.Join(node.Parent, node.Name), req.Password)
+		return isSearchNodeAccessible(user, node, req.Password, op.GetNearestMeta)
 	})
 	if err != nil {
 		common.ErrorResp(c, err, 500)
@@ -67,6 +60,22 @@ func Search(c *gin.Context) {
 		}),
 		Total: total,
 	})
+}
+
+func isSearchNodeAccessible(user *model.User, node model.SearchNode, password string, resolveMeta func(string) (*model.Meta, error)) bool {
+	if !user.Sees(node.Parent) { // TGVIO: a user may have several roots
+		return false
+	}
+	nodePath := path.Join(node.Parent, node.Name)
+	metaPath := node.Parent
+	if node.IsDir {
+		metaPath = nodePath
+	}
+	meta, err := resolveMeta(metaPath)
+	if err != nil && !errors.Is(errors.Cause(err), errs.MetaNotFound) {
+		return false
+	}
+	return webCanAccess(user, meta, nodePath, password)
 }
 
 func nodeToSearchResp(node model.SearchNode) SearchResp {
