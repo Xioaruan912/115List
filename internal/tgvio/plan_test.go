@@ -143,6 +143,17 @@ func TestPlanBelowShelfInheritsNothing(t *testing.T) {
 	if got := find(plan, "潜伏 (2011).mp4").New; got != "潜伏2 (2013).mp4" {
 		t.Fatalf("video -> %q", got)
 	}
+	// ... and 潜伏2 (2013) opens it up, although its name found 潜伏.
+	tm = planTMDB(t, []tmdbItem{film(1, "潜伏", "2011-01-01", 9, ""), film(2, "潜伏2", "2013-01-01", 9, "")},
+		map[string]int{"q伏2.2013.BD1080p.中英双字.mp4": 1, "潜伏2 (2013)": 2})
+	plan, err = tm.PlanRenameIn(context.Background(), "/lib/潜伏/潜伏2 (2013)",
+		[]RenameEntry{{Name: "q伏2.2013.BD1080p.中英双字.mp4", IsDir: true}}, 0, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := find(plan, "q伏2.2013.BD1080p.中英双字.mp4"); got.Action != "unwrap" {
+		t.Fatalf("wrapper -> %+v", got)
+	}
 }
 
 func TestPlanSeriesFolderKeepsSeriesName(t *testing.T) {

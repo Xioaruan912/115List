@@ -733,7 +733,12 @@ func (t *TMDB) PlanRenameIn(ctx context.Context, dir string, entries []RenameEnt
 	}
 	if subject.Kind == "movie" && !multi && len(kept) == 1 && kept[0].IsDir && !Skip(kept[0].Name) && SeasonOf(kept[0].Name) == 0 {
 		inner, err := t.resolve(ctx, kept[0].Name, dir)
-		if err == nil && (inner.None || inner.Kind == "movie" && (inner.ID == subject.ID || sequelOf(base, inner, kept[0].Name))) {
+		// Not when it is clearly another film's folder ("招魂/招魂3 (2021)/"): its
+		// name has that film's title. A guess its name hardly says ("q伏2.2013…"
+		// found 潜伏) is no reason to keep the wrapping.
+		other := !inner.None && (inner.Kind != "movie" || inner.ID != subject.ID && !sequelOf(base, inner, kept[0].Name) &&
+			strings.Contains(normalizeTitle(kept[0].Name), normalizeTitle(inner.Title)))
+		if err == nil && !other {
 			plan.Items = append(plan.Items, RenameItem{Old: kept[0].Name, Kind: "unwrap", Action: "unwrap"})
 		}
 	}
