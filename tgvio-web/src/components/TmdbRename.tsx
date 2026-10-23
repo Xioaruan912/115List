@@ -7,11 +7,12 @@ import { posters, posterSrc } from "../api/posters";
 import { doable, tmdbRename, type RenameInherit, type RenameItem, type RenamePlan } from "../api/rename";
 import { passwordFor } from "../hooks/useDir";
 import * as actions from "../lib/actions";
+import { queryClient } from "../lib/query";
 import { reason } from "../lib/errors";
 import { formatBytes } from "../lib/format";
 import { spring } from "../lib/motion";
 import { basename, encodePath, join, parent } from "../lib/path";
-import { toast } from "../stores/toast";
+import { toast, useToasts } from "../stores/toast";
 import { useUi } from "../stores/ui";
 import { ErrorState } from "./ErrorState";
 import { Sheet } from "./Sheet";
@@ -40,6 +41,17 @@ const WHY: Record<NonNullable<RenameItem["reason"]>, string> = {
 };
 
 type RowState = { status: "busy" } | { status: "done" } | { status: "error"; message: string };
+
+/** Puts a 整理 run back and reloads what it touched. */
+export async function undoRun(id: string): Promise<void> {
+  try {
+    const { changes } = await tmdbRename.undo(id);
+    toast.success("已撤销", `改回了 ${changes} 项`);
+  } catch (error) {
+    toast.error("没能全部撤销", error);
+  }
+  void queryClient.invalidateQueries();
+}
 
 /** A folder to plan; `only` limits it to chosen files (and their subtitles), leaving the folder's name alone. */
 export interface RenameTarget { path: string; only?: string[] }
@@ -168,6 +180,7 @@ export function TmdbRename({ targets: chosen, onClose }: { targets: RenameTarget
 
   const apply = async (): Promise<void> => {
     setRunning(true);
+    const batch = crypto.randomUUID(); // this run, to put it back (撤销)
     let done = 0;
     let failed = 0;
     let here = decodeURIComponent(location);
@@ -186,11 +199,11 @@ export function TmdbRename({ targets: chosen, onClose }: { targets: RenameTarget
         if (!doable(item) || off.has(key)) continue;
         setRows(prev => ({ ...prev, [key]: { status: "busy" } }));
         try {
-          const { results } = item.action === "delete" ? await tmdbRename.apply(target.path, password, [], "", undefined, { remove: [item.old] })
-            : item.action === "unwrap" ? await tmdbRename.apply(target.path, password, [], "", undefined, { unwrap: [item.old] })
+          const { results } = item.action === "delete" ? await tmdbRename.apply(target.path, password, [], "", undefined, { remove: [item.old], batch })
+            : item.action === "unwrap" ? await tmdbRename.apply(target.path, password, [], "", undefined, { unwrap: [item.old], batch })
             // The whole folder opens up into the one above, and goes.
-            : item.action === "spill" ? await tmdbRename.apply(parent(target.path), passwordFor(parent(target.path)), [], "", undefined, { unwrap: [basename(target.path)] })
-            : await tmdbRename.apply(target.path, password, [{ old: item.old, new: item.new ?? item.old, into: item.into }]);
+            : item.action === "spill" ? await tmdbRename.apply(parent(target.path), passwordFor(parent(target.path)), [], "", undefined, { unwrap: [basename(target.path)], batch })
+            : await tmdbRename.apply(target.path, password, [{ old: item.old, new: item.new ?? item.old, into: item.into }], "", undefined, { batch });
           if (item.action === "spill") touched.add(parent(target.path));
           if (results[0]?.error) throw new Error(results[0].error);
           done++;
@@ -205,8 +218,9 @@ export function TmdbRename({ targets: chosen, onClose }: { targets: RenameTarget
       if (folder?.new && !off.has(folderKey)) {
         setRows(prev => ({ ...prev, [folderKey]: { status: "busy" } }));
         try {
-          const subject = plan?.subject ? { kind: plan.subject.kind, id: plan.subject.id, season: plan.season || undefined } : undefined;
-          const out = await tmdbRename.apply(target.path, password, [], folder.new, subject);
+          const subject = plan?.series_first ? { kind: "movie", id: plan.series_first }
+            : plan?.subject ? { kind: plan.subject.kind, id: plan.subject.id, season: plan.season || undefined } : undefined;
+          const out = await tmdbRename.apply(target.path, password, [], folder.new, subject, { batch });
           if (out.results[0]?.error) throw new Error(out.results[0].error);
           done++;
           const moved = out.path || join(parent(target.path), folder.new);
@@ -233,7 +247,8 @@ export function TmdbRename({ targets: chosen, onClose }: { targets: RenameTarget
     setFinished(true);
     for (const path of touched) void actions.reload(path, false);
     void client.invalidateQueries({ queryKey: ["posters"] });
-    if (failed === 0) toast.success("整理好了", `完成 ${done} 项`);
+    if (failed === 0 && done > 0) useToasts.getState().push({ tone: "success", title: "整理好了", detail: `完成 ${done} 项`, action: { label: "撤销", run: () => void undoRun(batch) } }, 8000);
+    else if (failed === 0) toast.success("整理好了", `完成 ${done} 项`);
     else toast.error(`有 ${failed} 个没改成`, new Error(`${done} renamed, ${failed} failed`));
   };
 

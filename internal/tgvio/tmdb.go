@@ -78,7 +78,8 @@ var (
 	glued4K    = regexp.MustCompile(`(?i)((?:19|20)\d{2})4k$`)
 	gluedYear  = regexp.MustCompile(`(\p{Han})((?:19|20)\d{2})$`)
 	// "哈利·波特与死亡圣器(上)", "暮光之城4上": two films on TMDB, not two parts of one.
-	halfTag = regexp.MustCompile(`(?:[(（]([上下])[)）]|\d([上下]))$`)
+	parenYear = regexp.MustCompile(`[(（]((?:19|20)\d{2})[)）]`)
+	halfTag   = regexp.MustCompile(`(?:[(（]([上下])[)）]|\d([上下]))$`)
 	// A folder of several films ("[周星驰] [原盘电影集 国粤语]") names no one film.
 	collection = regexp.MustCompile(`电影集|作品集|合集|全集|系列|collection`)
 )
@@ -86,7 +87,7 @@ var (
 // cleanerRev changes whenever CleanName or matching gets better: names that
 // found nothing under an older revision are looked up again, and matches found
 // by older rules are checked again when a folder is planned (never a choice made by hand).
-const cleanerRev = 8
+const cleanerRev = 10
 
 // CleanName reads a file or folder name for what a film database can search.
 func CleanName(name string) (query string, year int, tmdbID int, imdbID string) {
@@ -114,7 +115,9 @@ func CleanName(name string) (query string, year int, tmdbID int, imdbID string) 
 	if m := imdbTag.FindStringSubmatch(name); m != nil {
 		imdbID = "tt" + m[1]
 	}
-	if m := yearTag.FindStringSubmatch(name); m != nil {
+	if m := parenYear.FindStringSubmatch(name); m != nil {
+		year, _ = strconv.Atoi(m[1]) // "2012 (2009)": the year in brackets is the year
+	} else if m := yearTag.FindStringSubmatch(name); m != nil {
 		year, _ = strconv.Atoi(m[1])
 	}
 	cut := brackets.ReplaceAllString(name, " ")
@@ -128,6 +131,10 @@ func CleanName(name string) (query string, year int, tmdbID int, imdbID string) 
 		if i := strings.Index(cut, strconv.Itoa(year)); i > 0 {
 			cut = cut[:i]
 		}
+	}
+	numeric := ""
+	if year > 0 && parenYear.MatchString(name) {
+		numeric = strings.TrimSpace(cut) // "2012", "1917": a title of digits, kept when a year in brackets says so
 	}
 	cut = releaseJunk.ReplaceAllString(cut, " ")
 	cut = cjkSeason.ReplaceAllString(cut, " ")
@@ -157,6 +164,9 @@ func CleanName(name string) (query string, year int, tmdbID int, imdbID string) 
 	// Episode files ("01", "E05") and bare numbers name nothing.
 	if !hasLetter(cut) {
 		cut = ""
+		if len(numeric) >= 3 && strings.Trim(numeric, "0123456789 ") == "" {
+			cut = numeric
+		}
 	}
 	return cut, year, tmdbID, imdbID
 }
@@ -601,6 +611,20 @@ func (t *TMDB) Seasons(ctx context.Context, id int) ([]SeasonInfo, error) {
 }
 
 func (t *TMDB) lookupBase(ctx context.Context, name string) (*Poster, error) {
+	// "终结者2018" is a title (终结者4 in mainland China), not 终结者 of 2018:
+	// the whole name first, and only an exact title of it counts.
+	if whole := gluedWhole(name); whole != "" {
+		if results, err := t.Search(ctx, whole, 0); err == nil {
+			for i, r := range results {
+				if i >= 3 {
+					break
+				}
+				if r.Poster != "" && (exact(whole, r.Title, r.Original) || !isLatin(whole) && exact(whole, t.otherTitles(ctx, r.Kind, r.ID)...)) {
+					return r, nil
+				}
+			}
+		}
+	}
 	query, year, tmdbID, imdbID := CleanName(name)
 	none := &Poster{None: true, Rev: cleanerRev, At: time.Now().Unix()}
 	if imdbID != "" {
@@ -693,6 +717,26 @@ func (t *TMDB) lookupBase(ctx context.Context, name string) (*Poster, error) {
 		}
 	}
 	return firstFilm()
+}
+
+// gluedWhole is a name whose end runs a year into the title ("终结者2018"), cleaned but not split.
+func gluedWhole(name string) string {
+	base := strings.TrimSpace(discFormat.ReplaceAllString(extension.ReplaceAllString(strings.TrimSpace(name), ""), ""))
+	if !gluedYear.MatchString(base) || brackets.MatchString(base) || parens.MatchString(base) {
+		return ""
+	}
+	return strings.NewReplacer("_", " ", "·", " ", "：", " ", ":", " ").Replace(base)
+}
+
+// exact: a title is the name itself, give or take punctuation.
+func exact(name string, titles ...string) bool {
+	want := normalizeTitle(name)
+	for _, title := range titles {
+		if want != "" && normalizeTitle(title) == want {
+			return true
+		}
+	}
+	return false
 }
 
 // otherTitles are a film's or series' Chinese translations and alternative titles.
@@ -944,6 +988,31 @@ func pathBase(p string) string {
 		return p[i+1:]
 	}
 	return p
+}
+
+// Moved follows an object moved from one folder into another, keeping its
+// name: its record, and the records of everything below it.
+func (t *TMDB) Moved(fromDir, toDir, name string) {
+	t.Renamed(fromDir, name, name, toDir)
+	t.RenamedDir(stdpath.Join(fromDir, name), stdpath.Join(toDir, name))
+}
+
+// NameFolderAs gives a new folder made for a file (a film of a folder of
+// several put in a folder of its own) the file's film, when the folder has
+// no record yet: the library shows the folder, not the file.
+func (t *TMDB) NameFolderAs(dir, folder, file string) {
+	t.mu.Lock()
+	from := t.entries[Key(file)]
+	cur := t.entries[Key(folder)]
+	if from == nil || from.None || cur != nil && (cur.Manual || !cur.None) {
+		t.mu.Unlock()
+		return
+	}
+	named := *from
+	named.Name, named.Dir, named.Manual = folder, dir, false
+	t.entries[Key(folder)] = &named
+	t.mu.Unlock()
+	t.save()
 }
 
 // Covers reports whether posters are wanted in this folder (a real path).

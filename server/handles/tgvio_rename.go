@@ -96,7 +96,8 @@ func TgvioRenamePlan(c *gin.Context) {
 		return
 	}
 	common.SuccessResp(c, gin.H{"subject": toPosterOut(plan.Subject), "season": plan.Season, "items": plan.Items, "reason": plan.Reason,
-		"need": plan.Need, "inherited": plan.Inherited, "film": plan.Film})
+		"need": plan.Need, "inherited": plan.Inherited, "film": plan.Film,
+		"shelf": plan.Shelf, "series_first": plan.SeriesFirst})
 }
 
 type renameTreeReq struct {
@@ -206,6 +207,8 @@ type renameApplyReq struct {
 	Remove []string `json:"remove"`
 	// Unwrap: a folder here wrapped around the film; its contents move up here and it goes.
 	Unwrap []string `json:"unwrap"`
+	// Batch: the 整理 run these changes belong to, to put it back later (rename/undo).
+	Batch string `json:"batch"`
 }
 
 type renameResult struct {
@@ -238,14 +241,20 @@ func TgvioRenameApply(c *gin.Context) {
 		result := renameResult{Old: name}
 		if err := removeJunk(ctx, reqPath, name); err != nil {
 			result.Error = err.Error()
+		} else {
+			record(req.Batch, user.ID, nil, 1)
 		}
 		results = append(results, result)
 		time.Sleep(250 * time.Millisecond)
 	}
 	for _, name := range req.Unwrap {
 		result := renameResult{Old: name}
-		if err := unwrapFolder(ctx, reqPath, name); err != nil {
+		moved, err := unwrapFolder(ctx, reqPath, name)
+		if err != nil {
 			result.Error = err.Error()
+		}
+		if len(moved) > 0 {
+			record(req.Batch, user.ID, &journalOp{Op: "unwrap", Dir: reqPath, Old: name, Moved: moved}, 0)
 		}
 		results = append(results, result)
 	}
@@ -258,6 +267,8 @@ func TgvioRenameApply(c *gin.Context) {
 			result.Error = errs.PermissionDenied.Error()
 		} else if err := placeFile(ctx, reqPath, item.Old, item.New, item.Into); err != nil {
 			result.Error = err.Error()
+		} else {
+			record(req.Batch, user.ID, placedOp(reqPath, item.Old, item.New, item.Into), 0)
 		}
 		results = append(results, result)
 	}
@@ -268,6 +279,7 @@ func TgvioRenameApply(c *gin.Context) {
 			result.Error = err.Error()
 		} else {
 			finalPath = moved
+			record(req.Batch, user.ID, &journalOp{Op: "folder", Dir: stdpath.Dir(reqPath), Old: stdpath.Base(reqPath), New: folder}, 0)
 		}
 		results = append(results, result)
 	}
@@ -293,21 +305,22 @@ func removeJunk(ctx context.Context, dir, name string) error {
 
 // unwrapFolder moves what is in dir/name up into dir, then removes the folder
 // once it is empty. Nothing moves when a name is taken in dir already.
-func unwrapFolder(ctx context.Context, dir, name string) error {
+// moved: what came up, also when it stopped half way.
+func unwrapFolder(ctx context.Context, dir, name string) (moved []string, err error) {
 	if err := checkRelativePath(name); err != nil || strings.Contains(name, "/") {
-		return fmt.Errorf("not a name here")
+		return nil, fmt.Errorf("not a name here")
 	}
 	inner := stdpath.Join(dir, name)
 	objs, err := fs.List(ctx, inner, &fs.ListArgs{Refresh: true})
 	if err != nil {
-		return err
+		return nil, err
 	}
 	for _, obj := range objs {
 		if obj.GetName() == name {
-			return fmt.Errorf("[%s] holds a folder of its own name", name)
+			return nil, fmt.Errorf("[%s] holds a folder of its own name", name)
 		}
 		if res, _ := fs.Get(ctx, stdpath.Join(dir, obj.GetName()), &fs.GetArgs{NoLog: true}); res != nil {
-			return fmt.Errorf("file [%s] exists", obj.GetName())
+			return nil, fmt.Errorf("file [%s] exists", obj.GetName())
 		}
 	}
 	for i, obj := range objs {
@@ -315,17 +328,19 @@ func unwrapFolder(ctx context.Context, dir, name string) error {
 			time.Sleep(time.Second) // 115 moves folders in the background, one after another
 		}
 		if err := moveRetrying(ctx, stdpath.Join(inner, obj.GetName()), dir); err != nil {
-			return err
+			return moved, err
 		}
+		posters().Moved(inner, dir, obj.GetName())
+		moved = append(moved, obj.GetName())
 	}
 	left, err := fs.List(ctx, inner, &fs.ListArgs{Refresh: true})
 	if err != nil {
-		return err
+		return moved, err
 	}
 	if len(left) > 0 {
-		return fmt.Errorf("[%s] is not empty after moving", name)
+		return moved, fmt.Errorf("[%s] is not empty after moving", name)
 	}
-	return fs.Remove(ctx, inner)
+	return moved, fs.Remove(ctx, inner)
 }
 
 // renameIn renames dir/oldName to newName (never over another object) and
@@ -408,8 +423,12 @@ func placeFile(ctx context.Context, dir, oldName, newName, into string) error {
 			return err
 		}
 	}
-	_, err := fs.Move(ctx, stdpath.Join(dir, newName), folder)
-	return err
+	if err := moveRetrying(ctx, stdpath.Join(dir, newName), folder); err != nil {
+		return err
+	}
+	posters().Moved(dir, folder, newName)
+	posters().NameFolderAs(dir, into, newName)
+	return nil
 }
 
 // moveRetrying moves src into dst; while 115 is still busy with an earlier move
@@ -426,4 +445,12 @@ func moveRetrying(ctx context.Context, src, dst string) error {
 		case <-time.After(wait):
 		}
 	}
+}
+
+// placedOp is what placeFile did, for the journal.
+func placedOp(dir, oldName, newName, into string) *journalOp {
+	if into == "" {
+		return &journalOp{Op: "rename", Dir: dir, Old: oldName, New: newName}
+	}
+	return &journalOp{Op: "place", Dir: dir, Old: oldName, New: newName, Into: into}
 }

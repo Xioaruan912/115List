@@ -1,4 +1,4 @@
-import { post } from "../lib/api";
+import { get, post } from "../lib/api";
 import type { Poster } from "./posters";
 
 /** One proposed rename; no `new` means there is nothing to propose (see `reason`). */
@@ -32,6 +32,8 @@ export interface RenamePlan {
   film?: boolean;
   /** TMDB knows no film by the folder's name, but it holds films: planned film by film. */
   shelf?: boolean;
+  /** Named for a series: its earliest film here, the folder's cover once renamed. */
+  series_first?: number;
 }
 
 /** What the folder above a subfolder was planned as. */
@@ -50,6 +52,10 @@ export const tmdbRename = {
   tree: (path: string, password: string) => post<{ folders: { path: string; depth: number }[] }>("/tgvio/rename/tree", { path, password }),
   /** `subject`: what the plan named the folder after, so its new name gets that poster at once. */
   apply: (path: string, password: string, items: { old: string; new: string; into?: string }[], folder = "", subject?: RenameInherit,
-    extra?: { remove?: string[]; unwrap?: string[] }) =>
+    extra?: { remove?: string[]; unwrap?: string[]; batch?: string }) =>
     post<{ results: RenameResult[]; path: string }>("/tgvio/rename/apply", { path, password, items, folder, subject, ...extra }),
+  /** Recent 整理 runs, newest first; `undone` once put back. */
+  journal: () => get<{ items: { id: string; at: string; root: string; changes: number; deleted: number; undone: boolean }[] }>("/tgvio/rename/journal"),
+  /** Puts a 整理 run back, last change first (deleted ads stay deleted). */
+  undo: (id: string) => post<{ changes: number }>("/tgvio/rename/undo", { id }),
 };
