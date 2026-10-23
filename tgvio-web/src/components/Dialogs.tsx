@@ -328,7 +328,7 @@ function DialogFor({ dialog, onClose }: { dialog: Dialog; onClose: () => void })
     case "account":
       return <AccountDialog onClose={onClose} />;
     case "resources":
-      return <ResourceFinder initialQuery={dialog.query} initialItems={dialog.items} onClose={onClose} />;
+      return <ResourceFinder initialQuery={dialog.query} initialItems={dialog.items} base={dialog.base} folder={dialog.folder} onClose={onClose} />;
     case "decompress":
       return <DecompressDialog dir={dialog.dir} obj={dialog.obj} innerPath={dialog.innerPath} archivePass={dialog.archivePass} onClose={onClose} />;
   }

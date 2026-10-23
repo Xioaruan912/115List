@@ -32,5 +32,30 @@ export interface Series {
   root: string;
 }
 
-/** The series page of a folder; series is null when the folder is no TV series. */
-export const series = (path: string, password: string) => post<{ series: Series | null }>("/tgvio/series", { path, password });
+/** One film of a TMDB collection; place is where it is here ("." the folder itself), empty when missing. */
+export interface FilmPart {
+  id: number;
+  title: string;
+  original?: string;
+  year?: number;
+  release?: string;
+  poster?: string;
+  backdrop?: string;
+  overview?: string;
+  rating?: number;
+  place?: string;
+  released: boolean;
+}
+
+/** The TMDB collection a folder's films belong to (福尔摩斯小姐（系列）). */
+export interface Films {
+  id: number;
+  name: string;
+  overview?: string;
+  poster?: string;
+  backdrop?: string;
+  parts: FilmPart[];
+}
+
+/** The series page of a folder: a TV series, or the film collection its films belong to; both null when neither. */
+export const series = (path: string, password: string) => post<{ series: Series | null; films?: Films | null }>("/tgvio/series", { path, password });

@@ -16,7 +16,7 @@ export type Dialog =
   | { kind: "shares" }
   | { kind: "poster"; name: string }
   | { kind: "tmdb-rename"; targets: { path: string; only?: string[] }[] }
-  | { kind: "resources"; query?: string; items?: Magnet[] }
+  | { kind: "resources"; query?: string; items?: Magnet[]; base?: string; folder?: string }
   | { kind: "account" };
 
 export interface Rect { x: number; y: number; width: number; height: number }

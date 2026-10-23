@@ -166,7 +166,14 @@ function SeedRow({ item, on, onToggle }: { item: Magnet; on: boolean; onToggle: 
   );
 }
 
-export function ResourceFinder({ initialQuery = "", initialItems, onClose }: { initialQuery?: string; initialItems?: Magnet[]; onClose: () => void }) {
+/**
+ * base / folder: where to save instead of the default (a series' own folder,
+ * a season folder to fill in); folder is the one folder the download goes
+ * into, kept whatever title is picked.
+ */
+export function ResourceFinder({ initialQuery = "", initialItems, base: fixedBase, folder: fixedFolder, onClose }: {
+  initialQuery?: string; initialItems?: Magnet[]; base?: string; folder?: string; onClose: () => void;
+}) {
   const library = useLibraryScope();
   const sites = useQuery({ queryKey: ["resources"], queryFn: resources.list, staleTime: 5 * 60_000 });
   const [query, setQuery] = useState(initialQuery);
@@ -189,12 +196,12 @@ export function ResourceFinder({ initialQuery = "", initialItems, onClose }: { i
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
 
   // Where it goes: the default folder from 设置 (else the first library folder); changeable per download.
-  const [base, setBase] = useState("");
+  const [base, setBase] = useState(fixedBase ?? "");
   const defaultBase = sites.data?.folder || library.paths[0] || "";
   useEffect(() => { if (!base && defaultBase) setBase(defaultBase); }, [base, defaultBase]);
   const [where, setWhere] = useState(false);
   const [ownFolder, setOwnFolder] = useState<boolean | null>(null);
-  const [name, setName] = useState<string | null>(null);
+  const [name, setName] = useState<string | null>(fixedFolder ?? null);
   const [busy, setBusy] = useState(false);
 
   const enabledSites = sites.data?.sites ?? [];
@@ -207,7 +214,7 @@ export function ResourceFinder({ initialQuery = "", initialItems, onClose }: { i
     setTicked(new Set(next.flatMap(group => group.items.length ? [group.items[0].hash] : [])));
     setOnlySubs(false);
     setOwnFolder(null);
-    setName(null);
+    setName(fixedFolder ?? null);
     for (const group of next) {
       void matchTMDB(group.title === PASTED ? query.trim() : group.title, group.year, group.tv, group.other).then(subject =>
         setGroups(current => current?.map(g => g.key === group.key ? { ...g, subject } : g) ?? current));

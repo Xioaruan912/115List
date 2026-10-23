@@ -68,7 +68,18 @@ func TgvioSeries(c *gin.Context) {
 		return
 	}
 	if view == nil {
-		common.SuccessResp(c, gin.H{"series": nil})
+		// No TV series: maybe films of one TMDB collection.
+		films, err := posters().Films(c.Request.Context(), reqPath, entries)
+		if err != nil || films == nil {
+			common.SuccessResp(c, gin.H{"series": nil, "films": nil})
+			return
+		}
+		films.Poster, films.Backdrop = posterURL("w342", films.Poster), posterURL("w1280", films.Backdrop)
+		for i := range films.Parts {
+			films.Parts[i].Poster = posterURL("w342", films.Parts[i].Poster)
+			films.Parts[i].Backdrop = posterURL("w1280", films.Parts[i].Backdrop)
+		}
+		common.SuccessResp(c, gin.H{"series": nil, "films": films})
 		return
 	}
 	episodes := make([]seriesEpisodeOut, 0, len(view.Episodes))

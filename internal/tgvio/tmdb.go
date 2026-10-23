@@ -50,9 +50,12 @@ type Poster struct {
 	// Cat is what it is for browsing: "movie", "tv", "anime", "variety" (综艺)
 	// or "documentary", from TMDB's genres. Empty for entries made before it
 	// existed; those are filled in in the background.
-	Cat  string `json:"cat,omitempty"`
-	None bool   `json:"none,omitempty"` // looked up, nothing fits (or the user said no poster)
-	At   int64  `json:"at"`
+	Cat string `json:"cat,omitempty"`
+	// Collection: the film's TMDB series (from its details only; 0 in search results).
+	Collection     int    `json:"collection,omitempty"`
+	CollectionName string `json:"collection_name,omitempty"`
+	None           bool   `json:"none,omitempty"` // looked up, nothing fits (or the user said no poster)
+	At             int64  `json:"at"`
 }
 
 // ---------------------------------------------------------------- names
@@ -341,6 +344,11 @@ type tmdbItem struct {
 	Genres        []struct {
 		ID int `json:"id"`
 	} `json:"genres"` // in details
+	// The film's series (复仇者联盟（系列）), in a film's details.
+	BelongsToCollection *struct {
+		ID   int    `json:"id"`
+		Name string `json:"name"`
+	} `json:"belongs_to_collection"`
 }
 
 // TMDB genre ids that decide a category.
@@ -390,8 +398,12 @@ func (i tmdbItem) poster(kind string) *Poster {
 	for _, g := range i.Genres {
 		genres = append(genres, g.ID)
 	}
-	return &Poster{Kind: kind, ID: i.ID, Title: title, Original: original, Year: year, Poster: i.PosterPath,
+	p := &Poster{Kind: kind, ID: i.ID, Title: title, Original: original, Year: year, Poster: i.PosterPath,
 		Backdrop: i.BackdropPath, Overview: i.Overview, Rating: i.VoteAverage, Cat: CategoryOf(kind, genres), At: time.Now().Unix()}
+	if i.BelongsToCollection != nil && i.BelongsToCollection.ID > 0 {
+		p.Collection, p.CollectionName = i.BelongsToCollection.ID, i.BelongsToCollection.Name
+	}
+	return p
 }
 
 type searchResult struct {
@@ -529,6 +541,7 @@ type SeasonInfo struct {
 	Poster   string `json:"poster,omitempty"`
 	Year     int    `json:"year,omitempty"`
 	Episodes int    `json:"episodes"`
+	Air      string `json:"air,omitempty"` // first air date, "2026-03-01"
 }
 
 // Seasons lists a series' seasons.
@@ -545,7 +558,7 @@ func (t *TMDB) Seasons(ctx context.Context, id int) ([]SeasonInfo, error) {
 		if len(s.AirDate) >= 4 {
 			year, _ = strconv.Atoi(s.AirDate[:4])
 		}
-		out = append(out, SeasonInfo{Season: s.SeasonNumber, Name: s.Name, Poster: s.PosterPath, Year: year, Episodes: s.EpisodeCount})
+		out = append(out, SeasonInfo{Season: s.SeasonNumber, Name: s.Name, Poster: s.PosterPath, Year: year, Episodes: s.EpisodeCount, Air: s.AirDate})
 	}
 	// Regular seasons in order; specials (season 0) last.
 	sort.SliceStable(out, func(i, j int) bool {
