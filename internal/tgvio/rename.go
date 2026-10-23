@@ -953,14 +953,46 @@ func RenameWorthy(name string) bool {
 // names say different ones ("2160p"), else by number ("版本2").
 func versionTag(names []string, i int) string {
 	seen := map[string]bool{}
+	byResolution := true
 	for _, name := range names {
 		r := strings.ToLower(resolutionTag.FindString(name))
 		if r == "" || seen[r] {
-			return "版本" + strconv.Itoa(i+1)
+			byResolution = false
+			break
 		}
 		seen[r] = true
 	}
-	return strings.ToLower(resolutionTag.FindString(names[i]))
+	if byResolution {
+		return strings.ToLower(resolutionTag.FindString(names[i]))
+	}
+	// Discs of one film in a box: say what each is ("3D", "4K") when the names tell them apart.
+	if tags := discTags(names); tags != nil {
+		return tags[i]
+	}
+	return "版本" + strconv.Itoa(i+1)
+}
+
+var discTag = regexp.MustCompile(`(?i)3d|4k|2160p|imax`)
+
+// discTags names each version by its disc ("3D", "4K", "标准" for one that says
+// nothing), or nil when two names would get the same.
+func discTags(names []string) []string {
+	out := make([]string, len(names))
+	seen := map[string]bool{}
+	for i, name := range names {
+		tag := strings.ToUpper(discTag.FindString(mediaExt.ReplaceAllString(name, "")))
+		if tag == "2160P" {
+			tag = "4K"
+		}
+		if tag == "" {
+			tag = "标准"
+		}
+		if seen[tag] {
+			return nil
+		}
+		seen[tag], out[i] = true, tag
+	}
+	return out
 }
 
 // seasonsWithEpisodes counts a series' real seasons (specials, season 0, aside).

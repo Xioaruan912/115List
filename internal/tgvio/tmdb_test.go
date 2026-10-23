@@ -94,3 +94,20 @@ func TestCleanNameDiscs(t *testing.T) {
 		t.Error("halves")
 	}
 }
+
+func TestAgreesByWords(t *testing.T) {
+	for _, c := range []struct {
+		q, title string
+		want     bool
+	}{
+		{"霍比特人 五军之战", "霍比特人3：五军之战", true},
+		{"星球大战前传1 幽灵的威胁", "星球大战1：幽灵的威胁", true},
+		{"游侠索罗 星球大战外传", "星球大战外传2：游侠索罗", true},
+		{"霍比特人 五军之战", "指环王：王者无敌", false},
+		{"蝙蝠侠 黑暗骑士", "黑暗骑士崛起", false},
+	} {
+		if got := agrees(c.q, c.title); got != c.want {
+			t.Errorf("agrees(%q, %q) = %v", c.q, c.title, got)
+		}
+	}
+}

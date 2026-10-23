@@ -331,3 +331,12 @@ func TestRunsOn(t *testing.T) {
 		}
 	}
 }
+
+func TestDiscTags(t *testing.T) {
+	if got := discTags([]string{"生化危机4 4K.iso", "生化危机4 3D.iso", "生化危机4.iso"}); strings.Join(got, ",") != "4K,3D,标准" {
+		t.Errorf("tags = %v", got)
+	}
+	if got := discTags([]string{"指环王：魔戒再现1.iso", "指环王：魔戒再现2.iso"}); got != nil {
+		t.Errorf("tags = %v", got)
+	}
+}
