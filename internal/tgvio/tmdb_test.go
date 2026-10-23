@@ -119,3 +119,18 @@ func TestSequelTitle(t *testing.T) {
 		t.Error("sequelTitle")
 	}
 }
+
+func TestCleanNameDigitsAndGlued(t *testing.T) {
+	if q, y, _, _ := CleanName("2012 (2009)"); q != "2012" || y != 2009 {
+		t.Errorf("2012 (2009) -> %q %d", q, y)
+	}
+	if q, _, _, _ := CleanName("01.mkv"); q != "" {
+		t.Errorf("an episode number -> %q", q)
+	}
+	if g := gluedWhole("终结者2018.iso"); g != "终结者2018" {
+		t.Errorf("glued -> %q", g)
+	}
+	if g := gluedWhole("流浪地球 (2019).mkv"); g != "" {
+		t.Errorf("not glued -> %q", g)
+	}
+}

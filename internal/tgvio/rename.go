@@ -64,6 +64,9 @@ type RenamePlan struct {
 	// collection of someone's films, a box of several series): planned film by
 	// film; it keeps its name, and can spill its contents into the folder above.
 	Shelf bool `json:"shelf,omitempty"`
+	// SeriesFirst: the folder is named for a series; its earliest film (TMDB
+	// id), recorded as the folder's cover when it is renamed.
+	SeriesFirst int `json:"series_first,omitempty"`
 }
 
 // RenameInherit is what the folder above a subfolder was planned as, for
@@ -764,7 +767,7 @@ func (t *TMDB) PlanRenameIn(ctx context.Context, dir string, entries []RenameEnt
 		}
 		multi = len(films) > 1 || onlyDirs || shelf
 		if multi {
-			seriesName = t.seriesOf(ctx, filmTitles)
+			seriesName, plan.SeriesFirst = t.seriesOf(ctx, filmTitles)
 		}
 		// One film in several files that are no parts (a 3D and a 4K disc): the
 		// largest takes the plain name, the others a version, for the person to confirm.
@@ -958,22 +961,26 @@ func (t *TMDB) sameCollection(ctx context.Context, a, b int) bool {
 
 // seriesOf names a folder of these films when they are all of one TMDB series
 // ("" when they are not, or when TMDB has no series for them).
-func (t *TMDB) seriesOf(ctx context.Context, films map[int]string) string {
-	collection, name := 0, ""
+// first is the series' earliest film here, what the folder's own cover shows.
+func (t *TMDB) seriesOf(ctx context.Context, films map[int]string) (name string, first int) {
+	collection, firstYear := 0, 0
 	titles := make([]string, 0, len(films))
 	for id, title := range films {
 		d, err := t.cachedDetails(ctx, "movie", id)
 		if err != nil || d.Collection == 0 || collection != 0 && d.Collection != collection {
-			return ""
+			return "", 0
 		}
 		collection, name = d.Collection, d.CollectionName
+		if first == 0 || d.Year > 0 && (firstYear == 0 || d.Year < firstYear) {
+			first, firstYear = id, d.Year
+		}
 		titles = append(titles, title)
 	}
 	if len(titles) < 2 {
-		return ""
+		return "", 0
 	}
 	sort.Strings(titles)
-	return seriesFolder(titles, name)
+	return seriesFolder(titles, name), first
 }
 
 // RenameWorthy reports whether a file is one the planner names (a video, a subtitle or .nfo).

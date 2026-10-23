@@ -17,6 +17,7 @@ import { KindIcon } from "./KindIcon";
 import { reason } from "../lib/errors";
 import { taskName } from "../lib/taskName";
 import { organize } from "../api/organize";
+import { undoRun } from "./TmdbRename";
 import { encodePath } from "../lib/path";
 import { navigate } from "wouter/use-browser-location";
 
@@ -184,8 +185,8 @@ function AutoOrganized() {
       <h3 className="px-2 pb-1 text-[12px] font-medium text-muted">下载后自动整理</h3>
       <ul>
         {items.map(item => (
-          <li key={item.path}>
-            <button className="flex w-full items-center gap-3 rounded-xl px-2 py-2 text-left transition-colors hover:bg-[var(--hover)]" onClick={() => open(item.path)}>
+          <li key={item.path} className="flex items-center gap-1">
+            <button className="flex min-w-0 flex-1 items-center gap-3 rounded-xl px-2 py-2 text-left transition-colors hover:bg-[var(--hover)]" onClick={() => open(item.path)}>
               {item.done ? <CheckCircleIcon size={18} weight="fill" className="shrink-0 text-accent-text" /> : <WarningCircleIcon size={18} weight="fill" className="shrink-0 text-muted" />}
               <span className="min-w-0 flex-1">
                 <span className="block truncate text-[13.5px]">{item.path.slice(item.path.lastIndexOf("/") + 1)}</span>
@@ -194,6 +195,10 @@ function AutoOrganized() {
                 </span>
               </span>
             </button>
+            {item.done && item.batch && (
+              <button className="h-8 shrink-0 rounded-lg px-2.5 text-[12.5px] text-muted transition-colors hover:bg-[var(--hover)] hover:text-ink"
+                onClick={() => void undoRun(item.batch as string).then(() => recent.refetch())}>撤销</button>
+            )}
           </li>
         ))}
       </ul>

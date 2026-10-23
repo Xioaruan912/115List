@@ -2,12 +2,17 @@ package handles
 
 import (
 	"context"
+	"encoding/json"
+	"os"
 	stdpath "path"
+	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/OpenListTeam/OpenList/v4/cmd/flags"
 	"github.com/OpenListTeam/OpenList/v4/internal/conf"
 	"github.com/OpenListTeam/OpenList/v4/internal/fs"
 	"github.com/OpenListTeam/OpenList/v4/internal/model"
@@ -39,6 +44,8 @@ type autoNote struct {
 	At   time.Time `json:"at"`
 	Done bool      `json:"done"`
 	Why  string    `json:"why,omitempty"` // "person": something needs a person; "error": it failed
+	// Batch: the journal's run, to put it back (rename/undo).
+	Batch string `json:"batch,omitempty"`
 }
 
 func noteAuto(n autoNote) {
@@ -54,7 +61,12 @@ func noteAuto(n autoNote) {
 	if len(autoRecent) > 20 {
 		autoRecent = autoRecent[:20]
 	}
+	if raw, err := json.Marshal(autoRecent); err == nil {
+		_ = os.WriteFile(autoRecentFile(), raw, 0o600)
+	}
 }
+
+func autoRecentFile() string { return filepath.Join(flags.DataDir, "tgvio", "organize-recent.json") }
 
 const (
 	autoOrganizeEvery = 3 * time.Minute
@@ -64,6 +76,9 @@ const (
 // StartTgvioAutoOrganize starts the background organizer (once).
 func StartTgvioAutoOrganize() {
 	autoOrganizeOnce.Do(func() {
+		if raw, err := os.ReadFile(autoRecentFile()); err == nil {
+			_ = json.Unmarshal(raw, &autoRecent)
+		}
 		go func() {
 			time.Sleep(time.Minute)
 			for {
@@ -113,7 +128,7 @@ func autoOrganizeRound() {
 			autoTried[dir] = time.Now()
 			continue
 		}
-		noteAuto(autoNote{Path: final, At: time.Now(), Done: true})
+		noteAuto(autoNote{Path: final, At: time.Now(), Done: true, Batch: lastAutoBatch})
 		delete(autoTried, dir)
 		_ = organizeStore().Mark(dir, false)
 		if final != dir {
@@ -166,6 +181,8 @@ type autoFolder struct {
 // when nothing needs a person. done is false (and nothing is changed) when the
 // download has not landed yet, or a person has to look (final is "" then);
 // final is the folder's path afterwards.
+var lastAutoBatch string // the journal run autoOrganize used last (one round at a time)
+
 func autoOrganize(ctx context.Context, root string) (done bool, final string, err error) {
 	tree, err := renameTreeOf(ctx, root, true)
 	if err != nil {
@@ -226,6 +243,12 @@ func autoOrganize(ctx context.Context, root string) (done bool, final string, er
 	sort.SliceStable(folders, func(i, j int) bool { return folders[i].depth > folders[j].depth })
 	final = root
 	pause := func() { time.Sleep(250 * time.Millisecond) }
+	batch := "auto-" + strconv.FormatInt(time.Now().UnixNano(), 36)
+	lastAutoBatch = batch
+	var admin uint
+	if u, ok := ctx.Value(conf.UserKey).(*model.User); ok {
+		admin = u.ID
+	}
 	for _, f := range folders {
 		rank := func(item tgvio.RenameItem) int {
 			switch item.Action {
@@ -241,13 +264,21 @@ func autoOrganize(ctx context.Context, root string) (done bool, final string, er
 		for _, item := range items {
 			switch {
 			case item.Action == "delete":
-				err = removeJunk(ctx, f.path, item.Old)
+				if err = removeJunk(ctx, f.path, item.Old); err == nil {
+					record(batch, admin, nil, 1)
+				}
 			case item.Action == "unwrap":
-				err = unwrapFolder(ctx, f.path, item.Old)
+				var moved []string
+				moved, err = unwrapFolder(ctx, f.path, item.Old)
+				if len(moved) > 0 {
+					record(batch, admin, &journalOp{Op: "unwrap", Dir: f.path, Old: item.Old, Moved: moved}, 0)
+				}
 			case item.Action == "spill" || item.Reason == "version":
 				continue // a person decides
 			case item.Kind != "folder" && item.New != "":
-				err = placeFile(ctx, f.path, item.Old, item.New, item.Into)
+				if err = placeFile(ctx, f.path, item.Old, item.New, item.Into); err == nil {
+					record(batch, admin, placedOp(f.path, item.Old, item.New, item.Into), 0)
+				}
 			default:
 				continue
 			}
@@ -264,13 +295,16 @@ func autoOrganize(ctx context.Context, root string) (done bool, final string, er
 				continue
 			}
 			var subject *tgvio.RenameInherit
-			if s := f.plan.Subject; s != nil {
+			if f.plan.SeriesFirst > 0 {
+				subject = &tgvio.RenameInherit{Kind: "movie", ID: f.plan.SeriesFirst}
+			} else if s := f.plan.Subject; s != nil {
 				subject = &tgvio.RenameInherit{Kind: s.Kind, ID: s.ID, Season: f.plan.Season}
 			}
 			moved, err := renameFolderTo(ctx, f.path, item.New, subject)
 			if err != nil {
 				return false, final, err
 			}
+			record(batch, admin, &journalOp{Op: "folder", Dir: stdpath.Dir(f.path), Old: stdpath.Base(f.path), New: item.New}, 0)
 			if f.depth == 0 {
 				final = moved
 			}
