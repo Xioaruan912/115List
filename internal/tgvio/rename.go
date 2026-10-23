@@ -129,7 +129,7 @@ func seriesFolder(titles []string, collection string) string {
 			prefix = string(a[:i])
 		}
 	}
-	prefix = strings.TrimRight(prefix, " 0123456789:：·.-_（(【[之的")
+	prefix = strings.TrimRight(prefix, " 0123456789:：·.-_（(【[之的与和")
 	if prefix != "" {
 		return SafeName(prefix)
 	}

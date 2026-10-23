@@ -246,6 +246,9 @@ func TestIsJunkAndSeriesFolder(t *testing.T) {
 	if got := seriesFolder([]string{"复仇者联盟", "复仇者联盟2：奥创纪元"}, ""); got != "复仇者联盟" {
 		t.Errorf("series = %q", got)
 	}
+	if got := seriesFolder([]string{"哈利·波特与魔法石", "哈利·波特与密室"}, ""); got != "哈利·波特" {
+		t.Errorf("series = %q", got)
+	}
 	if got := seriesFolder([]string{"蜘蛛侠", "超凡蜘蛛侠"}, "蜘蛛侠（系列）"); got != "蜘蛛侠" {
 		t.Errorf("series from collection = %q", got)
 	}
