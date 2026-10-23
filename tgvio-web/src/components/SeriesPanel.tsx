@@ -1,14 +1,16 @@
-import { CaretRightIcon, CheckIcon, PlayIcon, StarIcon } from "@phosphor-icons/react";
+import { CaretRightIcon, CheckIcon, MagnetIcon, PlayIcon, StarIcon } from "@phosphor-icons/react";
 import { useQuery } from "@tanstack/react-query";
 import { motion } from "motion/react";
 import { useMemo, useSyncExternalStore } from "react";
 import { useLocation } from "wouter";
 import { posterSrc } from "../api/posters";
-import { series, type SeriesEpisode } from "../api/series";
+import { series, type Films, type SeriesEpisode } from "../api/series";
+import { useResourceRoot } from "../hooks/useResourceRoot";
+import { kindOf } from "../lib/kind";
 import { passwordFor } from "../hooks/useDir";
 import { useLibraryScope } from "../hooks/useLibraryScope";
 import { spring } from "../lib/motion";
-import { encodePath, join } from "../lib/path";
+import { basename, encodePath, join, parent } from "../lib/path";
 import { getProgress, subscribeProgress, watched } from "../lib/progress";
 import type { Obj } from "../lib/types";
 import { useUi } from "../stores/ui";
@@ -22,6 +24,25 @@ import { useUi } from "../stores/ui";
 
 const SEASONISH = /(第\s*[\d一二三四五六七八九十]+\s*季|season\s*\d+|\bS\d{1,2}\b)/i;
 const EPISODISH = /(S\d{1,2}\s*E\d{1,4}|第\s*\d+\s*[集话話]|\bE[Pp]?\d{1,3}\b|\[\d{1,3}\]| - \d{1,3}[ .[(])/i;
+
+const CN = ["零", "一", "二", "三", "四", "五", "六", "七", "八", "九"];
+/** 1..99 as season folders are named: 二, 十二, 二十 (the server's cnNumeral). */
+function cnNumeral(n: number): string {
+  if (n <= 0 || n >= 100) return String(n);
+  if (n < 10) return CN[n];
+  if (n === 10) return "十";
+  if (n < 20) return "十" + CN[n % 10];
+  return CN[Math.floor(n / 10)] + "十" + (n % 10 ? CN[n % 10] : "");
+}
+
+/** Out already: an air or release date today or before. */
+function aired(date?: string): boolean {
+  return !!date && date <= new Date().toISOString().slice(0, 10);
+}
+
+function openFinder(query: string, base: string, folder?: string): void {
+  useUi.getState().openDialog({ kind: "resources", query, base, folder });
+}
 
 let tick = 0;
 subscribeProgress(() => { tick++; });
@@ -53,10 +74,14 @@ function nextUp(path: string, episodes: SeriesEpisode[]): { episode: SeriesEpiso
 export function SeriesPanel({ path, items }: { path: string; items: Obj[] }) {
   const [, navigate] = useLocation();
   const library = useLibraryScope();
-  const looksLike = useMemo(
-    () => items.some(item => item.is_dir ? SEASONISH.test(item.name) : EPISODISH.test(item.name)),
-    [items],
-  );
+  // A series (season folders, episode names) or a few films (a film's folder, a series of films):
+  // a folder of many is a shelf, not one title.
+  const looksLike = useMemo(() => {
+    if (items.some(item => item.is_dir ? SEASONISH.test(item.name) : EPISODISH.test(item.name))) return true;
+    const titles = items.filter(item => item.is_dir || kindOf(item) === "video").length;
+    return titles > 0 && titles <= 16;
+  }, [items]);
+  const finder = useResourceRoot();
   const query = useQuery({
     queryKey: ["series", path, items.length],
     queryFn: () => series(path, passwordFor(path)),
@@ -66,12 +91,17 @@ export function SeriesPanel({ path, items }: { path: string; items: Obj[] }) {
   });
   useSyncExternalStore(subscribeProgress, () => tick);
   const data = query.data?.series;
+  if (!data && query.data?.films) return <FilmsPanel path={path} films={query.data.films} canFind={finder.enabled} />;
   if (!data) return null;
   const { base, subject } = data;
   const backdrop = base.backdrop || subject.backdrop;
   const up = nextUp(path, data.episodes);
   const play = (episode: SeriesEpisode): void => { if (episode.file) useUi.getState().openViewer(path, episode.file, null); };
   const have = data.episodes.filter(e => e.file).length;
+  // Missing: out already, not here. Not out yet is not missing.
+  const missingEpisodes = data.season ? data.episodes.filter(e => !e.file && aired(e.air)) : [];
+  const missingSeasons = !data.season ? data.seasons.filter(s => s.season > 0 && !s.folder && aired(s.air)) : [];
+  const seasonFolder = (season: number, year?: number) => `${base.title} 第${cnNumeral(season)}季${year ? ` (${year})` : ""}`;
 
   return (
     <motion.section className="relative mb-8 overflow-hidden rounded-[var(--radius-sheet)] bg-stage text-white" style={{ boxShadow: "inset 0 0 0 1px var(--line)" }}
@@ -88,6 +118,8 @@ export function SeriesPanel({ path, items }: { path: string; items: Obj[] }) {
             <p className="mt-1.5 flex flex-wrap items-center gap-x-3 text-[13px] text-white/70 tabular">
               {base.year ? <span>{base.year}</span> : null}
               {data.season ? <span>第 {data.season} 季{data.episodes.length ? ` · 有 ${have}/${data.episodes.length} 集` : ""}</span> : <span>{data.seasons.filter(s => s.season > 0).length} 季</span>}
+              {missingEpisodes.length > 0 && <span className="rounded-full bg-white/12 px-2 py-0.5 text-[12px] text-white">缺 {missingEpisodes.length} 集</span>}
+              {missingSeasons.length > 0 && <span className="rounded-full bg-white/12 px-2 py-0.5 text-[12px] text-white">缺 {missingSeasons.length} 季</span>}
               {base.rating ? <span className="inline-flex items-center gap-1"><StarIcon size={12} weight="fill" className="text-accent" />{base.rating.toFixed(1)}</span> : null}
             </p>
             {(subject.overview || base.overview) && <p className="mt-3 line-clamp-3 text-[13.5px] leading-relaxed text-white/75">{subject.overview || base.overview}</p>}
@@ -95,6 +127,18 @@ export function SeriesPanel({ path, items }: { path: string; items: Obj[] }) {
               {up && (
                 <button className="btn btn-primary h-10 px-4" onClick={() => play(up.episode)}>
                   <PlayIcon size={15} weight="fill" />{up.resume ? "继续看" : "开始看"} 第 {up.episode.episode} 集
+                </button>
+              )}
+              {finder.enabled && missingEpisodes.length > 0 && (
+                <button className="btn h-10 bg-white/12 px-4 text-white backdrop-blur-md hover:bg-white/20" title={`缺：${missingEpisodes.map(e => `第 ${e.episode} 集`).join("、")}`}
+                  onClick={() => openFinder(base.title, parent(path), basename(path))}>
+                  <MagnetIcon size={15} />找缺的 {missingEpisodes.length} 集
+                </button>
+              )}
+              {finder.enabled && missingSeasons.length === 1 && (
+                <button className="btn h-10 bg-white/12 px-4 text-white backdrop-blur-md hover:bg-white/20"
+                  onClick={() => openFinder(base.title, path, seasonFolder(missingSeasons[0].season, missingSeasons[0].year))}>
+                  <MagnetIcon size={15} />找第 {missingSeasons[0].season} 季
                 </button>
               )}
               {data.root && (
@@ -109,13 +153,18 @@ export function SeriesPanel({ path, items }: { path: string; items: Obj[] }) {
         {!data.season && data.seasons.length > 0 && (
           <div className="mt-6 flex gap-3 overflow-x-auto pb-1 [scrollbar-width:none]">
             {data.seasons.map(s => (
-              <button key={s.season} disabled={!s.folder} onClick={() => s.folder && navigate(encodePath(join(path, s.folder)))}
-                className={`group/season w-[104px] shrink-0 text-left ${s.folder ? "" : "opacity-45"}`}>
+              <button key={s.season} disabled={!s.folder && !(finder.enabled && aired(s.air) && s.season > 0)}
+                title={!s.folder && finder.enabled && aired(s.air) ? `找第 ${s.season} 季的资源` : undefined}
+                onClick={() => {
+                  if (s.folder) navigate(encodePath(join(path, s.folder)));
+                  else if (finder.enabled && aired(s.air) && s.season > 0) openFinder(base.title, path, seasonFolder(s.season, s.year));
+                }}
+                className={`group/season w-[104px] shrink-0 text-left ${s.folder ? "" : "opacity-45 enabled:hover:opacity-80"}`}>
                 <div className="aspect-[2/3] overflow-hidden rounded-[10px] bg-white/10 transition-transform duration-300 ease-[var(--ease-expo)] group-enabled/season:group-hover/season:-translate-y-1">
                   {s.poster && <img src={posterSrc(s.poster, "w185")} alt="" loading="lazy" className="size-full object-cover" />}
                 </div>
                 <p className="mt-1.5 truncate text-[12.5px] font-medium">{s.season ? `第 ${s.season} 季` : "特别篇"}</p>
-                <p className="text-[11.5px] text-white/55 tabular">{s.folder ? `${s.episodes} 集` : "未下载"}</p>
+                <p className="text-[11.5px] text-white/55 tabular">{s.folder ? `${s.episodes} 集` : aired(s.air) ? "未下载" : s.air ? `${s.air} 播出` : "还没播出"}</p>
               </button>
             ))}
           </div>
@@ -143,7 +192,7 @@ export function SeriesPanel({ path, items }: { path: string; items: Obj[] }) {
                     {seen > 0 && seen < 1 && (
                       <span className="absolute inset-x-0 bottom-0 h-1 bg-black/45"><span className="block h-full origin-left bg-accent" style={{ transform: `scaleX(${seen})` }} /></span>
                     )}
-                    {!e.file && <span className="absolute bottom-1.5 left-1.5 rounded-full bg-black/60 px-2 py-0.5 text-[10.5px]">未下载</span>}
+                    {!e.file && <span className="absolute bottom-1.5 left-1.5 rounded-full bg-black/60 px-2 py-0.5 text-[10.5px]">{aired(e.air) ? "未下载" : e.air ? `${e.air} 播出` : "还没播出"}</span>}
                   </div>
                   <p className="mt-2 truncate text-[13px] font-medium"><span className="text-white/55 tabular">{e.episode}. </span>{e.name || `第 ${e.episode} 集`}</p>
                   <p className="mt-0.5 line-clamp-2 text-[12px] leading-snug text-white/55">{e.overview || [e.air, clock(e.runtime)].filter(Boolean).join(" · ")}</p>
@@ -152,6 +201,83 @@ export function SeriesPanel({ path, items }: { path: string; items: Obj[] }) {
             })}
           </div>
         )}
+      </div>
+    </motion.section>
+  );
+}
+
+/**
+ * A folder of films of one TMDB collection (or one film of it): the whole
+ * collection, which films are here, which are missing (a tap finds them),
+ * which are not out yet.
+ */
+function FilmsPanel({ path, films, canFind }: { path: string; films: Films; canFind: boolean }) {
+  const [, navigate] = useLocation();
+  // The folder is one film ("."): its series' other films go beside it.
+  const single = films.parts.some(part => part.place === ".");
+  const shelf = single ? parent(path) : path;
+  const have = films.parts.filter(part => part.place).length;
+  const missing = films.parts.filter(part => !part.place && part.released);
+  const backdrop = films.backdrop || films.parts.find(part => part.place)?.backdrop;
+  const plain = films.name.replace(/[（(]系列[）)]$|系列$|\s*Collection$/i, "").trim();
+  const open = (place: string): void => {
+    if (place === ".") return;
+    if (/\.[a-z0-9]{2,4}$/i.test(place)) useUi.getState().openViewer(path, place, null);
+    else navigate(encodePath(join(path, place)));
+  };
+  return (
+    <motion.section className="relative mb-8 overflow-hidden rounded-[var(--radius-sheet)] bg-stage text-white" style={{ boxShadow: "inset 0 0 0 1px var(--line)" }}
+      initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={spring.soft} aria-label={`${films.name} 系列信息`}>
+      {backdrop && (
+        <img src={posterSrc(backdrop)} alt="" className="absolute inset-0 size-full object-cover opacity-45 sm:left-auto sm:w-[70%]" style={{ maskImage: "linear-gradient(90deg, transparent, black 45%)" }} />
+      )}
+      <div className="absolute inset-0 bg-gradient-to-t from-stage via-stage/70 to-stage/20" />
+      <div className="relative p-5 sm:p-8">
+        <div className="flex gap-5">
+          {films.poster && <img src={posterSrc(films.poster, "w342")} alt="" className="hidden h-[168px] w-[112px] shrink-0 rounded-[10px] object-cover shadow-2xl sm:block" />}
+          <div className="min-w-0 sm:max-w-[60ch]">
+            <h2 className="text-[clamp(24px,3.4vw,38px)] font-semibold leading-tight tracking-[-0.03em]">{films.name}</h2>
+            <p className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[13px] text-white/70 tabular">
+              <span>{films.parts.length} 部 · 有 {have} 部</span>
+              {missing.length > 0 && <span className="rounded-full bg-white/12 px-2 py-0.5 text-[12px] text-white">缺 {missing.length} 部</span>}
+            </p>
+            {films.overview && <p className="mt-3 line-clamp-3 text-[13.5px] leading-relaxed text-white/75">{films.overview}</p>}
+            {canFind && missing.length > 0 && (
+              <div className="mt-4 flex flex-wrap gap-2">
+                <button className="btn btn-primary h-10 px-4" onClick={() => openFinder(missing.length === 1 ? missing[0].title : plain, shelf)}>
+                  <MagnetIcon size={15} />{missing.length === 1 ? `找「${missing[0].title}」` : `找缺的 ${missing.length} 部`}
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div className="-mx-5 mt-6 flex snap-x gap-3 overflow-x-auto px-5 pb-1 [scrollbar-width:none] sm:-mx-8 sm:px-8">
+          {films.parts.map(part => {
+            const here = !!part.place;
+            const findable = !here && part.released && canFind;
+            return (
+              <button key={part.id} disabled={!here && !findable}
+                onClick={() => { if (part.place) open(part.place); else if (findable) openFinder(part.title, shelf); }}
+                title={here ? part.place === "." ? "就是这个文件夹" : part.place : findable ? `找「${part.title}」的资源` : part.release ? `${part.release} 上映` : "还没上映"}
+                className={`group/part w-[120px] shrink-0 snap-start text-left ${here ? "" : "opacity-50 enabled:hover:opacity-85"}`}>
+                <div className="relative aspect-[2/3] overflow-hidden rounded-[10px] bg-white/10 transition-transform duration-300 ease-[var(--ease-expo)] group-enabled/part:group-hover/part:-translate-y-1">
+                  {part.poster && <img src={posterSrc(part.poster, "w342")} alt="" loading="lazy" className="size-full object-cover" />}
+                  {part.place === "." && <span className="absolute left-1.5 top-1.5 rounded-full bg-accent px-2 py-0.5 text-[10.5px] font-medium text-accent-ink">当前</span>}
+                  {!here && (
+                    <span className="absolute inset-x-1.5 bottom-1.5 flex items-center justify-center gap-1 rounded-full bg-black/65 px-2 py-0.5 text-[10.5px] backdrop-blur-md">
+                      {findable ? <><MagnetIcon size={11} />找资源</> : part.released ? "未下载" : part.release ? `${part.release} 上映` : "还没上映"}
+                    </span>
+                  )}
+                </div>
+                <p className="mt-1.5 line-clamp-2 text-[12.5px] font-medium leading-snug">{part.title}</p>
+                <p className="text-[11.5px] text-white/55 tabular">
+                  {part.year || ""}{part.rating ? <span className="ml-1.5 inline-flex items-center gap-0.5"><StarIcon size={10} weight="fill" className="text-accent" />{part.rating.toFixed(1)}</span> : null}
+                </p>
+              </button>
+            );
+          })}
+        </div>
       </div>
     </motion.section>
   );

@@ -39,26 +39,14 @@ jobs:
           git tag -l
           npx changelogithub --output CHANGELOG.md
 
-      - name: Trim release notes
-        run: |
-          python - <<'PY'
-          from pathlib import Path
-          text = Path("CHANGELOG.md").read_text(encoding="utf-8")
-          limit = 120_000
-          if len(text) > limit:
-              text = text[:limit].rsplit("\n", 1)[0]
-              text += "\n\n> Release notes truncated. Download `CHANGELOG.md` for the full list.\n"
-          Path("RELEASE_NOTES.md").write_text(text, encoding="utf-8")
-          PY
-
       - name: Upload assets to beta release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           if ! gh release view beta; then
-            gh release create beta --prerelease --notes-file RELEASE_NOTES.md
+            gh release create beta --prerelease --notes-file CHANGELOG.md
           else
-            gh release edit beta --prerelease --notes-file RELEASE_NOTES.md
+            gh release edit beta --prerelease --notes-file CHANGELOG.md
           fi
           gh release upload beta "CHANGELOG.md" --clobber
 
@@ -107,6 +95,11 @@ jobs:
             musl_static: "false"
           - target: "android-*" #android
             hash: "md5-android"
+            flags: ""
+            goflags: ""
+            musl_static: "false"
+          - target: "freebsd-*" #freebsd
+            hash: "md5-freebsd"
             flags: ""
             goflags: ""
             musl_static: "false"

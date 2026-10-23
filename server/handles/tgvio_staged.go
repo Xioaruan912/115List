@@ -13,6 +13,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/OpenListTeam/OpenList/v4/cmd/flags"
@@ -186,6 +187,14 @@ func stagedFor(c *gin.Context, id string) (*stagedSession, bool) {
 		return nil, false
 	}
 	return s, true
+}
+
+func freeBytes(dir string) int64 {
+	var st syscall.Statfs_t
+	if syscall.Statfs(dir, &st) != nil {
+		return -1
+	}
+	return int64(st.Bavail) * int64(st.Bsize)
 }
 
 // TgvioStagedInit: POST /api/fs/staged/init, headers like /fs/put (File-Path, X-File-Size, Overwrite, Last-Modified)

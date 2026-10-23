@@ -16,6 +16,7 @@ import { SharePage } from "./pages/SharePage";
 import { usePrefs } from "./stores/prefs";
 import { useSession } from "./stores/session";
 import { onUploadFinished, useUploads } from "./stores/uploads";
+import { measureDevice, useLite } from "./lib/lite";
 
 const Manage = lazy(() => import("./pages/manage/Manage"));
 const Library = lazy(() => import("./pages/Library"));
@@ -75,14 +76,19 @@ export function App() {
     return () => media.removeEventListener("change", onChange);
   }, [theme]);
 
+  // 精简动效 (lib/lite.ts): CSS drops blur, grain and drift under [data-motion="lite"].
+  const lite = useLite();
+  useEffect(() => { document.documentElement.dataset.motion = lite ? "lite" : "full"; }, [lite]);
+  useEffect(() => { if (usePrefs.getState().motion === "auto") measureDevice(); }, []);
+
   return (
     <QueryClientProvider client={queryClient}>
-      <MotionConfig reducedMotion="user">
+      <MotionConfig reducedMotion={lite ? "always" : "user"}>
         <Router base={basePath}>
           <Routes />
         </Router>
         <Toaster />
-        <div className="grain" aria-hidden />
+        {!lite && <div className="grain" aria-hidden />}
       </MotionConfig>
     </QueryClientProvider>
   );

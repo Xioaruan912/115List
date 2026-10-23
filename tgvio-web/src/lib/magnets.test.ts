@@ -70,7 +70,7 @@ group("magnets", () => {
   });
 
   it("names a series folder after what the titles share", () => {
-    expect(seriesName(["潜伏", "潜伏2", "潜伏3：最终章"])).toBe("潜伏 系列");
+    expect(seriesName(["招魂", "招魂2", "招魂3：恶魔迫我"])).toBe("招魂");
     expect(seriesName(["蜘蛛侠", "神探夏洛克"])).toBe("蜘蛛侠");
   });
 

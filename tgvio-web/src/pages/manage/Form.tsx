@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { Select } from "../../components/Select";
 
 export interface FieldSpec {
   name: string;
@@ -50,10 +51,8 @@ export function Field({ spec, value, onChange, adornment }: { spec: FieldSpec; v
   if (spec.type === "select") {
     const options = (spec.options ?? "").split(",").map(option => option.trim()).filter(Boolean);
     control = (
-      <select id={id} className="field" value={String(value ?? "")} disabled={spec.readOnly} onChange={event => onChange(event.target.value)}>
-        {!spec.required && <option value="">（默认）</option>}
-        {options.map(option => <option key={option} value={option}>{OPTION_LABELS[option] ?? option}</option>)}
-      </select>
+      <Select label={spec.name} value={String(value ?? "")} disabled={spec.readOnly} onChange={next => onChange(next)}
+        options={[...(spec.required ? [] : [["", "（默认）"] as const]), ...options.map(option => [option, OPTION_LABELS[option] ?? option] as const)]} />
     );
   } else if (spec.type === "text") {
     control = <textarea id={id} className="field font-mono text-[12.5px]" rows={3} value={String(value ?? "")} readOnly={spec.readOnly} onChange={event => onChange(event.target.value)} />;

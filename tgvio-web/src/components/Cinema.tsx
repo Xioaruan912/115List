@@ -1,6 +1,6 @@
 import { CheckIcon, FolderSimpleIcon, InfoIcon, PlayIcon, ShuffleIcon, StarIcon } from "@phosphor-icons/react";
 import { posterSrc, type Poster as Art } from "../api/posters";
-import { AnimatePresence, motion, useMotionTemplate, useMotionValue, useReducedMotion, useSpring, useTransform } from "motion/react";
+import { AnimatePresence, motion, useMotionTemplate, useMotionValue, useReducedMotionConfig, useSpring, useTransform } from "motion/react";
 import { memo, useEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type MouseEvent } from "react";
 import { useCover } from "../hooks/useCover";
 import { formatBytes, formatDate } from "../lib/format";
@@ -44,9 +44,12 @@ function usePicture(dir: string, obj: Obj, ref: React.RefObject<Element | null>,
   return obj.thumb || cover?.thumbs[0] || "";
 }
 
+const NONE = new Set<string>();
+
 /* -------------------------------------------------------------- poster */
 
-const Poster = memo(function Poster({ dir, obj, art, index, handlers, onFocus }: {
+const Poster = memo(function Poster({ dir, obj, art, index, handlers, onFocus, selected = false }: {
+  selected?: boolean;
   dir: string;
   obj: Obj;
   art?: Art;
@@ -54,7 +57,7 @@ const Poster = memo(function Poster({ dir, obj, art, index, handlers, onFocus }:
   handlers: TileHandlers;
   onFocus: (obj: Obj) => void;
 }) {
-  const reduced = useReducedMotion();
+  const reduced = useReducedMotionConfig();
   const frame = useRef<HTMLDivElement>(null);
   const own = usePicture(dir, obj, frame, !art);
   const picture = art?.poster ? posterSrc(art.poster, "w500") : own;
@@ -113,7 +116,14 @@ const Poster = memo(function Poster({ dir, obj, art, index, handlers, onFocus }:
       tabIndex={0}
       role="button"
       aria-label={obj.name}
+      aria-selected={selected}
     >
+      {/* Selected (Ctrl / Shift click, long press): a ring and a tick over the poster. */}
+      {selected && (
+        <span className="pointer-events-none absolute -inset-1 z-[2] rounded-[15px]" style={{ boxShadow: "0 0 0 2.5px var(--accent)" }}>
+          <span className="absolute right-2.5 top-2.5 grid size-6 place-items-center rounded-full bg-accent text-accent-ink"><CheckIcon size={14} weight="bold" /></span>
+        </span>
+      )}
       <motion.div
         ref={frame}
         data-thumb
@@ -160,7 +170,7 @@ function Billboard({ dir, obj, art, handlers, onShuffle, onHold }: {
   /** The pointer is over the billboard: the rotation waits. */
   onHold: (hold: boolean) => void;
 }) {
-  const reduced = useReducedMotion();
+  const reduced = useReducedMotionConfig();
   const ref = useRef<HTMLDivElement>(null);
   const own = usePicture(dir, obj, ref, !art);
   const picture = art?.backdrop ? posterSrc(art.backdrop) : art?.poster ? posterSrc(art.poster, "w780") : own;
@@ -270,6 +280,7 @@ function ContinueRow({ dir, items, handlers }: { dir: string; items: Obj[]; hand
 export function Cinema({ dir, items, handlers, posters = {} }: { dir: string; items: Obj[]; handlers: TileHandlers; posters?: Record<string, Art> }) {
   const [shown, setShown] = useState(PAGE);
   const [focused, setFocused] = useState<Obj | null>(null);
+  const selected = useUi(state => state.selectionDir === dir ? state.selected : NONE);
   // Random recommendations: things with TMDB art (a backdrop if any have one),
   // else videos, else anything. A new pick on every visit and every ROTATE ms.
   const pool = useMemo(() => {
@@ -282,7 +293,7 @@ export function Cinema({ dir, items, handlers, posters = {} }: { dir: string; it
   }, [items, posters]);
   const [seed, setSeed] = useState(() => Math.random());
   const [held, setHeld] = useState(false);
-  const reduced = useReducedMotion();
+  const reduced = useReducedMotionConfig();
   const shuffle = (): void => {
     setFocused(null);
     // Never the same one twice in a row.
@@ -314,7 +325,7 @@ export function Cinema({ dir, items, handlers, posters = {} }: { dir: string; it
         <h3 className="mb-3 text-[17px] font-semibold tracking-tight">全部 <span className="ml-1 text-[13px] font-normal text-muted tabular">{items.length}</span></h3>
         <div className="grid grid-cols-3 gap-x-2.5 gap-y-5 sm:grid-cols-[repeat(auto-fill,minmax(150px,1fr))] sm:gap-x-5 sm:gap-y-7">
           {items.slice(0, shown).map((obj, index) => (
-            <Poster key={obj.name} dir={dir} obj={obj} art={posters[obj.name]} index={index} handlers={handlers} onFocus={setFocused} />
+            <Poster key={obj.name} dir={dir} obj={obj} art={posters[obj.name]} index={index} handlers={handlers} onFocus={setFocused} selected={selected.has(obj.name)} />
           ))}
         </div>
         {items.length > shown && (

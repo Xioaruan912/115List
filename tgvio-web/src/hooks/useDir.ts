@@ -5,11 +5,30 @@ import { ApiError } from "../lib/api";
 
 const PASSWORDS = "tgvio-web:passwords";
 
+// Folder passwords are asked once per device: kept in localStorage for 30 days
+// (they used to be per tab, so every new tab asked again), dropped on sign-out.
+const TTL = 30 * 86_400_000;
+
 function loadPasswords(): Record<string, string> {
-  try { return JSON.parse(sessionStorage.getItem(PASSWORDS) ?? "{}") as Record<string, string>; } catch { return {}; }
+  try {
+    const saved = JSON.parse(localStorage.getItem(PASSWORDS) ?? "{}") as { at?: number; list?: Record<string, string> };
+    const old = JSON.parse(sessionStorage.getItem(PASSWORDS) ?? "{}") as Record<string, string>;
+    const fresh = saved.at && Date.now() - saved.at < TTL ? saved.list ?? {} : {};
+    return { ...old, ...fresh };
+  } catch { return {}; }
 }
 
 const passwords = loadPasswords();
+
+function savePasswords(): void {
+  try { localStorage.setItem(PASSWORDS, JSON.stringify({ at: Date.now(), list: passwords })); } catch { /* ignore */ }
+}
+
+/** Sign-out: this device forgets the folder passwords. */
+export function forgetPasswords(): void {
+  for (const key of Object.keys(passwords)) delete passwords[key];
+  try { localStorage.removeItem(PASSWORDS); sessionStorage.removeItem(PASSWORDS); } catch { /* ignore */ }
+}
 
 /** The password a user typed for this folder or the nearest ancestor. */
 export function passwordFor(path: string): string {
@@ -21,7 +40,7 @@ export function passwordFor(path: string): string {
 
 export function rememberPassword(path: string, password: string): void {
   passwords[path] = password;
-  try { sessionStorage.setItem(PASSWORDS, JSON.stringify(passwords)); } catch { /* ignore */ }
+  savePasswords();
 }
 
 export const dirKey = (path: string) => ["list", path] as const;

@@ -27,24 +27,6 @@ env:
     type=raw,value=beta,enable={{is_default_branch}}
 
 jobs:
-  check_dockerhub:
-    name: Check DockerHub credentials
-    runs-on: ubuntu-latest
-    outputs:
-      configured: ${{ steps.check.outputs.configured }}
-    steps:
-      - name: Check DOCKERHUB_TOKEN
-        id: check
-        env:
-          TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
-        run: |
-          if [ -n "$TOKEN" ]; then
-            echo "configured=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "configured=false" >> "$GITHUB_OUTPUT"
-            echo "DOCKERHUB_TOKEN is not configured; image publishing will be skipped."
-          fi
-
   build_binary:
     name: Build Binaries for Docker Release (Beta)
     runs-on: ubuntu-latest
@@ -86,10 +68,7 @@ jobs:
             !build/musl-libs/**
 
   release_docker:
-    needs:
-      - build_binary
-      - check_dockerhub
-    if: needs.check_dockerhub.outputs.configured == 'true'
+    needs: build_binary
     name: Release Docker image (Beta)
     runs-on: ubuntu-latest
     permissions:

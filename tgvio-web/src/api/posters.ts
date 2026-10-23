@@ -54,7 +54,7 @@ export interface LibraryItem extends Poster {
 
 export const library = () => get<{ items: LibraryItem[]; blur: boolean }>("/tgvio/library");
 
-export interface SeasonInfo { season: number; name: string; poster?: string; year?: number; episodes: number }
+export interface SeasonInfo { season: number; name: string; poster?: string; year?: number; episodes: number; /** First air date. */ air?: string }
 
 export interface PosterLookup { items: Record<string, Poster>; pending: number; enabled: boolean; blur: boolean }
 

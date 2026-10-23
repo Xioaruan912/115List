@@ -8,7 +8,6 @@ on:
 
 jobs:
   sync:
-    if: vars.GITEE_REPO_URL != ''
     runs-on: ubuntu-latest
     name: Sync GitHub to Gitee
     steps:

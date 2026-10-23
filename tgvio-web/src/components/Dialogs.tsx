@@ -25,6 +25,7 @@ import { TmdbRename } from "./TmdbRename";
 import { ShareDialog, SharesDialog } from "./Share";
 import { Sheet } from "./Sheet";
 import { ErrorState } from "./ErrorState";
+import { Select } from "./Select";
 
 function useBusy() {
   const [busy, setBusy] = useState(false);
@@ -239,18 +240,12 @@ function OfflineDialog({ dir, onClose }: { dir: string; onClose: () => void }) {
       <div className="mt-4 grid gap-4 sm:grid-cols-2">
         <label>
           <span className="label">工具</span>
-          <select className="field" value={tool} onChange={event => setTool(event.target.value)}>
-            {(tools.data ?? []).map(name => <option key={name} value={name}>{name}</option>)}
-          </select>
+          <Select label="工具" value={tool} options={(tools.data ?? []).map(name => [name, name] as const)} onChange={setTool} />
         </label>
         <label className={native ? "opacity-50" : ""}>
           <span className="label">临时文件</span>
-          <select className="field" value={policy} disabled={native} onChange={event => setPolicy(event.target.value)}>
-            <option value="delete_on_upload_succeed">上传成功后删除</option>
-            <option value="delete_on_upload_failed">上传失败后删除</option>
-            <option value="delete_never">保留</option>
-            <option value="delete_always">总是删除</option>
-          </select>
+          <Select label="临时文件" value={policy} disabled={native} onChange={setPolicy}
+            options={[["delete_on_upload_succeed", "上传成功后删除"], ["delete_on_upload_failed", "上传失败后删除"], ["delete_never", "保留"], ["delete_always", "总是删除"]] as const} />
         </label>
       </div>
       <p className="mt-3 text-[12.5px] text-faint">保存到 {dir}{native && `，由 ${tool} 在网盘里直接下载，不经过服务器`}</p>
@@ -328,7 +323,7 @@ function DialogFor({ dialog, onClose }: { dialog: Dialog; onClose: () => void })
     case "account":
       return <AccountDialog onClose={onClose} />;
     case "resources":
-      return <ResourceFinder initialQuery={dialog.query} initialItems={dialog.items} onClose={onClose} />;
+      return <ResourceFinder initialQuery={dialog.query} initialItems={dialog.items} base={dialog.base} folder={dialog.folder} onClose={onClose} />;
     case "decompress":
       return <DecompressDialog dir={dialog.dir} obj={dialog.obj} innerPath={dialog.innerPath} archivePass={dialog.archivePass} onClose={onClose} />;
   }

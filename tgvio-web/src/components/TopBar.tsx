@@ -1,4 +1,4 @@
-import { ArrowUUpLeftIcon, FilmReelIcon, FilmSlateIcon, CaretRightIcon, GearIcon, ListBulletsIcon, MagnifyingGlassIcon, MoonIcon, ShareNetworkIcon, SignOutIcon, SquaresFourIcon, SunIcon, UserIcon, HouseIcon, DesktopIcon } from "@phosphor-icons/react";
+import { ArrowUUpLeftIcon, FilmReelIcon, FilmSlateIcon, CaretRightIcon, GearIcon, ListBulletsIcon, MagnifyingGlassIcon, MoonIcon, ShareNetworkIcon, SignOutIcon, SquaresFourIcon, SunIcon, UserIcon, HouseIcon, DesktopIcon, SparkleIcon } from "@phosphor-icons/react";
 import { AnimatePresence, motion } from "motion/react";
 import { useState, type DragEvent } from "react";
 import { useLocation } from "wouter";
@@ -14,6 +14,7 @@ import { Mark } from "./Mark";
 import { useLibraryScope } from "../hooks/useLibraryScope";
 import { Menu } from "./Menu";
 import { switchTheme } from "./theme";
+import { MOTION_LABEL, useLite } from "../lib/lite";
 
 function Crumb({ label, path, current }: { label: React.ReactNode; path: string; current: boolean }) {
   const [, navigate] = useLocation();
@@ -117,6 +118,8 @@ function Account() {
   const mobile = useIsMobile();
   const view = usePrefs(state => state.view);
   const theme = usePrefs(state => resolvedTheme(state.theme));
+  const motionMode = usePrefs(state => state.motion);
+  const lite = useLite();
   if (!me) return null;
   const guest = isGuest(me);
   const initial = (guest ? "访" : me.username.slice(0, 1)).toUpperCase();
@@ -144,6 +147,8 @@ function Account() {
             ...(["grid", "list", "cinema"] as const).filter(mode => mode !== view).map(mode => ({ label: `${VIEW_LABEL[mode]}视图`, icon: VIEW_ICON[mode], run: () => usePrefs.getState().setView(mode) })),
             { label: theme === "light" ? "深色主题" : "浅色主题", icon: theme === "light" ? <MoonIcon size={15} /> : <SunIcon size={15} />, run: () => switchTheme(theme === "light" ? "dark" : "light", innerWidth - 30, 30) },
           ] : []),
+          { label: `动效：${MOTION_LABEL[motionMode]}`, icon: <SparkleIcon size={15} />, hint: motionMode === "auto" ? (lite ? "已精简" : "") : "",
+            run: () => usePrefs.getState().setMotion(motionMode === "auto" ? "lite" : motionMode === "lite" ? "full" : "auto") },
           "divider",
           guest
             ? { label: "登录", icon: <SignOutIcon size={15} />, run: () => navigate("/@login") }

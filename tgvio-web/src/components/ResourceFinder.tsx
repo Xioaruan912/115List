@@ -33,8 +33,8 @@ import { Sheet } from "./Sheet";
  *
  * Downloads go to the default folder of 设置 › 影视库 › 资源搜索, each title
  * in a folder named the TMDB way ("我要看/瘴气营地的青春性事与死亡 (2026)"); several
- * titles go into a series folder with a folder per title inside
- * ("潜伏 系列/潜伏2"). TMDB is matched behind
+ * titles go into a folder named after what they share, with a folder per
+ * title inside ("招魂/招魂2 (2016)"). TMDB is matched behind
  * the scenes for each title, so the folders get posters and 按 TMDB 整理命名
  * works once the files arrive.
  */
@@ -166,7 +166,14 @@ function SeedRow({ item, on, onToggle }: { item: Magnet; on: boolean; onToggle: 
   );
 }
 
-export function ResourceFinder({ initialQuery = "", initialItems, onClose }: { initialQuery?: string; initialItems?: Magnet[]; onClose: () => void }) {
+/**
+ * base / folder: where to save instead of the default (a series' own folder,
+ * a season folder to fill in); folder is the one folder the download goes
+ * into, kept whatever title is picked.
+ */
+export function ResourceFinder({ initialQuery = "", initialItems, base: fixedBase, folder: fixedFolder, onClose }: {
+  initialQuery?: string; initialItems?: Magnet[]; base?: string; folder?: string; onClose: () => void;
+}) {
   const library = useLibraryScope();
   const sites = useQuery({ queryKey: ["resources"], queryFn: resources.list, staleTime: 5 * 60_000 });
   const [query, setQuery] = useState(initialQuery);
@@ -189,12 +196,12 @@ export function ResourceFinder({ initialQuery = "", initialItems, onClose }: { i
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
 
   // Where it goes: the default folder from 设置 (else the first library folder); changeable per download.
-  const [base, setBase] = useState("");
+  const [base, setBase] = useState(fixedBase ?? "");
   const defaultBase = sites.data?.folder || library.paths[0] || "";
   useEffect(() => { if (!base && defaultBase) setBase(defaultBase); }, [base, defaultBase]);
   const [where, setWhere] = useState(false);
   const [ownFolder, setOwnFolder] = useState<boolean | null>(null);
-  const [name, setName] = useState<string | null>(null);
+  const [name, setName] = useState<string | null>(fixedFolder ?? null);
   const [busy, setBusy] = useState(false);
 
   const enabledSites = sites.data?.sites ?? [];
@@ -207,7 +214,7 @@ export function ResourceFinder({ initialQuery = "", initialItems, onClose }: { i
     setTicked(new Set(next.flatMap(group => group.items.length ? [group.items[0].hash] : [])));
     setOnlySubs(false);
     setOwnFolder(null);
-    setName(null);
+    setName(fixedFolder ?? null);
     for (const group of next) {
       void matchTMDB(group.title === PASTED ? query.trim() : group.title, group.year, group.tv, group.other).then(subject =>
         setGroups(current => current?.map(g => g.key === group.key ? { ...g, subject } : g) ?? current));
@@ -445,8 +452,8 @@ export function ResourceFinder({ initialQuery = "", initialItems, onClose }: { i
                       <FolderPicker start={base || library.paths[0] || "/"} value={base || "/"} onChange={setBase} />
                       {!library.has(base) && base && <p className="mt-2 text-[12px] text-faint">这个文件夹不在影视库的生效目录里，下载后不会配海报。</p>}
                       <label className="mt-3 flex cursor-pointer items-center gap-2.5 text-[13.5px]">
-                        <button type="button" role="switch" aria-checked={wantsFolder} className="switch" onClick={() => setOwnFolder(!wantsFolder)} aria-label={several ? "放进系列文件夹" : "放进单独的文件夹"} />
-                        {several ? "放进一个系列文件夹" : "放进单独的文件夹"}
+                        <button type="button" role="switch" aria-checked={wantsFolder} className="switch" onClick={() => setOwnFolder(!wantsFolder)} aria-label={several ? "放进总文件夹" : "放进单独的文件夹"} />
+                        {several ? "放进一个总文件夹" : "放进单独的文件夹"}
                       </label>
                       {wantsFolder && <input className="field mt-2" value={folder} onChange={event => setName(event.target.value)} aria-label="文件夹名" placeholder="比如：潜伏 (2009)" />}
                       {several && (
