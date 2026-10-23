@@ -102,6 +102,8 @@ func Init(e *gin.Engine) {
 	public.Any("/settings", handles.PublicSettings)
 	public.Any("/offline_download_tools", handles.OfflineDownloadTools)
 	public.Any("/archive_extensions", handles.ArchiveExtensions)
+	public.Any("/init_status", handles.InitStatus)
+	public.POST("/init/setup", handles.InitSetup)
 
 	_fs(auth.Group("/fs"))
 	fsAndShare(api.Group("/fs", middlewares.Auth(true)))
@@ -138,6 +140,7 @@ func Init(e *gin.Engine) {
 	auth.GET("/tgvio/organize", middlewares.AuthNotGuest, handles.TgvioOrganizePending)
 	auth.POST("/tgvio/organize", middlewares.AuthNotGuest, handles.TgvioOrganizeMark)
 	auth.POST("/tgvio/organize/check", middlewares.AuthNotGuest, handles.TgvioOrganizeCheck)
+	auth.GET("/tgvio/organize/recent", middlewares.AuthNotGuest, handles.TgvioOrganizeRecent)
 	handles.StartTgvioAutoOrganize()
 	auth.POST("/tgvio/resources/titles", middlewares.AuthNotGuest, handles.TgvioResourceTitles)
 	auth.POST("/tgvio/resources/seeds", middlewares.AuthNotGuest, handles.TgvioResourceSeeds)

@@ -1,5 +1,5 @@
 import { ArrowClockwiseIcon, CheckCircleIcon, PauseIcon, PlayIcon, TrashIcon, WarningCircleIcon, XIcon } from "@phosphor-icons/react";
-import { useQueries, useQueryClient } from "@tanstack/react-query";
+import { useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
@@ -16,6 +16,9 @@ import { useUploads, type UploadJob } from "../stores/uploads";
 import { KindIcon } from "./KindIcon";
 import { reason } from "../lib/errors";
 import { taskName } from "../lib/taskName";
+import { organize } from "../api/organize";
+import { encodePath } from "../lib/path";
+import { navigate } from "wouter/use-browser-location";
 
 function Bar({ value, tone = "accent" }: { value: number; tone?: "accent" | "danger" | "muted" }) {
   const color = tone === "danger" ? "var(--danger)" : tone === "muted" ? "var(--faint)" : "var(--accent)";
@@ -170,12 +173,41 @@ function OwnTaskList() {
   return <TaskList state={useServerTasks()} />;
 }
 
+/** Downloads 找资源 made, as the server's organizer left them: organized, or waiting for a person. */
+function AutoOrganized() {
+  const recent = useQuery({ queryKey: ["organize-recent"], queryFn: organize.recent, refetchInterval: 15_000, retry: false });
+  const items = recent.data?.items ?? [];
+  if (!items.length) return null;
+  const open = (path: string): void => { useUi.getState().setTasks(false); navigate(encodePath(path)); };
+  return (
+    <section>
+      <h3 className="px-2 pb-1 text-[12px] font-medium text-muted">下载后自动整理</h3>
+      <ul>
+        {items.map(item => (
+          <li key={item.path}>
+            <button className="flex w-full items-center gap-3 rounded-xl px-2 py-2 text-left transition-colors hover:bg-[var(--hover)]" onClick={() => open(item.path)}>
+              {item.done ? <CheckCircleIcon size={18} weight="fill" className="shrink-0 text-accent-text" /> : <WarningCircleIcon size={18} weight="fill" className="shrink-0 text-muted" />}
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-[13.5px]">{item.path.slice(item.path.lastIndexOf("/") + 1)}</span>
+                <span className="block text-[12px] text-faint">
+                  {item.done ? "已整理好" : item.why === "error" ? "整理时出错，打开后可以再试" : "有拿不准的地方，打开后点「整理」看一下"} · {formatDate(item.at)}
+                </span>
+              </span>
+            </button>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
 function TaskList({ state }: { state: TasksState }) {
   const { pending, groups, refresh } = state;
   if (pending) return <div className="space-y-2 p-2">{[0, 1, 2].map(i => <div key={i} className="skeleton h-12 rounded-xl" />)}</div>;
-  if (!groups.length) return <p className="px-3 py-10 text-center text-muted">没有服务器任务。离线下载、复制、解压都会出现在这里。</p>;
+  if (!groups.length) return <div className="space-y-4"><AutoOrganized /><p className="px-3 py-10 text-center text-muted">没有服务器任务。离线下载、复制、解压都会出现在这里。</p></div>;
   return (
     <div className="space-y-4">
+      <AutoOrganized />
       {groups.map(group => (
         <section key={group.type}>
           <h3 className="px-2 pb-1 text-[12px] font-medium text-muted">{group.label}</h3>

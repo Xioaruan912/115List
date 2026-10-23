@@ -10,10 +10,13 @@ import (
 
 	"github.com/OpenListTeam/OpenList/v4/internal/conf"
 	"github.com/OpenListTeam/OpenList/v4/internal/fs"
+	"github.com/OpenListTeam/OpenList/v4/internal/model"
 	"github.com/OpenListTeam/OpenList/v4/internal/offline_download/tool"
 	"github.com/OpenListTeam/OpenList/v4/internal/op"
 	"github.com/OpenListTeam/OpenList/v4/internal/tgvio"
+	"github.com/OpenListTeam/OpenList/v4/server/common"
 	"github.com/OpenListTeam/tache"
+	"github.com/gin-gonic/gin"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -25,7 +28,33 @@ import (
 var (
 	autoOrganizeOnce sync.Once
 	autoTried        = map[string]time.Time{} // folder -> last look that found it not ready
+
+	autoMu     sync.Mutex
+	autoRecent []autoNote // newest first, what the organizer did (since the server started)
 )
+
+// autoNote is one folder the organizer looked at: organized, or left to a person and why.
+type autoNote struct {
+	Path string    `json:"path"` // real path, afterwards
+	At   time.Time `json:"at"`
+	Done bool      `json:"done"`
+	Why  string    `json:"why,omitempty"` // "person": something needs a person; "error": it failed
+}
+
+func noteAuto(n autoNote) {
+	autoMu.Lock()
+	defer autoMu.Unlock()
+	for i, old := range autoRecent {
+		if old.Path == n.Path {
+			autoRecent = append(autoRecent[:i], autoRecent[i+1:]...)
+			break
+		}
+	}
+	autoRecent = append([]autoNote{n}, autoRecent...)
+	if len(autoRecent) > 20 {
+		autoRecent = autoRecent[:20]
+	}
+}
 
 const (
 	autoOrganizeEvery = 3 * time.Minute
@@ -75,11 +104,16 @@ func autoOrganizeRound() {
 		done, final, err := autoOrganize(ctx, dir)
 		if err != nil {
 			log.Warnf("tgvio auto organize %s: %v", dir, err)
+			noteAuto(autoNote{Path: final, At: time.Now(), Why: "error"})
 		}
 		if !done {
+			if err == nil && final == "" {
+				noteAuto(autoNote{Path: dir, At: time.Now(), Why: "person"})
+			}
 			autoTried[dir] = time.Now()
 			continue
 		}
+		noteAuto(autoNote{Path: final, At: time.Now(), Done: true})
 		delete(autoTried, dir)
 		_ = organizeStore().Mark(dir, false)
 		if final != dir {
@@ -130,8 +164,8 @@ type autoFolder struct {
 
 // autoOrganize plans the folder and everything below it and applies the plan
 // when nothing needs a person. done is false (and nothing is changed) when the
-// download has not landed yet or a person has to look; final is the folder's
-// path afterwards.
+// download has not landed yet, or a person has to look (final is "" then);
+// final is the folder's path afterwards.
 func autoOrganize(ctx context.Context, root string) (done bool, final string, err error) {
 	tree, err := renameTreeOf(ctx, root, true)
 	if err != nil {
@@ -163,7 +197,7 @@ func autoOrganize(ctx context.Context, root string) (done bool, final string, er
 			return false, root, err
 		}
 		if plan.Reason != "" || plan.Need != "" {
-			return false, root, nil
+			return false, "", nil // a person decides
 		}
 		for _, item := range plan.Items {
 			if item.Kind != "video" {
@@ -172,7 +206,7 @@ func autoOrganize(ctx context.Context, root string) (done bool, final string, er
 			videos++
 			// A video without a name (no episode number, a conflict) or a version to confirm: a person decides.
 			if item.New == "" && item.Reason != "same" || item.Reason == "version" {
-				return false, root, nil
+				return false, "", nil
 			}
 		}
 		folders = append(folders, &autoFolder{path: f.Path, depth: f.Depth, plan: plan})
@@ -210,8 +244,10 @@ func autoOrganize(ctx context.Context, root string) (done bool, final string, er
 				err = removeJunk(ctx, f.path, item.Old)
 			case item.Action == "unwrap":
 				err = unwrapFolder(ctx, f.path, item.Old)
+			case item.Action == "spill" || item.Reason == "version":
+				continue // a person decides
 			case item.Kind != "folder" && item.New != "":
-				err = renameIn(ctx, f.path, item.Old, item.New)
+				err = placeFile(ctx, f.path, item.Old, item.New, item.Into)
 			default:
 				continue
 			}
@@ -242,4 +278,20 @@ func autoOrganize(ctx context.Context, root string) (done bool, final string, er
 		}
 	}
 	return true, final, nil
+}
+
+// TgvioOrganizeRecent: GET /api/tgvio/organize/recent — what the organizer did lately, in the folders this user sees.
+func TgvioOrganizeRecent(c *gin.Context) {
+	user := c.Request.Context().Value(conf.UserKey).(*model.User)
+	autoMu.Lock()
+	notes := append([]autoNote(nil), autoRecent...)
+	autoMu.Unlock()
+	out := []autoNote{}
+	for _, n := range notes {
+		if shown, ok := user.ShowPath(n.Path); ok {
+			n.Path = shown
+			out = append(out, n)
+		}
+	}
+	common.SuccessResp(c, gin.H{"items": out})
 }

@@ -113,6 +113,10 @@ func FsMove(c *gin.Context) {
 		srcDir += "/"
 	}
 	for i, name := range req.Names {
+		if err := checkRelativePath(name); err != nil {
+			common.ErrorResp(c, err, 403)
+			return
+		}
 		// ensure req.Names is not a relative path
 		srcPath := stdpath.Join(srcDir, name)
 		if !strings.HasPrefix(srcPath+"/", srcDir) {
@@ -216,6 +220,10 @@ func FsCopy(c *gin.Context) {
 		srcDir += "/"
 	}
 	for i, name := range req.Names {
+		if err := checkRelativePath(name); err != nil {
+			common.ErrorResp(c, err, 403)
+			return
+		}
 		// ensure req.Names is not a relative path
 		srcPath := stdpath.Join(srcDir, name)
 		if !strings.HasPrefix(srcPath+"/", srcDir) {
@@ -334,6 +342,19 @@ func checkRelativePath(path string) error {
 	return nil
 }
 
+// checkRemoveName allows "sub/name" but no empty, "." or ".." segment and no backslash.
+func checkRemoveName(name string) error {
+	if name == "" || strings.Contains(name, "\\") {
+		return errs.RelativePath
+	}
+	for _, part := range strings.Split(name, "/") {
+		if checkRelativePath(part) != nil {
+			return errs.RelativePath
+		}
+	}
+	return nil
+}
+
 type RemoveReq struct {
 	Dir   string   `json:"dir"`
 	Names []string `json:"names"`
@@ -373,6 +394,12 @@ func FsRemove(c *gin.Context) {
 		reqPath += "/"
 	}
 	for i, name := range req.Names {
+		// TGVIO: a name may reach into a subfolder ("a/f.bin": one call clears
+		// files in several folders, the Player relies on it); no segment may climb.
+		if err := checkRemoveName(name); err != nil {
+			common.ErrorResp(c, err, 403)
+			return
+		}
 		fullPath := stdpath.Join(reqPath, name)
 		if !strings.HasPrefix(fullPath+"/", reqPath) {
 			req.Names[i] = ""

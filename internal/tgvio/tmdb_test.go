@@ -76,3 +76,21 @@ func TestCategoryOf(t *testing.T) {
 		}
 	}
 }
+
+func TestCleanNameDiscs(t *testing.T) {
+	for name, want := range map[string]string{
+		"生化危机4 3D.iso":      "生化危机4",
+		"新哥斯拉20164K.iso":    "新哥斯拉",
+		"暮光之城4上.iso":        "暮光之城4 上",
+		"哈利·波特与死亡圣器(下).iso": "哈利 波特与死亡圣器 下",
+		"天下.mkv":            "天下",
+		"一路向下 (2020).mkv":   "一路向下",
+	} {
+		if got, _, _, _ := CleanName(name); got != want {
+			t.Errorf("CleanName(%q) = %q, want %q", name, got, want)
+		}
+	}
+	if !agrees("暮光之城4 上", "暮光之城4：破晓（上）") || agrees("暮光之城4 上", "暮光之城4：破晓（下）") {
+		t.Error("halves")
+	}
+}

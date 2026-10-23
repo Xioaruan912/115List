@@ -5,14 +5,16 @@ import type { Poster } from "./posters";
 export interface RenameItem {
   old: string;
   new?: string;
-  kind: "video" | "subtitle" | "extra" | "folder" | "junk" | "unwrap";
-  /** A row that is no rename: delete an ad or leftover, or open a folder wrapped around the film. */
-  action?: "delete" | "unwrap";
+  kind: "video" | "subtitle" | "extra" | "folder" | "junk" | "unwrap" | "spill";
+  /** A row that is no rename: delete an ad or leftover, open a folder wrapped around the film, or spill a box of series into the folder above. */
+  action?: "delete" | "unwrap" | "spill";
+  /** A film of a folder of several goes into a folder of its own of this name. */
+  into?: string;
   season?: number;
   episode?: number;
   /** Size of a version of an episode. */
   size?: number;
-  reason?: "same" | "no-episode" | "several" | "conflict" | "unknown" | "pick-season" | "inner" | "version";
+  reason?: "same" | "no-episode" | "several" | "conflict" | "unknown" | "pick-season" | "inner" | "version" | "spill";
 }
 
 export interface RenamePlan {
@@ -28,6 +30,8 @@ export interface RenamePlan {
   inherited?: boolean;
   /** One film's folder (not a series or a shelf): what is below it is that film. */
   film?: boolean;
+  /** TMDB knows no film by the folder's name, but it holds films: planned film by film. */
+  shelf?: boolean;
 }
 
 /** What the folder above a subfolder was planned as. */
@@ -45,7 +49,7 @@ export const tmdbRename = {
   /** The folder and its subfolders holding videos or subtitles, parents first. */
   tree: (path: string, password: string) => post<{ folders: { path: string; depth: number }[] }>("/tgvio/rename/tree", { path, password }),
   /** `subject`: what the plan named the folder after, so its new name gets that poster at once. */
-  apply: (path: string, password: string, items: { old: string; new: string }[], folder = "", subject?: RenameInherit,
+  apply: (path: string, password: string, items: { old: string; new: string; into?: string }[], folder = "", subject?: RenameInherit,
     extra?: { remove?: string[]; unwrap?: string[] }) =>
     post<{ results: RenameResult[]; path: string }>("/tgvio/rename/apply", { path, password, items, folder, subject, ...extra }),
 };
