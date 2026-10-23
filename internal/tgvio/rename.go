@@ -759,6 +759,18 @@ func (t *TMDB) PlanRenameIn(ctx context.Context, dir string, entries []RenameEnt
 			if len(group) < 2 {
 				continue
 			}
+			// "魔戒再现1.iso", "魔戒再现2.iso": the two discs of one film, parts.
+			if len(group) == 2 && list[group[0]].part == "" {
+				a, b := mediaExt.ReplaceAllString(list[group[0]].video, ""), mediaExt.ReplaceAllString(list[group[1]].video, "")
+				if a > b {
+					a, b = b, a
+					group[0], group[1] = group[1], group[0]
+				}
+				if len(a) == len(b) && strings.HasSuffix(a, "1") && strings.HasSuffix(b, "2") && a[:len(a)-1] == b[:len(b)-1] {
+					list[group[0]].part, list[group[1]].part = " - CD1", " - CD2"
+					continue
+				}
+			}
 			sort.SliceStable(group, func(a, b int) bool { return size[list[group[a]].video] > size[list[group[b]].video] })
 			names := make([]string, len(group))
 			for i, at := range group {

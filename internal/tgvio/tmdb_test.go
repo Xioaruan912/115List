@@ -105,6 +105,8 @@ func TestAgreesByWords(t *testing.T) {
 		{"游侠索罗 星球大战外传", "星球大战外传2：游侠索罗", true},
 		{"霍比特人 五军之战", "指环王：王者无敌", false},
 		{"蝙蝠侠 黑暗骑士", "黑暗骑士崛起", false},
+		{"指环王 双塔奇兵1", "指环王2：双塔奇兵", true},
+		{"指环王 魔戒再现1", "指环王1：魔戒再现", true},
 	} {
 		if got := agrees(c.q, c.title); got != c.want {
 			t.Errorf("agrees(%q, %q) = %v", c.q, c.title, got)
