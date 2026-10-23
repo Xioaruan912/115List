@@ -138,7 +138,7 @@ function PathsEditor({ paths, onSave }: { paths: string[]; onSave: (paths: strin
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-8">
         <div className="min-w-0">
           <p className="text-[14px] font-medium">生效目录</p>
-          <p className="mt-0.5 max-w-[52ch] text-[12.5px] leading-relaxed text-muted">影视库只在这些文件夹（含子文件夹）里生效：海报、剧集详情、按 TMDB 整理命名、片库、片名搜索、视频缩略图。别的地方保持普通网盘的样子。可以加多个。</p>
+          <p className="mt-0.5 max-w-[52ch] text-[12.5px] leading-relaxed text-muted">影视库只在这些文件夹（含子文件夹）里生效：海报、剧集详情、整理、片库、片名搜索、视频缩略图。别的地方保持普通网盘的样子。可以加多个。</p>
         </div>
         <div className="flex shrink-0 gap-2">
           <button className="btn btn-line h-9 px-3.5 text-[13px]" onClick={() => { setTarget("/"); setPicking(true); }}><FolderPlusIcon size={15} />增加目录</button>

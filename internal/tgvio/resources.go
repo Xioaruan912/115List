@@ -49,6 +49,9 @@ type ResourceConfig struct {
 	Sites   []ResourceSite `json:"sites"`
 	// Folder: where downloads go by default, each title in its own folder inside ("/115/我要看").
 	Folder string `json:"folder,omitempty"`
+	// ManualOrganize: leave downloads as they land; otherwise the server
+	// organizes a folder 找资源 made once its downloads are done.
+	ManualOrganize bool `json:"manual_organize,omitempty"`
 }
 
 // ProbeResult says how a site answered the server.

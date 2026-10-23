@@ -138,6 +138,7 @@ func Init(e *gin.Engine) {
 	auth.GET("/tgvio/organize", middlewares.AuthNotGuest, handles.TgvioOrganizePending)
 	auth.POST("/tgvio/organize", middlewares.AuthNotGuest, handles.TgvioOrganizeMark)
 	auth.POST("/tgvio/organize/check", middlewares.AuthNotGuest, handles.TgvioOrganizeCheck)
+	handles.StartTgvioAutoOrganize()
 	auth.POST("/tgvio/resources/titles", middlewares.AuthNotGuest, handles.TgvioResourceTitles)
 	auth.POST("/tgvio/resources/seeds", middlewares.AuthNotGuest, handles.TgvioResourceSeeds)
 	auth.POST("/tgvio/resources/magnets", middlewares.AuthNotGuest, handles.TgvioResourceMagnets)

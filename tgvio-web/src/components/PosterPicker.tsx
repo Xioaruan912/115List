@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { posters, posterSrc, type Poster } from "../api/posters";
 import { spring } from "../lib/motion";
 import { toast } from "../stores/toast";
+import { useUi, type Dialog } from "../stores/ui";
 import { ErrorState } from "./ErrorState";
 import { Sheet } from "./Sheet";
 
@@ -79,7 +80,7 @@ function SeasonStep({ name, series, chosen, onBack, onPick }: { name: string; se
   );
 }
 
-export function PosterPicker({ name, onClose }: { name: string; onClose: () => void }) {
+export function PosterPicker({ name, then, onClose }: { name: string; then?: Dialog; onClose: () => void }) {
   const client = useQueryClient();
   const [text, setText] = useState(name);
   const [query, setQuery] = useState(name);
@@ -100,7 +101,7 @@ export function PosterPicker({ name, onClose }: { name: string; onClose: () => v
       await client.invalidateQueries({ queryKey: ["posters"] });
       void client.invalidateQueries({ queryKey: ["poster-settings"] });
       toast.success(choice ? `封面换成了「${choice.title}${season ? ` 第 ${season} 季` : ""}」` : "不再显示海报");
-      window.setTimeout(onClose, 380);
+      window.setTimeout(() => then ? useUi.getState().openDialog(then) : onClose(), 380);
     } catch (error) {
       setChosen("");
       toast.error("没有换成", error);

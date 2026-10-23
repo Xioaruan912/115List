@@ -95,6 +95,20 @@ func (o *Organize) Children(dir string) (pending, done []string, self string) {
 	return pending, done, self
 }
 
+// Pending lists the folders waiting to be organized that were marked at least
+// minAge ago (real paths).
+func (o *Organize) Pending(minAge time.Duration) []string {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	var out []string
+	for key, entry := range o.at {
+		if age := time.Since(entry.At); !entry.Done && age >= minAge && age <= organizeTTL {
+			out = append(out, key)
+		}
+	}
+	return out
+}
+
 func (o *Organize) saveLocked() error {
 	for key, entry := range o.at {
 		if !entry.Done && time.Since(entry.At) > organizeTTL {

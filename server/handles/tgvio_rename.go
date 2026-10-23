@@ -1,6 +1,7 @@
 package handles
 
 import (
+	"context"
 	"fmt"
 	stdpath "path"
 	"strings"
@@ -128,11 +129,21 @@ func TgvioRenameTree(c *gin.Context) {
 		return
 	}
 	user := c.Request.Context().Value(conf.UserKey).(*model.User)
-	shown := func(p string) string {
-		out, _ := user.ShowPath(p)
-		return out
+	folders, err := renameTreeOf(c.Request.Context(), reqPath, false)
+	if err != nil {
+		common.ErrorResp(c, err, 500)
+		return
 	}
-	folders := []renameTreeFolder{{Path: shown(reqPath), Depth: 0}}
+	for i := range folders {
+		folders[i].Path, _ = user.ShowPath(folders[i].Path)
+	}
+	common.SuccessResp(c, gin.H{"folders": folders})
+}
+
+// renameTreeOf lists the folder (real path) and the subfolders below it worth
+// planning, parents first. refresh reads the drive again (downloads that just landed).
+func renameTreeOf(ctx context.Context, reqPath string, refresh bool) ([]renameTreeFolder, error) {
+	folders := []renameTreeFolder{{Path: reqPath, Depth: 0}}
 	type level struct {
 		path  string
 		depth int
@@ -141,11 +152,10 @@ func TgvioRenameTree(c *gin.Context) {
 	for len(queue) > 0 && len(folders) < renameTreeFolders {
 		here := queue[0]
 		queue = queue[1:]
-		objs, err := fs.List(c.Request.Context(), here.path, &fs.ListArgs{})
+		objs, err := fs.List(ctx, here.path, &fs.ListArgs{Refresh: refresh})
 		if err != nil {
 			if here.depth == 0 {
-				common.ErrorResp(c, err, 500)
-				return
+				return nil, err
 			}
 			continue
 		}
@@ -153,20 +163,29 @@ func TgvioRenameTree(c *gin.Context) {
 			if !obj.IsDir() || here.depth+1 > renameTreeDepth || tgvio.Skip(obj.GetName()) {
 				continue
 			}
-			sub := stdpath.Join(here.path, obj.GetName())
-			queue = append(queue, level{sub, here.depth + 1})
+			queue = append(queue, level{stdpath.Join(here.path, obj.GetName()), here.depth + 1})
 		}
 		if here.depth == 0 {
 			continue
 		}
+		// Folders with videos or subtitles, ads to clear, or one folder wrapped
+		// in them ("潜伏3 (2015)/[DBD-Raws][潜伏3]…/").
+		worth, kept, keptDir := false, 0, false
 		for _, obj := range objs {
-			if !obj.IsDir() && tgvio.RenameWorthy(obj.GetName()) {
-				folders = append(folders, renameTreeFolder{Path: shown(here.path), Depth: here.depth})
-				break
+			entry := tgvio.RenameEntry{Name: obj.GetName(), IsDir: obj.IsDir(), Size: obj.GetSize()}
+			if tgvio.IsJunk(entry) || !obj.IsDir() && tgvio.RenameWorthy(obj.GetName()) {
+				worth = true
+			}
+			if !tgvio.IsJunk(entry) {
+				kept++
+				keptDir = obj.IsDir()
 			}
 		}
+		if worth || kept == 1 && keptDir {
+			folders = append(folders, renameTreeFolder{Path: here.path, Depth: here.depth})
+		}
 	}
-	common.SuccessResp(c, gin.H{"folders": folders})
+	return folders, nil
 }
 
 type renameApplyItem struct {
@@ -181,6 +200,10 @@ type renameApplyReq struct {
 	Folder   string            `json:"folder"` // the folder's new name, empty to keep it
 	// Subject: what the plan named the folder after, so its new name gets that poster.
 	Subject *tgvio.RenameInherit `json:"subject"`
+	// Remove: ads and leftovers the plan found (each must still look like one).
+	Remove []string `json:"remove"`
+	// Unwrap: a folder here wrapped around the film; its contents move up here and it goes.
+	Unwrap []string `json:"unwrap"`
 }
 
 type renameResult struct {
@@ -203,55 +226,153 @@ func TgvioRenameApply(c *gin.Context) {
 		return
 	}
 	ctx := c.Request.Context()
-	store := posters()
-	results := make([]renameResult, 0, len(req.Items)+1)
-	rename := func(dir, oldName, newName string) error {
-		if err := checkRelativePath(oldName); err != nil {
-			return err
+	user := c.Request.Context().Value(conf.UserKey).(*model.User)
+	if len(req.Remove) > 0 && !user.CanRemove() || len(req.Unwrap) > 0 && (!user.CanMove() || !user.CanRemove()) {
+		common.ErrorResp(c, errs.PermissionDenied, 403)
+		return
+	}
+	results := make([]renameResult, 0, len(req.Items)+len(req.Remove)+len(req.Unwrap)+1)
+	for _, name := range req.Remove {
+		result := renameResult{Old: name}
+		if err := removeJunk(ctx, reqPath, name); err != nil {
+			result.Error = err.Error()
 		}
-		if err := checkRelativePath(newName); err != nil {
-			return err
+		results = append(results, result)
+		time.Sleep(250 * time.Millisecond)
+	}
+	for _, name := range req.Unwrap {
+		result := renameResult{Old: name}
+		if err := unwrapFolder(ctx, reqPath, name); err != nil {
+			result.Error = err.Error()
 		}
-		if strings.TrimSpace(newName) == "" || oldName == newName {
-			return fmt.Errorf("nothing to rename")
-		}
-		if !strings.EqualFold(oldName, newName) {
-			if res, _ := fs.Get(ctx, stdpath.Join(dir, newName), &fs.GetArgs{NoLog: true}); res != nil {
-				return fmt.Errorf("file [%s] exists", newName)
-			}
-		}
-		return fs.Rename(ctx, stdpath.Join(dir, oldName), newName)
+		results = append(results, result)
 	}
 	for i, item := range req.Items {
 		if i > 0 {
 			time.Sleep(250 * time.Millisecond)
 		}
 		result := renameResult{Old: item.Old, New: item.New}
-		if err := rename(reqPath, item.Old, item.New); err != nil {
+		if err := renameIn(ctx, reqPath, item.Old, item.New); err != nil {
 			result.Error = err.Error()
-		} else {
-			store.Renamed(reqPath, item.Old, item.New, reqPath)
 		}
 		results = append(results, result)
 	}
-	user := c.Request.Context().Value(conf.UserKey).(*model.User)
 	finalPath := reqPath
 	if folder := strings.TrimSpace(req.Folder); folder != "" && folder != stdpath.Base(reqPath) {
-		parent := stdpath.Dir(reqPath)
 		result := renameResult{Old: stdpath.Base(reqPath), New: folder}
-		if err := rename(parent, stdpath.Base(reqPath), folder); err != nil {
+		if moved, err := renameFolderTo(ctx, reqPath, folder, req.Subject); err != nil {
 			result.Error = err.Error()
 		} else {
-			finalPath = stdpath.Join(parent, folder)
-			if req.Subject != nil && req.Subject.ID > 0 && (req.Subject.Kind == "tv" || req.Subject.Kind == "movie") {
-				store.RenamedAs(ctx, parent, stdpath.Base(reqPath), folder, parent, *req.Subject)
-			} else {
-				store.Renamed(parent, stdpath.Base(reqPath), folder, parent)
-			}
-			store.RenamedDir(reqPath, finalPath)
+			finalPath = moved
 		}
 		results = append(results, result)
 	}
 	shown, _ := user.ShowPath(finalPath)
 	common.SuccessResp(c, gin.H{"results": results, "path": shown})
+}
+
+// removeJunk deletes an ad or leftover file in dir, checked again here: only
+// what the planner calls junk (a small text file or link, a leftover) goes.
+func removeJunk(ctx context.Context, dir, name string) error {
+	if err := checkRelativePath(name); err != nil || strings.Contains(name, "/") {
+		return fmt.Errorf("not a name here")
+	}
+	obj, err := fs.Get(ctx, stdpath.Join(dir, name), &fs.GetArgs{NoLog: true})
+	if err != nil {
+		return err
+	}
+	if !tgvio.IsJunk(tgvio.RenameEntry{Name: obj.GetName(), IsDir: obj.IsDir(), Size: obj.GetSize()}) {
+		return fmt.Errorf("[%s] is no ad or leftover", name)
+	}
+	return fs.Remove(ctx, stdpath.Join(dir, name))
+}
+
+// unwrapFolder moves what is in dir/name up into dir, then removes the folder
+// once it is empty. Nothing moves when a name is taken in dir already.
+func unwrapFolder(ctx context.Context, dir, name string) error {
+	if err := checkRelativePath(name); err != nil || strings.Contains(name, "/") {
+		return fmt.Errorf("not a name here")
+	}
+	inner := stdpath.Join(dir, name)
+	objs, err := fs.List(ctx, inner, &fs.ListArgs{Refresh: true})
+	if err != nil {
+		return err
+	}
+	for _, obj := range objs {
+		if obj.GetName() == name {
+			return fmt.Errorf("[%s] holds a folder of its own name", name)
+		}
+		if res, _ := fs.Get(ctx, stdpath.Join(dir, obj.GetName()), &fs.GetArgs{NoLog: true}); res != nil {
+			return fmt.Errorf("file [%s] exists", obj.GetName())
+		}
+	}
+	for i, obj := range objs {
+		if i > 0 {
+			time.Sleep(250 * time.Millisecond)
+		}
+		if _, err := fs.Move(ctx, stdpath.Join(inner, obj.GetName()), dir); err != nil {
+			return err
+		}
+	}
+	left, err := fs.List(ctx, inner, &fs.ListArgs{Refresh: true})
+	if err != nil {
+		return err
+	}
+	if len(left) > 0 {
+		return fmt.Errorf("[%s] is not empty after moving", name)
+	}
+	return fs.Remove(ctx, inner)
+}
+
+// renameIn renames dir/oldName to newName (never over another object) and
+// moves its poster record along.
+func renameIn(ctx context.Context, dir, oldName, newName string) error {
+	if err := checkRelativePath(oldName); err != nil {
+		return err
+	}
+	if err := checkRelativePath(newName); err != nil {
+		return err
+	}
+	if strings.TrimSpace(newName) == "" || oldName == newName {
+		return fmt.Errorf("nothing to rename")
+	}
+	if !strings.EqualFold(oldName, newName) {
+		if res, _ := fs.Get(ctx, stdpath.Join(dir, newName), &fs.GetArgs{NoLog: true}); res != nil {
+			return fmt.Errorf("file [%s] exists", newName)
+		}
+	}
+	if err := fs.Rename(ctx, stdpath.Join(dir, oldName), newName); err != nil {
+		return err
+	}
+	posters().Renamed(dir, oldName, newName, dir)
+	return nil
+}
+
+// renameFolderTo renames the folder at path and returns its new path; subject
+// (what it was planned as) gives the new name its poster at once.
+func renameFolderTo(ctx context.Context, path, name string, subject *tgvio.RenameInherit) (string, error) {
+	parent, old := stdpath.Dir(path), stdpath.Base(path)
+	if err := checkRelativePath(name); err != nil {
+		return "", err
+	}
+	if strings.TrimSpace(name) == "" || name == old {
+		return "", fmt.Errorf("nothing to rename")
+	}
+	if !strings.EqualFold(old, name) {
+		if res, _ := fs.Get(ctx, stdpath.Join(parent, name), &fs.GetArgs{NoLog: true}); res != nil {
+			return "", fmt.Errorf("file [%s] exists", name)
+		}
+	}
+	if err := fs.Rename(ctx, path, name); err != nil {
+		return "", err
+	}
+	store := posters()
+	moved := stdpath.Join(parent, name)
+	if subject != nil && subject.ID > 0 && (subject.Kind == "tv" || subject.Kind == "movie") {
+		store.RenamedAs(ctx, parent, old, name, parent, *subject)
+	} else {
+		store.Renamed(parent, old, name, parent)
+	}
+	store.RenamedDir(path, moved)
+	return moved, nil
 }

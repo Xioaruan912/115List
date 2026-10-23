@@ -1,10 +1,10 @@
-import { CheckIcon, FileIcon, FilmSlateIcon, SealCheckIcon, SubtitlesIcon, FolderSimpleIcon, FilmStripIcon, WarningIcon } from "@phosphor-icons/react";
+import { CheckIcon, FileIcon, FilmSlateIcon, SealCheckIcon, SubtitlesIcon, FolderSimpleIcon, FilmStripIcon, WarningIcon, TrashIcon } from "@phosphor-icons/react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { AnimatePresence, motion } from "motion/react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
 import { posters, posterSrc } from "../api/posters";
-import { tmdbRename, type RenameInherit, type RenameItem, type RenamePlan } from "../api/rename";
+import { doable, tmdbRename, type RenameInherit, type RenameItem, type RenamePlan } from "../api/rename";
 import { passwordFor } from "../hooks/useDir";
 import * as actions from "../lib/actions";
 import { reason } from "../lib/errors";
@@ -89,8 +89,8 @@ export function TmdbRename({ targets: chosen, onClose }: { targets: RenameTarget
   const multi = targets.length > 1 || chosen.length > 1;
   const folderCount = targets.filter(target => !target.only).length;
   const fileCount = targets.reduce((sum, target) => sum + (target.only?.length ?? 0), 0);
-  const title = !multi && folderCount ? "按 TMDB 整理命名"
-    : `按 TMDB 整理${[folderCount ? ` ${folderCount} 个文件夹` : "", fileCount ? ` ${fileCount} 个文件` : ""].filter(Boolean).join(" 和")}`;
+  const title = !multi && folderCount ? "整理"
+    : `整理${[folderCount ? ` ${folderCount} 个文件夹` : "", fileCount ? ` ${fileCount} 个文件` : ""].filter(Boolean).join(" 和")}`;
 
   // Plans load one folder after another, parents before their subfolders:
   // TMDB is asked a few times per folder, and a subfolder goes by its parent.
@@ -110,7 +110,7 @@ export function TmdbRename({ targets: chosen, onClose }: { targets: RenameTarget
           const versions = plan.items.filter(item => item.reason === "version" && item.new).map(item => rowKey(target.path, item.old));
           if (versions.length) setOff(prev => new Set([...prev, ...versions]));
           const folderNew = plan.items.some(item => item.kind === "folder" && item.new);
-          if (!target.only && !plan.reason && plan.subject && plan.need !== "season" && !folderNew && !filesOf(plan, undefined).some(item => item.new)) tidy.push(target.path);
+          if (!target.only && !plan.reason && plan.subject && plan.need !== "season" && !folderNew && !filesOf(plan, undefined).some(doable)) tidy.push(target.path);
         }
       } catch (error) {
         if (alive()) setLoaded(prev => ({ ...prev, [target.path]: { status: "error", error } }));
@@ -144,12 +144,15 @@ export function TmdbRename({ targets: chosen, onClose }: { targets: RenameTarget
     const state = loaded[target.path];
     const plan = state?.status === "ok" ? state.plan : null;
     const files = plan ? filesOf(plan, target.only) : [];
-    const folder = plan && !target.only ? plan.items.find(item => item.kind === "folder" && item.new) : undefined;
+    // A folder the one above opens up (多一层) keeps its name: it goes away.
+    const above = loaded[parent(target.path)];
+    const unwrapped = above?.status === "ok" && above.plan.items.some(item => item.action === "unwrap" && item.old === basename(target.path));
+    const folder = plan && !target.only && !unwrapped ? plan.items.find(item => item.kind === "folder" && item.new) : undefined;
     return { target, state, plan, files, folder };
   });
   const keys = sections.flatMap(({ target, files, folder }) => [
     ...(folder ? [rowKey(target.path, folder.old)] : []),
-    ...files.filter(item => item.new).map(item => rowKey(target.path, item.old)),
+    ...files.filter(doable).map(item => rowKey(target.path, item.old)),
   ]);
   const count = keys.filter(key => !off.has(key)).length;
   const ready = expanding ? 0 : sections.filter(section => section.state && section.state.status !== "loading").length;
@@ -175,12 +178,16 @@ export function TmdbRename({ targets: chosen, onClose }: { targets: RenameTarget
       const password = passwordFor(target.path);
       const failedBefore = failed;
       let finalPath = target.path;
-      for (const item of files) {
+      // Renames first, then ads go, then wrapper folders open (their contents already renamed, deepest first).
+      const rank = (item: RenameItem): number => item.action === "unwrap" ? 2 : item.action === "delete" ? 1 : 0;
+      for (const item of [...files].sort((a, b) => rank(a) - rank(b))) {
         const key = rowKey(target.path, item.old);
-        if (!item.new || off.has(key)) continue;
+        if (!doable(item) || off.has(key)) continue;
         setRows(prev => ({ ...prev, [key]: { status: "busy" } }));
         try {
-          const { results } = await tmdbRename.apply(target.path, password, [{ old: item.old, new: item.new }]);
+          const { results } = item.action === "delete" ? await tmdbRename.apply(target.path, password, [], "", undefined, { remove: [item.old] })
+            : item.action === "unwrap" ? await tmdbRename.apply(target.path, password, [], "", undefined, { unwrap: [item.old] })
+            : await tmdbRename.apply(target.path, password, [{ old: item.old, new: item.new ?? "" }]);
           if (results[0]?.error) throw new Error(results[0].error);
           done++;
           touched.add(target.path);
@@ -222,7 +229,7 @@ export function TmdbRename({ targets: chosen, onClose }: { targets: RenameTarget
     setFinished(true);
     for (const path of touched) void actions.reload(path, false);
     void client.invalidateQueries({ queryKey: ["posters"] });
-    if (failed === 0) toast.success("已按 TMDB 整理", `改好了 ${done} 个名字`);
+    if (failed === 0) toast.success("整理好了", `完成 ${done} 项`);
     else toast.error(`有 ${failed} 个没改成`, new Error(`${done} renamed, ${failed} failed`));
   };
 
@@ -243,6 +250,18 @@ export function TmdbRename({ targets: chosen, onClose }: { targets: RenameTarget
     setOff(prev => new Set([...prev].filter(key => !prefixes.some(prefix => key.startsWith(prefix)))));
     void load([target], targets, () => true, season).then(() => load(below, targets, () => true));
   };
+  // Which film a folder is: its cover, and what it is named after. Back here afterwards, planned again.
+  const changeFilm = (target: Entry): void => useUi.getState().openDialog({ kind: "poster", name: basename(target.path), then: { kind: "tmdb-rename", targets: chosen } });
+  // Nothing to do here (a shelf of one's own, not a film): 整理模式 stops showing it.
+  const settle = (): void => {
+    const paths = chosen.filter(target => !target.only).map(target => target.path);
+    void organize.mark(paths, false).then(() => {
+      void client.invalidateQueries({ queryKey: ["organize"] });
+      toast.success("不再提示整理", paths.length > 1 ? `${paths.length} 项` : basename(paths[0] ?? ""));
+    }).catch(error => toast.error("没有标记成功", error));
+    onClose();
+  };
+  const unsettled = !finished && !running && chosen.some(target => !target.only);
   const footer = (multi ? ready > 0 : single?.plan && !single.plan.reason) && (anything || finished) ? (
     <>
       {!finished && keys.length > 1 && (
@@ -251,12 +270,18 @@ export function TmdbRename({ targets: chosen, onClose }: { targets: RenameTarget
           {off.size ? "全选" : "全不选"}
         </button>
       )}
+      {unsettled && <button className="btn btn-ghost text-muted" onClick={settle} title="以后整理模式不再显示">不用整理</button>}
       <button className="btn btn-ghost" onClick={close}>{finished ? "完成" : running ? "后台继续" : "取消"}</button>
       {!finished && (
         <button className="btn btn-primary" disabled={running || count === 0 || ready < targets.length} onClick={() => void apply()}>
           {running ? "正在改名…" : ready < targets.length ? `查询中 ${ready}/${targets.length}` : `整理 ${count} 项`}
         </button>
       )}
+    </>
+  ) : unsettled && !expanding && ready === targets.length ? (
+    <>
+      <button className="btn btn-ghost text-muted" onClick={settle} title="以后整理模式不再显示">不用整理</button>
+      <button className="btn btn-ghost" onClick={close}>关闭</button>
     </>
   ) : undefined;
 
@@ -292,7 +317,7 @@ export function TmdbRename({ targets: chosen, onClose }: { targets: RenameTarget
                 <FilmSlateIcon size={36} className="text-faint" />
                 <p className="mt-3 text-[15px] font-medium">TMDB 上没认出这部片子</p>
                 <p className="mt-1 max-w-[34ch] text-[13px] text-muted">先用「更换封面」选对它是哪一部，再回来整理，名字就有据可依了。</p>
-                <button className="btn btn-line mt-5" onClick={() => useUi.getState().openDialog({ kind: "poster", name: basename(target.path) })}>
+                <button className="btn btn-line mt-5" onClick={() => changeFilm(target)}>
                   <FilmSlateIcon size={15} />更换封面
                 </button>
               </div>
@@ -311,8 +336,8 @@ export function TmdbRename({ targets: chosen, onClose }: { targets: RenameTarget
                   {files.map((item, index) => {
                     const key = rowKey(target.path, item.old);
                     return (
-                      <Row key={item.old} item={item} on={!!item.new && !off.has(key)} state={rows[key]} index={index}
-                        locked={running || finished || !item.new} onToggle={() => toggle(key)} />
+                      <Row key={item.old} item={item} on={doable(item) && !off.has(key)} state={rows[key]} index={index}
+                        locked={running || finished || !doable(item)} onToggle={() => toggle(key)} />
                     );
                   })}
                 </ul>
@@ -325,7 +350,7 @@ export function TmdbRename({ targets: chosen, onClose }: { targets: RenameTarget
                   <div className={`relative shrink-0 overflow-hidden rounded-[10px] bg-surface hairline ${multi ? "h-[54px] w-[36px]" : "h-[84px] w-[56px]"}`}>
                     {plan.subject.poster && <img src={posterSrc(plan.subject.poster, "w185")} alt="" className="size-full object-cover" />}
                   </div>
-                  <div className="min-w-0">
+                  <div className="min-w-0 flex-1">
                     <p className={`truncate font-semibold tracking-tight ${multi ? "text-[14.5px]" : "text-[16px]"}`}>{plan.subject.title}</p>
                     <p className="mt-0.5 truncate text-[12.5px] text-muted">
                       {plan.subject.kind === "tv" ? "剧集" : "电影"}{plan.subject.year ? ` · ${plan.subject.year}` : ""}{plan.subject.season ? ` · 第 ${plan.subject.season} 季` : ""}
@@ -334,8 +359,13 @@ export function TmdbRename({ targets: chosen, onClose }: { targets: RenameTarget
                     </p>
                     {!multi && <p className="mt-1.5 text-[12.5px] text-faint">名字来自 TMDB。逐条看一眼，不要的点掉。</p>}
                   </div>
+                  {!plan.inherited && !running && !finished && (
+                    <button className="btn btn-ghost h-8 shrink-0 px-2.5 text-[12.5px]" onClick={() => changeFilm(target)} title="认错了？换成别的片，封面和名字一起改">
+                      <FilmSlateIcon size={14} />换一部
+                    </button>
+                  )}
                 </motion.div>
-                {!files.some(item => item.new) && !folder && plan.need !== "season" ? (
+                {!files.some(doable) && !folder && plan.need !== "season" ? (
                   <div className={`${multi ? "mt-3" : "mt-6"} flex items-center gap-2.5 rounded-[14px] bg-surface px-4 py-3 text-[13.5px] hairline`}>
                     <SealCheckIcon size={18} className="text-accent-text" weight="fill" />这里的名字已经很规整了
                   </div>
@@ -348,8 +378,8 @@ export function TmdbRename({ targets: chosen, onClose }: { targets: RenameTarget
                     {files.map((item, index) => {
                       const key = rowKey(target.path, item.old);
                       return (
-                        <Row key={item.old} item={item} on={!!item.new && !off.has(key)} state={rows[key]} index={index + 1}
-                          locked={running || finished || !item.new} onToggle={() => toggle(key)} />
+                        <Row key={item.old} item={item} on={doable(item) && !off.has(key)} state={rows[key]} index={index + 1}
+                          locked={running || finished || !doable(item)} onToggle={() => toggle(key)} />
                       );
                     })}
                   </ul>
@@ -395,15 +425,16 @@ function SeasonPicker({ id, current, disabled, ask, onPick }: { id: number; curr
 function Row({ item, on, state, index, locked, onToggle }: { item: RenameItem; on: boolean; state?: RowState; index: number; locked: boolean; onToggle: () => void }) {
   const done = state?.status === "done";
   const tag = item.kind === "folder" ? "文件夹" : item.kind === "subtitle" ? "字幕" : item.kind === "extra" ? "附属"
+    : item.action === "delete" ? "广告" : item.action === "unwrap" ? "多一层"
     : item.episode ? `S${String(item.season ?? 1).padStart(2, "0")}E${String(item.episode).padStart(2, "0")}` : "";
-  const Icon = item.kind === "folder" ? FolderSimpleIcon : item.kind === "subtitle" ? SubtitlesIcon : item.kind === "extra" ? FileIcon : FilmStripIcon;
+  const Icon = item.kind === "folder" || item.action === "unwrap" ? FolderSimpleIcon : item.action === "delete" ? TrashIcon : item.kind === "subtitle" ? SubtitlesIcon : item.kind === "extra" ? FileIcon : FilmStripIcon;
   return (
     <motion.li
       initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}
       transition={{ ...spring.soft, delay: Math.min(index, 14) * 0.03 }}
     >
       <button type="button" disabled={locked} onClick={onToggle} aria-pressed={on}
-        className={`flex w-full items-start gap-3 py-3 text-left ${item.new ? "" : "opacity-55"}`}>
+        className={`flex w-full items-start gap-3 py-3 text-left ${doable(item) ? "" : "opacity-55"}`}>
         <span className={`mt-0.5 grid size-[18px] shrink-0 place-items-center rounded-full transition-colors ${on || done ? "bg-accent text-accent-ink" : "hairline"}`}>
           <AnimatePresence>
             {(on || done) && (
@@ -414,7 +445,16 @@ function Row({ item, on, state, index, locked, onToggle }: { item: RenameItem; o
           </AnimatePresence>
         </span>
         <span className="min-w-0 flex-1">
-          {item.new ? (
+          {item.action ? (
+            <>
+              <span className={`block truncate text-[14px] font-medium ${done ? "text-faint line-through" : ""}`}>
+                {item.action === "delete" ? "删除" : "拆开这一层"}
+              </span>
+              <span className="mt-0.5 block truncate text-[12.5px] text-faint">
+                {item.action === "delete" ? item.old : `「${item.old}」里的内容移到上一层`}
+              </span>
+            </>
+          ) : item.new ? (
             <span className="block [perspective:600px]">
               <motion.span key={done ? "done" : "plan"} className="block origin-bottom truncate text-[14px] font-medium"
                 initial={done ? { rotateX: 90, opacity: 0 } : false} animate={{ rotateX: 0, opacity: 1 }} transition={spring.pop}>
