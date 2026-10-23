@@ -33,7 +33,7 @@ func TgvioResources(c *gin.Context) {
 			sites = append(sites, resourceSiteView{ID: p.ID, Name: p.Name, Search: p.Search, Reader: p.Reader})
 		}
 	}
-	common.SuccessResp(c, gin.H{"enabled": cfg.Enabled && len(sites) > 0, "sites": sites, "folder": showFolder(c, cfg.Folder)})
+	common.SuccessResp(c, gin.H{"enabled": cfg.Enabled && len(sites) > 0, "sites": sites, "folder": showFolder(c, cfg.Folder), "auto_organize": !cfg.ManualOrganize})
 }
 
 // TgvioResourcesAdmin: GET/POST /api/admin/tgvio/resources {enabled, sites}

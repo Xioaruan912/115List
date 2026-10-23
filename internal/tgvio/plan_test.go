@@ -250,3 +250,84 @@ func TestIsJunkAndSeriesFolder(t *testing.T) {
 		t.Errorf("series from collection = %q", got)
 	}
 }
+
+func TestPlanFilmsOfSeveralGetFolders(t *testing.T) {
+	tm := planTMDB(t, []tmdbItem{film(1, "流浪地球", "2019-02-05", 5, "流浪地球（系列）"), film(2, "流浪地球2", "2023-01-22", 5, "流浪地球（系列）")},
+		map[string]int{"流浪地球": 1, "流浪地球 (2019).mkv": 1, "流浪地球2 (2023).mkv": 2})
+	plan, err := tm.PlanRenameIn(context.Background(), "/lib/流浪地球", []RenameEntry{
+		{Name: "流浪地球 (2019).mkv"}, {Name: "流浪地球 (2019).chs.ass"}, {Name: "流浪地球2 (2023).mkv"}}, 0, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := find(plan, "流浪地球 (2019).mkv"); got.New != "流浪地球 (2019).mkv" || got.Into != "流浪地球 (2019)" {
+		t.Fatalf("first film -> %+v", got)
+	}
+	if got := find(plan, "流浪地球 (2019).chs.ass"); got.Into != "流浪地球 (2019)" {
+		t.Fatalf("its subtitle -> %+v", got)
+	}
+	if got := find(plan, "流浪地球2 (2023).mkv"); got.Into != "流浪地球2 (2023)" {
+		t.Fatalf("second film -> %+v", got)
+	}
+	if plan.Film {
+		t.Fatal("a folder of two films is no one film's")
+	}
+}
+
+func TestPlanShelfOfSomeonesFilms(t *testing.T) {
+	// "[周星驰] [原盘电影集 国粤语]" is no film: each film by its own name, parts and versions kept apart.
+	tm := planTMDB(t, []tmdbItem{film(10, "功夫", "2004-12-23", 0, ""), film(11, "大话西游之大圣娶亲", "1995-02-04", 0, ""),
+		film(12, "生化危机4：战神再生", "2010-09-10", 0, "")},
+		map[string]int{"[功夫 Kung Fu Hustle 2004][tt0373074].iso": 10, "大话西游之大圣娶亲 (1995)": 11,
+			"生化危机4.iso": 12, "生化危机4 3D.iso": 12})
+	plan, err := tm.PlanRenameIn(context.Background(), "/lib/[周星驰] [原盘电影集 国粤语]", []RenameEntry{
+		{Name: "[功夫 Kung Fu Hustle 2004][tt0373074].iso", Size: 20},
+		{Name: "大话西游之大圣娶亲 (1995) - CD1.iso", Size: 10}, {Name: "大话西游之大圣娶亲 (1995) - CD2.iso", Size: 10},
+		{Name: "生化危机4.iso", Size: 30}, {Name: "生化危机4 3D.iso", Size: 40}, {Name: "[大话西游][1-2集]", IsDir: true}}, 0, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !plan.Shelf || plan.Reason != "" {
+		t.Fatalf("plan -> shelf %v reason %q", plan.Shelf, plan.Reason)
+	}
+	if got := find(plan, "[功夫 Kung Fu Hustle 2004][tt0373074].iso"); got.New != "功夫 (2004).iso" || got.Into != "功夫 (2004)" {
+		t.Fatalf("film -> %+v", got)
+	}
+	if got := find(plan, "大话西游之大圣娶亲 (1995) - CD2.iso"); got.New != "大话西游之大圣娶亲 (1995) - CD2.iso" || got.Into != "大话西游之大圣娶亲 (1995)" {
+		t.Fatalf("part -> %+v", got)
+	}
+	if got := find(plan, "生化危机4 3D.iso"); got.New != "生化危机4：战神再生 (2010).iso" || got.Reason != "version" {
+		t.Fatalf("largest version -> %+v", got)
+	}
+	if got := find(plan, "生化危机4.iso"); got.Reason != "version" || got.New == "生化危机4：战神再生 (2010).iso" {
+		t.Fatalf("other version -> %+v", got)
+	}
+	spill := false
+	for _, item := range plan.Items {
+		if item.Action == "spill" {
+			spill = true
+		}
+		if item.Kind == "folder" && item.New != "" {
+			t.Fatalf("a shelf keeps its name: %+v", item)
+		}
+	}
+	if !spill {
+		t.Fatal("no spill row")
+	}
+}
+
+func TestRunsOn(t *testing.T) {
+	for _, c := range []struct {
+		q, title string
+		want     bool
+	}{
+		{"生化危机4", "生化危机4D：执行者", true},
+		{"生化危机4", "生化危机4：战神再生", false},
+		{"终结者2", "终结者2018", true},
+		{"终结者2", "终结者2：审判日", false},
+		{"功夫", "功夫熊猫", false},
+	} {
+		if got := runsOn(c.q, c.title); got != c.want {
+			t.Errorf("runsOn(%q, %q) = %v", c.q, c.title, got)
+		}
+	}
+}

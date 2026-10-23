@@ -191,6 +191,8 @@ func renameTreeOf(ctx context.Context, reqPath string, refresh bool) ([]renameTr
 type renameApplyItem struct {
 	Old string `json:"old"`
 	New string `json:"new"`
+	// Into: then move it into this folder here (made when missing).
+	Into string `json:"into,omitempty"`
 }
 
 type renameApplyReq struct {
@@ -252,7 +254,9 @@ func TgvioRenameApply(c *gin.Context) {
 			time.Sleep(250 * time.Millisecond)
 		}
 		result := renameResult{Old: item.Old, New: item.New}
-		if err := renameIn(ctx, reqPath, item.Old, item.New); err != nil {
+		if item.Into != "" && !user.CanMove() {
+			result.Error = errs.PermissionDenied.Error()
+		} else if err := placeFile(ctx, reqPath, item.Old, item.New, item.Into); err != nil {
 			result.Error = err.Error()
 		}
 		results = append(results, result)
@@ -375,4 +379,35 @@ func renameFolderTo(ctx context.Context, path, name string, subject *tgvio.Renam
 	}
 	store.RenamedDir(path, moved)
 	return moved, nil
+}
+
+// placeFile renames dir/oldName to newName and, with into, moves it into the
+// folder dir/into (made when missing), never over another object.
+func placeFile(ctx context.Context, dir, oldName, newName, into string) error {
+	if into == "" {
+		return renameIn(ctx, dir, oldName, newName)
+	}
+	for _, name := range []string{oldName, newName, into} {
+		if err := checkRelativePath(name); err != nil || strings.Contains(name, "/") || strings.TrimSpace(name) == "" {
+			return fmt.Errorf("not a name here")
+		}
+	}
+	folder := stdpath.Join(dir, into)
+	if obj, _ := fs.Get(ctx, folder, &fs.GetArgs{NoLog: true}); obj == nil {
+		if err := fs.MakeDir(ctx, folder); err != nil {
+			return err
+		}
+	} else if !obj.IsDir() {
+		return fmt.Errorf("file [%s] exists", into)
+	}
+	if res, _ := fs.Get(ctx, stdpath.Join(folder, newName), &fs.GetArgs{NoLog: true}); res != nil {
+		return fmt.Errorf("file [%s/%s] exists", into, newName)
+	}
+	if oldName != newName {
+		if err := renameIn(ctx, dir, oldName, newName); err != nil {
+			return err
+		}
+	}
+	_, err := fs.Move(ctx, stdpath.Join(dir, newName), folder)
+	return err
 }

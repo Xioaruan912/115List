@@ -40,6 +40,9 @@ type RenameItem struct {
 	// kind "junk") or "unwrap" (a folder wrapped around the film: its contents
 	// move up here and it goes, kind "unwrap").
 	Action string `json:"action,omitempty"`
+	// Into: a film of a folder of several goes into a folder of its own of this
+	// name, made here ("流浪地球/流浪地球 (2019)/流浪地球 (2019).mkv").
+	Into string `json:"into,omitempty"`
 }
 
 // RenamePlan is what the person reviews.
@@ -57,6 +60,10 @@ type RenamePlan struct {
 	// Film: the folder is one film's (not a series or a shelf of several):
 	// what is below it is that film too.
 	Film bool `json:"film,omitempty"`
+	// Shelf: TMDB knows no film by the folder's name, but it holds films (a
+	// collection of someone's films, a box of several series): planned film by
+	// film; it keeps its name, and can spill its contents into the folder above.
+	Shelf bool `json:"shelf,omitempty"`
 }
 
 // RenameInherit is what the folder above a subfolder was planned as, for
@@ -94,7 +101,7 @@ var (
 	// leftover (".x.mkv.baiduyun.uploading.cfg").
 	junkSmall = regexp.MustCompile(`(?i)\.(?:txt|url|html?|mht|lnk|website)$`)
 	junkAny   = regexp.MustCompile(`(?i)^_{3,}padding_file|\.(?:uploading|downloading)\.cfg$|\.(?:!qb|bc!|aria2)$`)
-	notEp          = regexp.MustCompile(`(?i)\b\d{3,4}p\b|[xh]\.?26[45]|\b(?:19|20)\d{2}\b|\b\d+bit\b|\bddp?\d\.\d\b|\b[257]\.1\b`)
+	notEp     = regexp.MustCompile(`(?i)\b\d{3,4}p\b|[xh]\.?26[45]|\b(?:19|20)\d{2}\b|\b\d+bit\b|\bddp?\d\.\d\b|\b[257]\.1\b`)
 )
 
 // IsJunk reports whether a file is an ad or a leftover a download brought, not
@@ -122,12 +129,53 @@ func seriesFolder(titles []string, collection string) string {
 			prefix = string(a[:i])
 		}
 	}
-	prefix = strings.TrimRight(prefix, " 0123456789:：·.-_（(【[")
+	prefix = strings.TrimRight(prefix, " 0123456789:：·.-_（(【[之的")
 	if prefix != "" {
 		return SafeName(prefix)
 	}
 	name := collectionSuffix.ReplaceAllString(collection, "")
 	return SafeName(name)
+}
+
+// collectionWord: a folder named as a collection of films.
+var collectionWord = regexp.MustCompile(`(?i)合集|系列|全集|电影集|作品集|三部曲|套装|collection|trilogy`)
+
+// releaseFolder: only files, a video or two (a release's own folder, not a shelf).
+func releaseFolder(entries []RenameEntry) bool {
+	videos := 0
+	for _, e := range entries {
+		if e.IsDir {
+			return false
+		}
+		if mediaExt.MatchString(e.Name) {
+			videos++
+		}
+	}
+	return videos <= 2
+}
+
+func inheritedTV(inherit *RenameInherit) bool { return inherit != nil && inherit.Kind == "tv" }
+
+// hasEpisodes: some video here is numbered as an episode.
+func hasEpisodes(entries []RenameEntry) bool {
+	for _, e := range entries {
+		if !e.IsDir && mediaExt.MatchString(e.Name) {
+			if _, ep := ParseEpisode(e.Name); ep > 0 {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// isRoot: one of the library's own folders (its name is no film).
+func (t *TMDB) isRoot(dir string) bool {
+	for _, root := range t.Config().Paths {
+		if dir == root {
+			return true
+		}
+	}
+	return false
 }
 
 var collectionSuffix = regexp.MustCompile(`(?i)\s*(?:[（(]?系列[）)]?|collection)\s*$`)
@@ -330,7 +378,9 @@ func (t *TMDB) resolve(ctx context.Context, name, in string) (*Poster, error) {
 	t.mu.Lock()
 	entry := t.entries[Key(name)]
 	t.mu.Unlock()
-	if entry != nil && (!entry.None || entry.Manual) {
+	// Kept: a choice made by hand, or a match found by the current rules. A
+	// match found by older rules is looked up again (it may have been wrong).
+	if entry != nil && (entry.Manual || !entry.None && entry.Rev >= cleanerRev) {
 		return entry, nil
 	}
 	p, err := t.lookup(ctx, name)
@@ -421,7 +471,7 @@ func (t *TMDB) PlanRenameIn(ctx context.Context, dir string, entries []RenameEnt
 	// A folder named like no film ("[DBD-Raws][潜伏3][1080P]…", a release's own
 	// folder) inside a film's folder is that film. Asked before what the folders
 	// further up were planned as: that may be a whole series of films.
-	if up := stdpath.Dir(dir); subject.None && inherit == nil && up != "/" && !Skip(pathBase(up)) {
+	if up := stdpath.Dir(dir); subject.None && inherit == nil && up != "/" && !Skip(pathBase(up)) && !t.isRoot(up) && releaseFolder(entries) {
 		if p, err := t.resolve(ctx, pathBase(up), stdpath.Dir(up)); err == nil && !p.None && p.Kind == "movie" {
 			subject, plan.Inherited = p, true
 		}
@@ -438,20 +488,41 @@ func (t *TMDB) PlanRenameIn(ctx context.Context, dir string, entries []RenameEnt
 		}
 		subject, ownSeason, plan.Inherited = above, false, true
 	}
+	folder := pathBase(dir)
+	shelf := false
+	// "生化危机合集", "复仇者联盟系列": films, whatever the name finds (a series of the same name).
+	if !subject.None && collectionWord.MatchString(folder) && !inheritedTV(inherit) && !hasEpisodes(entries) {
+		subject = &Poster{None: true}
+	}
 	if subject.None {
-		plan.Reason = "no-match"
-		return plan, nil
+		// Several videos or folders under a name TMDB does not know: a shelf.
+		loose, dirs := 0, 0
+		for _, e := range entries {
+			switch {
+			case e.IsDir && !Skip(e.Name) && SeasonOf(e.Name) == 0:
+				dirs++
+			case !e.IsDir && mediaExt.MatchString(e.Name):
+				loose++
+			}
+		}
+		if loose < 2 && dirs < 2 {
+			plan.Reason = "no-match"
+			return plan, nil
+		}
+		shelf, plan.Shelf = true, true
+		subject = &Poster{Kind: "movie"}
 	}
 	// The plain title and year of the film or series, without a season's name.
-	base, err := t.Details(ctx, subject.Kind, subject.ID)
-	if err != nil {
-		return nil, err
+	base := &Poster{Title: folder}
+	if !shelf {
+		if base, err = t.Details(ctx, subject.Kind, subject.ID); err != nil {
+			return nil, err
+		}
+		plan.Subject = subject
 	}
-	plan.Subject = subject
 	title := SafeName(base.Title)
-	folder := pathBase(dir)
 
-	multi := false // a folder of several films keeps its own name
+	multi := false   // a folder of several films keeps its own name
 	seriesName := "" // ... or takes their series' name, when they are one series
 	videos := []string{}
 	for _, e := range entries {
@@ -461,9 +532,10 @@ func (t *TMDB) PlanRenameIn(ctx context.Context, dir string, entries []RenameEnt
 	}
 	sort.Strings(videos)
 	newBase := map[string]string{}     // video name without extension -> new one
+	into := map[string]string{}        // ... and the folder of its own it goes into (a folder of several films)
 	episodeBase := map[[2]int]string{} // season and episode -> the new name of its video
 	add := func(item RenameItem) {
-		if item.New == item.Old {
+		if item.New == item.Old && item.Into == "" {
 			item.New = ""
 			if item.Reason == "" {
 				item.Reason = "same"
@@ -600,35 +672,49 @@ func (t *TMDB) PlanRenameIn(ctx context.Context, dir string, entries []RenameEnt
 		whole := titleYear(title, base.Year)
 		films := map[int]bool{}
 		filmTitles := map[int]string{}
+		size := map[string]int64{}
+		for _, e := range entries {
+			size[e.Name] = e.Size
+		}
+		type placed struct {
+			video, name, part, title string
+			id                       int
+		}
+		var list []placed
 		for i, v := range videos {
-			name := whole
-			if len(videos) > 1 {
-				if m := partTag.FindStringSubmatch(mediaExt.ReplaceAllString(v, "")); m != nil {
-					name += " - CD" + m[1]
-					films[subject.ID] = true
-				} else {
-					// Several films in one folder ("大话西游之月光宝盒.iso" next to
-					// "大话西游之大圣娶亲.iso"): each video by its own name.
-					var own *Poster
-					if i < 12 && !Skip(v) {
-						if fp, err := t.resolve(ctx, v, dir); err == nil && !fp.None && fp.Kind == "movie" {
-							own = fp
-						}
-					}
-					if own == nil {
-						add(RenameItem{Old: v, Kind: "video", Reason: "several"})
-						continue
-					}
-					films[own.ID] = true
-					filmTitles[own.ID] = SafeName(own.Title)
-					name = titleYear(SafeName(own.Title), own.Year)
-				}
-			} else {
-				films[subject.ID] = true
-				filmTitles[subject.ID] = title
+			if len(videos) == 1 && !shelf {
+				list = append(list, placed{video: v, name: whole, title: title, id: subject.ID})
+				continue
 			}
-			newBase[strings.TrimSuffix(v, stdpath.Ext(v))] = name
-			add(RenameItem{Old: v, New: name + extOf(v), Kind: "video"})
+			// Several films in one folder ("大话西游之大圣娶亲 - CD1.iso" next to
+			// "唐伯虎点秋香.iso"): each video by its own name, parts by theirs without the part.
+			stem := mediaExt.ReplaceAllString(v, "")
+			part, look := "", v
+			if m := partTag.FindStringSubmatchIndex(stem); m != nil {
+				part = " - CD" + stem[m[2]:m[3]]
+				look = strings.TrimSpace(strings.Trim(stem[:m[0]]+" "+stem[m[1]:], " -_."))
+			}
+			var own *Poster
+			if i < 80 && !Skip(v) {
+				if fp, err := t.resolve(ctx, look, dir); err == nil && !fp.None && fp.Kind == "movie" {
+					own = fp
+				}
+			}
+			if own == nil && part != "" && !shelf {
+				own = subject // the folder's film in parts
+			}
+			if own == nil {
+				add(RenameItem{Old: v, Kind: "video", Reason: "several"})
+				continue
+			}
+			p := placed{video: v, name: titleYear(SafeName(own.Title), own.Year), title: SafeName(own.Title), part: part, id: own.ID}
+			if own == subject {
+				p.name, p.title = whole, title
+			}
+			list = append(list, p)
+		}
+		for _, p := range list {
+			films[p.id], filmTitles[p.id] = true, p.title
 		}
 		// Films in folders of their own beside the videos here, or only
 		// folders here: a series' folder ("招魂/招魂3 (2021)/"), not one film's.
@@ -638,8 +724,8 @@ func (t *TMDB) PlanRenameIn(ctx context.Context, dir string, entries []RenameEnt
 				dirs++
 			}
 		}
-		shelf := len(videos) == 0 && dirs > 1
-		if dirs > 0 && (len(videos) > 0 || shelf) {
+		onlyDirs := len(videos) == 0 && dirs > 1
+		if dirs > 0 && (len(videos) > 0 || onlyDirs) && !shelf {
 			asked := 0
 			for _, e := range entries {
 				if !e.IsDir || Skip(e.Name) || SeasonOf(e.Name) > 0 || asked >= 12 {
@@ -650,16 +736,56 @@ func (t *TMDB) PlanRenameIn(ctx context.Context, dir string, entries []RenameEnt
 				if err != nil || fp.None || fp.Kind != "movie" {
 					continue
 				}
-				if !shelf && fp.ID != subject.ID && !t.sameCollection(ctx, subject.ID, fp.ID) {
+				if !onlyDirs && fp.ID != subject.ID && !t.sameCollection(ctx, subject.ID, fp.ID) {
 					continue // "花絮", a film's extras: no film of the series
 				}
 				films[fp.ID] = true
 				filmTitles[fp.ID] = SafeName(fp.Title)
 			}
 		}
-		multi = len(films) > 1 || shelf
+		multi = len(films) > 1 || onlyDirs || shelf
 		if multi {
 			seriesName = t.seriesOf(ctx, filmTitles)
+		}
+		// One film in several files that are no parts (a 3D and a 4K disc): the
+		// largest takes the plain name, the others a version, for the person to confirm.
+		byFilm := map[string][]int{}
+		for i, p := range list {
+			key := fmt.Sprint(p.id, p.part)
+			byFilm[key] = append(byFilm[key], i)
+		}
+		version := make([]string, len(list))
+		for _, group := range byFilm {
+			if len(group) < 2 {
+				continue
+			}
+			sort.SliceStable(group, func(a, b int) bool { return size[list[group[a]].video] > size[list[group[b]].video] })
+			names := make([]string, len(group))
+			for i, at := range group {
+				names[i] = list[at].video
+			}
+			for i, at := range group {
+				version[at] = "main"
+				if i > 0 {
+					version[at] = versionTag(names, i)
+				}
+			}
+		}
+		for i, p := range list {
+			name := p.name + p.part
+			if version[i] != "" && version[i] != "main" {
+				name += " - " + version[i]
+			}
+			item := RenameItem{Old: p.video, New: name + extOf(p.video), Kind: "video"}
+			if multi {
+				item.Into = p.name // each film of a folder of several in a folder of its own
+			}
+			if version[i] != "" {
+				item.Reason, item.Size = "version", size[p.video]
+			}
+			stem := strings.TrimSuffix(p.video, stdpath.Ext(p.video))
+			newBase[stem], into[stem] = name, item.Into
+			add(item)
 		}
 	}
 
@@ -681,7 +807,7 @@ func (t *TMDB) PlanRenameIn(ctx context.Context, dir string, entries []RenameEnt
 			}
 		}
 		if best != "" {
-			add(RenameItem{Old: e.Name, New: newBase[best] + e.Name[len(best):], Kind: kind})
+			add(RenameItem{Old: e.Name, New: newBase[best] + e.Name[len(best):], Kind: kind, Into: into[best]})
 			continue
 		}
 		if kind == "extra" {
@@ -756,6 +882,16 @@ func (t *TMDB) PlanRenameIn(ctx context.Context, dir string, entries []RenameEnt
 		add(RenameItem{Old: folder, New: seriesName, Kind: "folder"})
 	} else if multi {
 		add(RenameItem{Old: folder, Kind: "folder", Reason: "several"})
+		if shelf && seriesName == "" {
+			// A box of several series ("漫威电影系列原盘ISO合集"): it can open up into
+			// the folder above, each series and film beside the others. Not ticked by default.
+			for _, e := range entries {
+				if e.IsDir || mediaExt.MatchString(e.Name) {
+					plan.Items = append(plan.Items, RenameItem{Old: folder, Kind: "spill", Action: "spill", Reason: "spill"})
+					break
+				}
+			}
+		}
 	} else if plan.Inherited && SeasonOf(folder) == 0 && season == 0 {
 		// "Subs", "Featurettes": a part of the folder above keeps its name
 		// (a season picked by hand says what it is, and it is named for it).

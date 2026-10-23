@@ -35,7 +35,8 @@ const WHY: Record<NonNullable<RenameItem["reason"]>, string> = {
   unknown: "TMDB 上没认出来",
   "pick-season": "先在上面选是第几季",
   inner: "子文件夹，名字保留",
-  version: "这一集有好几个文件：最大的用标准名，其余加上版本，确认后勾上",
+  version: "同一部有好几个文件：最大的用标准名，其余加上版本，确认后勾上",
+  spill: "要拆开的话勾上",
 };
 
 type RowState = { status: "busy" } | { status: "done" } | { status: "error"; message: string };
@@ -107,7 +108,7 @@ export function TmdbRename({ targets: chosen, onClose }: { targets: RenameTarget
         if (alive()) {
           setLoaded(prev => ({ ...prev, [target.path]: { status: "ok", plan } }));
           // Versions of one episode wait for the person: they come unticked.
-          const versions = plan.items.filter(item => item.reason === "version" && item.new).map(item => rowKey(target.path, item.old));
+          const versions = plan.items.filter(item => (item.reason === "version" && item.new) || item.action === "spill").map(item => rowKey(target.path, item.old));
           if (versions.length) setOff(prev => new Set([...prev, ...versions]));
           const folderNew = plan.items.some(item => item.kind === "folder" && item.new);
           if (!target.only && !plan.reason && plan.subject && plan.need !== "season" && !folderNew && !filesOf(plan, undefined).some(doable)) tidy.push(target.path);
@@ -179,7 +180,7 @@ export function TmdbRename({ targets: chosen, onClose }: { targets: RenameTarget
       const failedBefore = failed;
       let finalPath = target.path;
       // Renames first, then ads go, then wrapper folders open (their contents already renamed, deepest first).
-      const rank = (item: RenameItem): number => item.action === "unwrap" ? 2 : item.action === "delete" ? 1 : 0;
+      const rank = (item: RenameItem): number => item.action === "spill" ? 3 : item.action === "unwrap" ? 2 : item.action === "delete" ? 1 : 0;
       for (const item of [...files].sort((a, b) => rank(a) - rank(b))) {
         const key = rowKey(target.path, item.old);
         if (!doable(item) || off.has(key)) continue;
@@ -187,7 +188,10 @@ export function TmdbRename({ targets: chosen, onClose }: { targets: RenameTarget
         try {
           const { results } = item.action === "delete" ? await tmdbRename.apply(target.path, password, [], "", undefined, { remove: [item.old] })
             : item.action === "unwrap" ? await tmdbRename.apply(target.path, password, [], "", undefined, { unwrap: [item.old] })
-            : await tmdbRename.apply(target.path, password, [{ old: item.old, new: item.new ?? "" }]);
+            // The whole folder opens up into the one above, and goes.
+            : item.action === "spill" ? await tmdbRename.apply(parent(target.path), passwordFor(parent(target.path)), [], "", undefined, { unwrap: [basename(target.path)] })
+            : await tmdbRename.apply(target.path, password, [{ old: item.old, new: item.new ?? item.old, into: item.into }]);
+          if (item.action === "spill") touched.add(parent(target.path));
           if (results[0]?.error) throw new Error(results[0].error);
           done++;
           touched.add(target.path);
@@ -329,10 +333,14 @@ export function TmdbRename({ targets: chosen, onClose }: { targets: RenameTarget
             {plan && !plan.reason && (!plan.subject || target.only) && (
               <>
                 <motion.p className="flex items-center gap-2 text-[13.5px] font-medium" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={spring.soft}>
-                  <FilmStripIcon size={16} className="text-muted" />「{basename(target.path)}」里选中的文件
-                  <span className="text-[12.5px] font-normal text-faint">每个文件按自己的片名或集数</span>
+                  <FilmStripIcon size={16} className="text-muted" />{target.only ? <>「{basename(target.path)}」里选中的文件</> : <>「{basename(target.path)}」是合集</>}
+                  <span className="text-[12.5px] font-normal text-faint">{target.only ? "每个文件按自己的片名或集数" : "每部片按自己的名字，各放进自己的文件夹"}</span>
                 </motion.p>
                 <ul className="mt-2 divide-y divide-line">
+                  {folder && (
+                    <Row item={folder} on={!off.has(rowKey(target.path, folder.old))} state={rows[rowKey(target.path, folder.old)]} index={0}
+                      locked={running || finished} onToggle={() => toggle(rowKey(target.path, folder.old))} />
+                  )}
                   {files.map((item, index) => {
                     const key = rowKey(target.path, item.old);
                     return (
@@ -425,9 +433,9 @@ function SeasonPicker({ id, current, disabled, ask, onPick }: { id: number; curr
 function Row({ item, on, state, index, locked, onToggle }: { item: RenameItem; on: boolean; state?: RowState; index: number; locked: boolean; onToggle: () => void }) {
   const done = state?.status === "done";
   const tag = item.kind === "folder" ? "文件夹" : item.kind === "subtitle" ? "字幕" : item.kind === "extra" ? "附属"
-    : item.action === "delete" ? "广告" : item.action === "unwrap" ? "多一层"
+    : item.action === "delete" ? "广告" : item.action === "unwrap" ? "多一层" : item.action === "spill" ? "拆开" : item.into ? "单独文件夹"
     : item.episode ? `S${String(item.season ?? 1).padStart(2, "0")}E${String(item.episode).padStart(2, "0")}` : "";
-  const Icon = item.kind === "folder" || item.action === "unwrap" ? FolderSimpleIcon : item.action === "delete" ? TrashIcon : item.kind === "subtitle" ? SubtitlesIcon : item.kind === "extra" ? FileIcon : FilmStripIcon;
+  const Icon = item.kind === "folder" || item.action === "unwrap" || item.action === "spill" ? FolderSimpleIcon : item.action === "delete" ? TrashIcon : item.kind === "subtitle" ? SubtitlesIcon : item.kind === "extra" ? FileIcon : FilmStripIcon;
   return (
     <motion.li
       initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}
@@ -448,17 +456,17 @@ function Row({ item, on, state, index, locked, onToggle }: { item: RenameItem; o
           {item.action ? (
             <>
               <span className={`block truncate text-[14px] font-medium ${done ? "text-faint line-through" : ""}`}>
-                {item.action === "delete" ? "删除" : "拆开这一层"}
+                {item.action === "delete" ? "删除" : item.action === "spill" ? "拆开这个合集" : "拆开这一层"}
               </span>
               <span className="mt-0.5 block truncate text-[12.5px] text-faint">
-                {item.action === "delete" ? item.old : `「${item.old}」里的内容移到上一层`}
+                {item.action === "delete" ? item.old : item.action === "spill" ? `里面的系列和电影移到上一层，和其他片并列` : `「${item.old}」里的内容移到上一层`}
               </span>
             </>
           ) : item.new ? (
             <span className="block [perspective:600px]">
               <motion.span key={done ? "done" : "plan"} className="block origin-bottom truncate text-[14px] font-medium"
                 initial={done ? { rotateX: 90, opacity: 0 } : false} animate={{ rotateX: 0, opacity: 1 }} transition={spring.pop}>
-                {item.new}
+                {item.into && <span className="text-muted">{item.into} / </span>}{item.new}
               </motion.span>
             </span>
           ) : (

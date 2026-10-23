@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"net/url"
 	"os"
@@ -72,17 +73,40 @@ var (
 	cjkSeason = regexp.MustCompile(`第[0-9一二三四五六七八九十百]{1,3}[季部集辑期]|[一二三四五六七八九十]部曲|系列|全[0-9一二三四五六七八九十]+[季部集]`)
 	cjkJunk   = regexp.MustCompile(`(国粤语|国语|粤语|中字|中英字幕|简繁|双语|原盘|全集|合集|特效字幕|蓝光|高清|超清|完结|更新至.*|全\d+集|\d+\s*-\s*\d+\s*[集部])`)
 	spaces    = regexp.MustCompile(`\s+`)
+	// Disc names in boxes of films: "生化危机4 3D", "新哥斯拉20164K" (a year and 4K run together).
+	discFormat = regexp.MustCompile(`(?i)[\s._-]*(?:3d|imax)$`)
+	glued4K    = regexp.MustCompile(`(?i)((?:19|20)\d{2})4k$`)
+	gluedYear  = regexp.MustCompile(`(\p{Han})((?:19|20)\d{2})$`)
+	// "哈利·波特与死亡圣器(上)", "暮光之城4上": two films on TMDB, not two parts of one.
+	halfTag = regexp.MustCompile(`(?:[(（]([上下])[)）]|\d([上下]))$`)
 	// A folder of several films ("[周星驰] [原盘电影集 国粤语]") names no one film.
 	collection = regexp.MustCompile(`电影集|作品集|合集|全集|系列|collection`)
 )
 
-// cleanerRev changes whenever CleanName gets better: names that found nothing
-// under an older revision are looked up again.
-const cleanerRev = 5
+// cleanerRev changes whenever CleanName or matching gets better: names that
+// found nothing under an older revision are looked up again, and matches found
+// by older rules are checked again when a folder is planned (never a choice made by hand).
+const cleanerRev = 7
 
 // CleanName reads a file or folder name for what a film database can search.
 func CleanName(name string) (query string, year int, tmdbID int, imdbID string) {
 	name = extension.ReplaceAllString(strings.TrimSpace(name), "")
+	name = discFormat.ReplaceAllString(name, "")
+	name = glued4K.ReplaceAllString(name, "$1")
+	name = gluedYear.ReplaceAllString(name, "$1 $2")
+	half := ""
+	if m := halfTag.FindStringSubmatchIndex(name); m != nil && m[0] > 0 {
+		if m[2] >= 0 { // "(上)"
+			half, name = name[m[2]:m[3]], strings.TrimSpace(name[:m[0]])
+		} else { // "4上": the number stays
+			half, name = name[m[4]:m[5]], name[:m[4]]
+		}
+	}
+	defer func() {
+		if query != "" && half != "" {
+			query += " " + half
+		}
+	}()
 	if m := tmdbTag.FindStringSubmatch(name); m != nil {
 		tmdbID, _ = strconv.Atoi(m[1])
 		name = strings.Replace(name, m[0], " ", 1)
@@ -339,6 +363,7 @@ type tmdbItem struct {
 	BackdropPath  string  `json:"backdrop_path"`
 	Overview      string  `json:"overview"`
 	VoteAverage   float64 `json:"vote_average"`
+	VoteCount     int     `json:"vote_count"`
 	Popularity    float64 `json:"popularity"`
 	GenreIDs      []int   `json:"genre_ids"` // in search results
 	Genres        []struct {
@@ -399,7 +424,7 @@ func (i tmdbItem) poster(kind string) *Poster {
 		genres = append(genres, g.ID)
 	}
 	p := &Poster{Kind: kind, ID: i.ID, Title: title, Original: original, Year: year, Poster: i.PosterPath,
-		Backdrop: i.BackdropPath, Overview: i.Overview, Rating: i.VoteAverage, Cat: CategoryOf(kind, genres), At: time.Now().Unix()}
+		Backdrop: i.BackdropPath, Overview: i.Overview, Rating: i.VoteAverage, Cat: CategoryOf(kind, genres), At: time.Now().Unix(), Rev: cleanerRev}
 	if i.BelongsToCollection != nil && i.BelongsToCollection.ID > 0 {
 		p.Collection, p.CollectionName = i.BelongsToCollection.ID, i.BelongsToCollection.Name
 	}
@@ -452,7 +477,12 @@ func (t *TMDB) Search(ctx context.Context, query string, year int) ([]*Poster, e
 			continue
 		}
 		p := item.poster("")
-		score := item.Popularity / 100
+		// Among titles that agree as well, the film people know ("生化危机4" is
+		// 战神再生, not the animated 孵化); capped, so it never beats a name or a year.
+		score := math.Min(float64(item.VoteCount), 5000) / 250
+		if runsOn(query, p.Title) {
+			score -= 60
+		}
 		for _, title := range []string{p.Title, p.Original, item.Title, item.Name} {
 			got := normalizeTitle(title)
 			switch {
@@ -618,9 +648,28 @@ func (t *TMDB) lookupBase(ctx context.Context, name string) (*Poster, error) {
 		return none, nil
 	}
 	best := results[0]
-	// Require some agreement between the name and the title found.
-	if agrees(query, best.Title, best.Original) {
-		return best, nil
+	// Require some agreement between the name and the title found. A numbered
+	// name ("生化危机4") skips titles whose number runs on ("生化危机4D：执行者").
+	for i, r := range results {
+		if i >= 5 {
+			break
+		}
+		if r.Poster != "" && agrees(query, r.Title, r.Original) && !runsOn(query, r.Title) {
+			return r, nil
+		}
+	}
+	if runsOn(query, best.Title) {
+		return none, nil
+	}
+	// A Chinese name against a title TMDB has not translated for this language
+	// ("蜘蛛侠：英雄无归" finds "Spider-Man: No Way Home"): its Chinese titles
+	// from the other regions, and the titles it is also known by.
+	if !isLatin(query) && year > 0 && best.Year == year {
+		for _, title := range t.otherTitles(ctx, best.Kind, best.ID) {
+			if agrees(query, title) {
+				return best, nil
+			}
+		}
 	}
 	// An English release name against Chinese and Japanese titles: compare with
 	// the English title of the same entry instead.
@@ -635,9 +684,65 @@ func (t *TMDB) lookupBase(ctx context.Context, name string) (*Poster, error) {
 	return none, nil
 }
 
+// otherTitles are a film's or series' Chinese translations and alternative titles.
+func (t *TMDB) otherTitles(ctx context.Context, kind string, id int) []string {
+	var out []string
+	var tr struct {
+		Translations []struct {
+			Lang string `json:"iso_639_1"`
+			Data struct {
+				Title string `json:"title"`
+				Name  string `json:"name"`
+			} `json:"data"`
+		} `json:"translations"`
+	}
+	if err := t.get(ctx, kind+"/"+strconv.Itoa(id)+"/translations", nil, &tr); err == nil {
+		for _, x := range tr.Translations {
+			if x.Lang == "zh" {
+				out = append(out, x.Data.Title, x.Data.Name)
+			}
+		}
+	}
+	var alt struct {
+		Titles  []struct{ Title string } `json:"titles"`
+		Results []struct{ Title string } `json:"results"` // series
+	}
+	if err := t.get(ctx, kind+"/"+strconv.Itoa(id)+"/alternative_titles", nil, &alt); err == nil {
+		for _, x := range append(alt.Titles, alt.Results...) {
+			out = append(out, x.Title)
+		}
+	}
+	return out
+}
+
+// runsOn: query ends with a number that title carries on with letters or
+// digits ("生化危机4" in "生化危机4D", "终结者2" in "终结者2018").
+func runsOn(query, title string) bool {
+	q := []rune(strings.TrimSpace(query))
+	if len(q) == 0 || !unicode.IsDigit(q[len(q)-1]) {
+		return false
+	}
+	at := strings.Index(title, string(q))
+	if at < 0 {
+		return false
+	}
+	rest := []rune(title[at+len(string(q)):])
+	return len(rest) > 0 && rest[0] < unicode.MaxASCII && (unicode.IsLetter(rest[0]) || unicode.IsDigit(rest[0]))
+}
+
 func agrees(query string, titles ...string) bool {
 	want := normalizeTitle(query)
 	if want == "" {
+		return false
+	}
+	// "暮光之城4 上" is "暮光之城4：破晓（上）": the title has the rest and ends in 上.
+	if half := []rune(want); len(half) > 1 && (half[len(half)-1] == '上' || half[len(half)-1] == '下') {
+		rest, end := string(half[:len(half)-1]), string(half[len(half)-1])
+		for _, title := range titles {
+			if got := normalizeTitle(title); strings.Contains(got, rest) && strings.HasSuffix(got, end) {
+				return true
+			}
+		}
 		return false
 	}
 	for _, title := range titles {

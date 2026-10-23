@@ -151,6 +151,13 @@ func (t *TMDB) Wants(ctx context.Context, dir string, folders, files []string) m
 		}
 		name0, year := title(p)
 		want := titleYear(name0, year)
+		// A series' folder ("流浪地球", "招魂") is named for the series, not its first film.
+		if _, y, _, _ := CleanName(name); p.Kind == "movie" && y == 0 && normalizeTitle(name) != "" &&
+			strings.HasPrefix(normalizeTitle(name0), normalizeTitle(name)) {
+			if d, err := t.cachedDetails(ctx, "movie", p.ID); err == nil && d.Collection > 0 {
+				want = name
+			}
+		}
 		if p.Kind == "tv" {
 			season := SeasonOf(name)
 			if season == 0 {

@@ -11,7 +11,7 @@ export interface ResourceConfig { enabled: boolean; sites: ResourceSite[]; folde
 export interface ProbeResult { id: string; state: "ok" | "challenge" | "down"; status?: number; ms: number; message?: string }
 
 export const resources = {
-  list: () => get<{ enabled: boolean; sites: ResourceSite[]; folder?: string }>("/tgvio/resources"),
+  list: () => get<{ enabled: boolean; sites: ResourceSite[]; folder?: string; auto_organize?: boolean }>("/tgvio/resources"),
   titles: (site: string, q: string) => post<{ items: ResourceTitle[] }>("/tgvio/resources/titles", { site, q }),
   seeds: (site: string, id: string) => post<{ items: ResourceSeed[] }>("/tgvio/resources/seeds", { site, id }),
   magnets: (site: string, seeds: string[]) => post<{ items: { seed: string; url?: string; error?: string }[] }>("/tgvio/resources/magnets", { site, seeds }),
