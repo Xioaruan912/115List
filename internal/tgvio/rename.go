@@ -785,7 +785,8 @@ func (t *TMDB) PlanRenameIn(ctx context.Context, dir string, entries []RenameEnt
 					a, b = b, a
 					group[0], group[1] = group[1], group[0]
 				}
-				if len(a) == len(b) && strings.HasSuffix(a, "1") && strings.HasSuffix(b, "2") && a[:len(a)-1] == b[:len(b)-1] {
+				if len(a) == len(b) && strings.HasSuffix(a, "1") && strings.HasSuffix(b, "2") && a[:len(a)-1] == b[:len(b)-1] &&
+					!sequelTitle(a[:len(a)-1], list[group[0]].title) {
 					list[group[0]].part, list[group[1]].part = " - CD1", " - CD2"
 					continue
 				}

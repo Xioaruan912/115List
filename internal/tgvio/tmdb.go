@@ -86,7 +86,7 @@ var (
 // cleanerRev changes whenever CleanName or matching gets better: names that
 // found nothing under an older revision are looked up again, and matches found
 // by older rules are checked again when a folder is planned (never a choice made by hand).
-const cleanerRev = 7
+const cleanerRev = 8
 
 // CleanName reads a file or folder name for what a film database can search.
 func CleanName(name string) (query string, year int, tmdbID int, imdbID string) {
@@ -647,7 +647,11 @@ func (t *TMDB) lookupBase(ctx context.Context, name string) (*Poster, error) {
 	// "雷神1", "蚁人1": the first film, which TMDB names without the 1.
 	firstFilm := func() (*Poster, error) {
 		if q := []rune(query); len(q) > 2 && q[len(q)-1] == '1' && unicode.Is(unicode.Han, q[len(q)-2]) {
-			return t.lookupBase(ctx, string(q[:len(q)-1])+yearSuffix(year))
+			base := string(q[:len(q)-1])
+			p, err := t.lookupBase(ctx, base+yearSuffix(year))
+			if err != nil || p.None || !sequelTitle(base, p.Title) {
+				return p, err
+			}
 		}
 		return none, nil
 	}
@@ -720,6 +724,17 @@ func (t *TMDB) otherTitles(ctx context.Context, kind string, id int) []string {
 		}
 	}
 	return out
+}
+
+// sequelTitle: title is a numbered sequel of base ("灵魂战车2：复仇时刻" of 灵魂战车).
+func sequelTitle(base, title string) bool {
+	b, got := normalizeTitle(base), normalizeTitle(title)
+	at := strings.Index(got, b)
+	if at < 0 || at+len(b) >= len(got) {
+		return false
+	}
+	next := got[at+len(b)]
+	return next >= '2' && next <= '9'
 }
 
 // runsOn: query ends with a number that title carries on with letters or

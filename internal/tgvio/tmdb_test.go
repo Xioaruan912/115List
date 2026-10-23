@@ -113,3 +113,9 @@ func TestAgreesByWords(t *testing.T) {
 		}
 	}
 }
+
+func TestSequelTitle(t *testing.T) {
+	if !sequelTitle("灵魂战车", "灵魂战车2：复仇时刻") || sequelTitle("灵魂战车", "灵魂战车") || sequelTitle("指环王：魔戒再现", "指环王1：护戒使者") {
+		t.Error("sequelTitle")
+	}
+}
