@@ -1,9 +1,10 @@
-"""Run inside tgvio-player: `docker exec -i tgvio-player python - list|rw|batch < this file`.
+"""Run on the host: `python3 tgvio/probe.py list|rw|batch`.
 
-list: print every top-level listing the archive depends on, as JSON.
-rw:    create, read back and delete a probe file under /115/Pron/.staging.
+list: print every top-level listing the site depends on, as JSON.
+rw:    create, read back and delete a probe file under /115/软件/.openlist-probe.
 batch: remove two files in two folders with one /api/fs/remove call.
-Uses the Player's own OpenList account from its environment; prints no secrets.
+Uses a dedicated low-permission OpenList account read from a 0600 env file
+(OPENLIST_PROBE_USER / OPENLIST_PROBE_PASSWORD); prints no secrets.
 """
 import base64
 import http.client
@@ -14,10 +15,26 @@ import time
 import urllib.parse
 import urllib.request
 
-USER = os.environ["TGVIO_PLAYER_WEBDAV_USER"]
-PASSWORD = os.environ["TGVIO_PLAYER_WEBDAV_PASSWORD"]
-BASE = "http://host.docker.internal:5244"
-PATHS = ["/", "/115", "/115/照片", "/115/Pron", "/115/我要看", "/115/读书", "/115/软件", "/onedrive"]
+ENV_FILE = os.environ.get("OPENLIST_PROBE_ENV", "/root/.config/openlist-probe/env")
+
+
+def credentials():
+    if os.stat(ENV_FILE).st_mode & 0o077:
+        sys.exit(f"{ENV_FILE} must be mode 0600")
+    values = {}
+    with open(ENV_FILE) as f:
+        for line in f:
+            key, sep, value = line.strip().partition("=")
+            if sep and not key.startswith("#"):
+                values[key] = value
+    return values["OPENLIST_PROBE_USER"], values["OPENLIST_PROBE_PASSWORD"]
+
+
+USER, PASSWORD = credentials()
+HOST, PORT = "127.0.0.1", 5244
+BASE = f"http://{HOST}:{PORT}"
+PATHS = ["/", "/115", "/115/Yello", "/115/影视库", "/115/读书", "/115/软件", "/onedrive"]
+PROBE_DIR = "/115/软件/.openlist-probe"
 
 
 def api(route, body, token=None):
@@ -40,7 +57,7 @@ def listing():
 
 def dav(method, path, data=None, headers=None):
     auth = "Basic " + base64.b64encode(f"{USER}:{PASSWORD}".encode()).decode()
-    conn = http.client.HTTPConnection("host.docker.internal", 5244, timeout=120)
+    conn = http.client.HTTPConnection(HOST, PORT, timeout=120)
     conn.request(method, "/dav" + urllib.parse.quote(path), body=data,
                  headers={"Authorization": auth, **(headers or {})})
     response = conn.getresponse()
@@ -50,7 +67,8 @@ def dav(method, path, data=None, headers=None):
 
 
 def read_write():
-    base = f"/115/Pron/.staging/openlist-swap-probe-{int(time.time())}"
+    dav("MKCOL", PROBE_DIR)
+    base = f"{PROBE_DIR}/swap-{int(time.time())}"
     payload = os.urandom(100_000)
     steps = [
         ("MKCOL", dav("MKCOL", base)[0], {201}),
@@ -70,7 +88,8 @@ def read_write():
 def batch_remove():
     """Two files in different sub-folders, removed by one /api/fs/remove call."""
     token = api("/api/auth/login", {"username": USER, "password": PASSWORD})["data"]["token"]
-    base = f"/115/Pron/.staging/openlist-batch-probe-{int(time.time())}"
+    dav("MKCOL", PROBE_DIR)
+    base = f"{PROBE_DIR}/batch-{int(time.time())}"
     dav("MKCOL", base)
     for folder in ("a", "b"):
         dav("MKCOL", f"{base}/{folder}")
