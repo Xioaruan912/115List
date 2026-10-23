@@ -3,6 +3,7 @@ package op
 import (
 	"context"
 	"fmt"
+	"github.com/OpenListTeam/OpenList/v4/internal/tgvio"
 	"reflect"
 	"runtime"
 	"sort"
@@ -247,6 +248,8 @@ func UpdateStorage(ctx context.Context, storage model.Storage) error {
 	if oldStorage.MountPath != storage.MountPath {
 		// mount path renamed, need to drop the storage
 		storagesMap.Delete(oldStorage.MountPath)
+		// TGVIO: posters and 整理 marks follow the new path ("/115/我要看" -> "/115/影视库").
+		tgvio.MountMoved(oldStorage.MountPath, storage.MountPath)
 	}
 	err = storageDriver.Drop(ctx)
 	if err != nil {
