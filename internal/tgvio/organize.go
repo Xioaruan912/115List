@@ -95,6 +95,35 @@ func (o *Organize) Children(dir string) (pending, done []string, self string) {
 	return pending, done, self
 }
 
+// RenamedDir moves the marks of a folder and everything below it to its new path.
+func (o *Organize) RenamedDir(oldPath, newPath string) {
+	oldPath, newPath = organizeKey(oldPath), organizeKey(newPath)
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	changed := false
+	for key, entry := range o.at {
+		if key == oldPath || strings.HasPrefix(key, oldPath+"/") {
+			delete(o.at, key)
+			o.at[newPath+strings.TrimPrefix(key, oldPath)] = entry
+			changed = true
+		}
+	}
+	if changed {
+		_ = o.saveLocked()
+	}
+}
+
+// MountMoved: a storage's mount path changed. What was recorded under the old
+// path (posters, 整理 marks) follows, for the stores in use.
+func MountMoved(oldPath, newPath string) {
+	if tmdbInstance != nil {
+		tmdbInstance.RenamedDir(oldPath, newPath)
+	}
+	if organizeInstance != nil {
+		organizeInstance.RenamedDir(oldPath, newPath)
+	}
+}
+
 // Pending lists the folders waiting to be organized that were marked at least
 // minAge ago (real paths).
 func (o *Organize) Pending(minAge time.Duration) []string {
