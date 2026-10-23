@@ -8,7 +8,7 @@ set -Eeuo pipefail
 new_bin=${1:?path to the new openlist binary}
 probe=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)/probe.py
 backup=/root/backup/openlist-upgrade-$(date -u +%Y%m%dT%H%M%SZ)
-run_probe() { docker exec -i tgvio-player python - "$1" < "$probe"; }
+run_probe() { python3 "$probe" "$1"; }
 ping_ok() {
     for _ in $(seq 1 30); do
         [[ "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:5244/api/ping)" == 200 ]] && return 0
@@ -17,6 +17,7 @@ ping_ok() {
     return 1
 }
 "$new_bin" version | grep -q 'Version: v4.2.6-tgvio'
+python3 "$probe" list > /dev/null  # credentials and site reachable before touching anything
 mkdir -p "$backup"
 cp -a /opt/openlist/openlist "$backup/openlist.previous"
 run_probe list > "$backup/baseline.json"
