@@ -7,7 +7,8 @@ import { categoryCounts, categoryOf, library, libraryNews, posterSrc, type Categ
 import { CategoryFilter } from "../components/CategoryFilter";
 import { ErrorState } from "../components/ErrorState";
 import { Mark } from "../components/Mark";
-import { cnNumeral } from "../components/SeriesPanel";
+import { Dialogs } from "../components/Dialogs";
+import { cnNumeral, Strip } from "../components/SeriesPanel";
 import { useLibraryScope } from "../hooks/useLibraryScope";
 import { useResourceRoot } from "../hooks/useResourceRoot";
 import { spring } from "../lib/motion";
@@ -177,7 +178,7 @@ function NewsRow({ onOpen }: { onOpen: (dir: string) => void }) {
         <h2 className="text-[17px] font-semibold tracking-tight">追剧与新片</h2>
         <span className="text-[12px] text-faint tabular">{items.length} 条</span>
       </div>
-      <div className="-mx-3 flex snap-x scroll-px-3 gap-3 overflow-x-auto px-3 pb-2 [scrollbar-width:none] sm:-mx-8 sm:scroll-px-8 sm:px-8">
+      <Strip className="-mx-3 flex snap-x scroll-px-3 gap-3 overflow-x-auto px-3 pb-2 [scrollbar-width:none] sm:-mx-8 sm:scroll-px-8 sm:px-8">
         {items.slice(0, 30).map((item, index) => {
           const line = newsLine(item);
           return (
@@ -203,7 +204,7 @@ function NewsRow({ onOpen }: { onOpen: (dir: string) => void }) {
             </motion.div>
           );
         })}
-      </div>
+      </Strip>
     </section>
   );
 }
@@ -241,7 +242,7 @@ function ContinueRow({ items, onPlay }: { items: LibraryItem[]; onPlay: (path: s
         <h2 className="text-[17px] font-semibold tracking-tight">继续观看</h2>
         <button className="rounded-lg px-2.5 py-1 text-[13px] text-muted hover:bg-[var(--hover)] hover:text-ink" onClick={() => clear(rows.map(row => row.path), "已清空继续观看")}>清空</button>
       </div>
-      <div className="-mx-3 flex snap-x gap-3 overflow-x-auto px-3 pb-2 [scrollbar-width:none] sm:-mx-8 sm:px-8">
+      <Strip className="-mx-3 flex snap-x gap-3 overflow-x-auto px-3 pb-2 [scrollbar-width:none] sm:-mx-8 sm:px-8">
         {rows.map(({ path, progress, owner, episode }, index) => {
           const art = owner?.backdrop || owner?.poster;
           return (
@@ -265,7 +266,7 @@ function ContinueRow({ items, onPlay }: { items: LibraryItem[]; onPlay: (path: s
             </motion.div>
           );
         })}
-      </div>
+      </Strip>
     </section>
   );
 }
@@ -419,6 +420,8 @@ export default function Library() {
         )}
         {items.length > 600 && <p className="mt-8 text-center text-[12.5px] text-muted">只显示前 600 部，用搜索或分类缩小范围</p>}
       </main>
+      {/* The library is its own page: without this, 找资源 opened a dialog nothing showed. */}
+      <Dialogs />
     </div>
   );
 }

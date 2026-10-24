@@ -94,7 +94,7 @@ export function hasTitlePanel(data: Awaited<ReturnType<typeof series>> | undefin
  * A row that scrolls sideways: by touch, a trackpad, Shift and the wheel, the
  * arrows at its ends, or pressing the mouse and dragging (a drag is no click).
  */
-function Strip({ className, children }: { className: string; children: ReactNode }) {
+export function Strip({ className, children }: { className: string; children: ReactNode }) {
   const ref = useRef<HTMLDivElement>(null);
   const [ends, setEnds] = useState({ start: true, end: true });
   const drag = useRef<{ x: number; left: number; moved: boolean } | null>(null);
