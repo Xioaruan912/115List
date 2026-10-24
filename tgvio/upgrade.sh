@@ -18,9 +18,10 @@ ping_ok() {
 }
 # Videos played through the server (cloud transcoding) break when it restarts;
 # others play from the drive straight. Wait until none has played for a minute,
-# at most TGVIO_WAIT seconds (default 600; 0 skips). The admin token stays here.
+# at most OPENLIST_UPGRADE_WAIT seconds (default 600; 0 skips; TGVIO_WAIT is its
+# former name). The admin token stays here.
 wait_idle() {
-    local max=${TGVIO_WAIT:-600} waited=0 token idle
+    local max=${OPENLIST_UPGRADE_WAIT:-${TGVIO_WAIT:-600}} waited=0 token idle
     (( max > 0 )) || return 0
     token=$(cd /opt/openlist && ./openlist admin token 2>/dev/null | sed -n 's/^Admin token: //p')
     while :; do
@@ -34,7 +35,7 @@ except Exception: print(-1)')
         sleep 15; waited=$((waited + 15))
     done
 }
-"$new_bin" version | grep -qE 'Version: v4\.2\.[67]-tgvio'
+"$new_bin" version | grep -qE 'Version: v4\.2\.[67]-(ppee|tgvio)'
 python3 "$probe" list > /dev/null  # credentials and site reachable before touching anything
 mkdir -p "$backup"
 cp -a /opt/openlist/openlist "$backup/openlist.previous"

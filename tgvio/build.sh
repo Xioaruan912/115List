@@ -1,14 +1,15 @@
 #!/usr/bin/env bash
 # Build the TGVIO OpenList binary from this checkout.
 # Usage: bash tgvio/build.sh [out-dir]   (default: /root/build/openlist-tgvio)
-#   TGVIO_UI=tgvio (default)  embed the TGVIO front end built from tgvio-web/
-#   TGVIO_UI=official         embed the official OpenList-Frontend release instead
+#   OPENLIST_UI=tgvio (default)  embed the site's own front end built from tgvio-web/
+#   OPENLIST_UI=official         embed the official OpenList-Frontend release instead
+#   (TGVIO_UI, its former name, still works)
 # The official dist is always fetched and verified into <out-dir>/web, so it can be
 # served without a rebuild by pointing dist_dir in data/config.json at it.
 set -Eeuo pipefail
 repo=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 out=${1:-/root/build/openlist-tgvio}
-ui=${TGVIO_UI:-tgvio}
+ui=${OPENLIST_UI:-${TGVIO_UI:-tgvio}}
 web_version=v4.2.6
 web_sha256=eb620950a07dd081c5470a91361bde018ffd6a3cefb5b9a11b0f24f07960b444
 export PATH=/usr/local/go/bin:/root/.local/bin:$PATH
@@ -43,11 +44,11 @@ case "$ui" in
         tar -xzf "$dist" -C "$repo/public/dist"
         label=$web_version
         ;;
-    *) echo "TGVIO_UI must be tgvio or official" >&2; exit 2 ;;
+    *) echo "OPENLIST_UI must be tgvio or official" >&2; exit 2 ;;
 esac
 pkg=github.com/OpenListTeam/OpenList/v4/internal/conf
 (cd "$repo" && go build -o "$out/openlist-$commit" -tags=jsoniter -ldflags="-w -s \
     -X '$pkg.BuiltAt=$(date -u '+%F %T %z')' -X '$pkg.GitAuthor=Xioaruan912' \
-    -X '$pkg.GitCommit=$commit' -X '$pkg.Version=v4.2.7-tgvio' -X '$pkg.WebVersion=$label'" .)
+    -X '$pkg.GitCommit=$commit' -X '$pkg.Version=v4.2.7-ppee' -X '$pkg.WebVersion=$label'" .)
 "$out/openlist-$commit" version | grep -E 'Commit|Version'
 echo "built: $out/openlist-$commit (ui: $ui)"

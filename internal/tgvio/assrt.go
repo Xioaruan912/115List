@@ -22,7 +22,7 @@ import (
 // Subtitles from 射手网 (assrt.net): search by a video's file name or a title,
 // list a subtitle's files, download one. The free API allows 20 requests a
 // minute per token and address; calls queue behind a limiter well under that.
-// The token lives in <data>/tgvio/assrt_token (0600) or TGVIO_ASSRT_TOKEN.
+// The token lives in <data>/tgvio/assrt_token (0600) or OPENLIST_ASSRT_TOKEN.
 
 // SubtitleResult is one subtitle found on assrt.
 type SubtitleResult struct {
@@ -60,14 +60,14 @@ var (
 func Subtitles(dataDir string) *Assrt {
 	assrtOnce.Do(func() {
 		dir := filepath.Join(dataDir, "tgvio")
-		token := strings.TrimSpace(os.Getenv("TGVIO_ASSRT_TOKEN"))
+		token := strings.TrimSpace(Env("OPENLIST_ASSRT_TOKEN", "TGVIO_ASSRT_TOKEN"))
 		if token == "" {
 			if raw, err := os.ReadFile(filepath.Join(dir, "assrt_token")); err == nil {
 				token = strings.TrimSpace(string(raw))
 			}
 		}
 		base := "https://api.assrt.net/v1/"
-		if alt := strings.TrimSpace(os.Getenv("TGVIO_ASSRT_BASE")); alt != "" { // tests point it at a stand-in
+		if alt := strings.TrimSpace(Env("OPENLIST_ASSRT_BASE", "TGVIO_ASSRT_BASE")); alt != "" { // tests point it at a stand-in
 			base = strings.TrimRight(alt, "/") + "/"
 		}
 		assrtInstance = &Assrt{dir: dir, base: base, token: token,
