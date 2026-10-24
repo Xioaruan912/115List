@@ -12,7 +12,6 @@ import { isAdmin, isGuest } from "./lib/perm";
 import { queryClient } from "./lib/query";
 import { Browser } from "./pages/Browser";
 import { Login } from "./pages/Login";
-import { SharePage } from "./pages/SharePage";
 import { usePrefs } from "./stores/prefs";
 import { useSession } from "./stores/session";
 import { onUploadFinished, useUploads } from "./stores/uploads";
@@ -20,6 +19,8 @@ import { measureDevice, useLite } from "./lib/lite";
 
 const Manage = lazy(() => import("./pages/manage/Manage"));
 const Library = lazy(() => import("./pages/Library"));
+// A share link's page (with its video player): only share links need it.
+const SharePage = lazy(() => import("./pages/SharePage").then(m => ({ default: m.SharePage })));
 
 onUploadFinished(dir => {
   // Batch: many small files finishing together refresh the folder once.
@@ -43,7 +44,7 @@ function Routes() {
   const pathname = decodePath(location);
 
   // Shares are public: whoever has the link sees them, signed in or not.
-  if (location.startsWith("/@s/")) return <SharePage />;
+  if (location.startsWith("/@s/")) return <Suspense fallback={<Splash />}><SharePage /></Suspense>;
   if (status === "loading") return <Splash />;
   if (location.startsWith("/@login")) {
     return status === "ready" && !isGuest(me) ? <Redirect to="/" replace /> : <Login />;

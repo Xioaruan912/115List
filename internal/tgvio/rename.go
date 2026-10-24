@@ -10,7 +10,6 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 )
 
@@ -269,31 +268,31 @@ type tmdbEpisode struct {
 var genericEpisode = regexp.MustCompile(`(?i)^(第\s*\d+\s*[集话話]|episode\s*\d+|エピソード\s*\d+|\d+)$`)
 
 type seasonEpisodes struct {
-	at     time.Time
 	titles map[int]string
 	stills map[int]string
 	list   []tmdbEpisode // the whole season, for the series page
 	ok     bool          // TMDB answered
 }
 
-// seasonCache keeps one season's episode names and stills for half a day:
-// thumbnails ask for them on every folder visit.
-var seasonCache sync.Map // "id/season/language" -> *seasonEpisodes
+// episodesMemo keeps one season's episodes: thumbnails ask for their names and
+// stills on every folder visit.
+var episodesMemo = newMemo[[]tmdbEpisode]("episodes") // "id/season/language"
 
 func (t *TMDB) episodes(ctx context.Context, id, season int) *seasonEpisodes {
 	key := fmt.Sprintf("%d/%d/%s", id, season, t.Config().Language)
-	if v, ok := seasonCache.Load(key); ok && time.Since(v.(*seasonEpisodes).at) < 12*time.Hour {
-		return v.(*seasonEpisodes)
+	out := &seasonEpisodes{titles: map[int]string{}, stills: map[int]string{}}
+	list, err := episodesMemo.fetch(ctx, key, func(ctx context.Context) ([]tmdbEpisode, error) {
+		var s struct {
+			Episodes []tmdbEpisode `json:"episodes"`
+		}
+		err := t.get(ctx, "tv/"+strconv.Itoa(id)+"/season/"+strconv.Itoa(season), url.Values{}, &s)
+		return s.Episodes, err
+	})
+	if err != nil {
+		return out // not kept: asked again next time
 	}
-	var s struct {
-		Episodes []tmdbEpisode `json:"episodes"`
-	}
-	out := &seasonEpisodes{at: time.Now(), titles: map[int]string{}, stills: map[int]string{}}
-	if err := t.get(ctx, "tv/"+strconv.Itoa(id)+"/season/"+strconv.Itoa(season), url.Values{}, &s); err != nil {
-		return out // not cached: asked again next time
-	}
-	out.list, out.ok = s.Episodes, true
-	for _, e := range s.Episodes {
+	out.list, out.ok = list, true
+	for _, e := range list {
 		if name := strings.TrimSpace(e.Name); name != "" && !genericEpisode.MatchString(name) {
 			out.titles[e.EpisodeNumber] = name
 		}
@@ -301,7 +300,6 @@ func (t *TMDB) episodes(ctx context.Context, id, season int) *seasonEpisodes {
 			out.stills[e.EpisodeNumber] = e.StillPath
 		}
 	}
-	seasonCache.Store(key, out)
 	return out
 }
 
@@ -311,12 +309,6 @@ func (t *TMDB) episodeTitles(ctx context.Context, id, season int) map[int]string
 	return t.episodes(ctx, id, season).titles
 }
 
-var seasonsCache sync.Map // id -> seasonsEntry
-
-type seasonsEntry struct {
-	at   time.Time
-	list []SeasonInfo
-}
 
 // EpisodeStills finds TMDB's still image for the episode files of a folder that
 // is a series (or one season of it). Only the poster store and TMDB are asked.
@@ -339,13 +331,7 @@ func (t *TMDB) EpisodeStills(ctx context.Context, dir string, names []string) ma
 	if folderSeason == 0 {
 		folderSeason = SeasonOf(folder)
 	}
-	var seasons []SeasonInfo
-	if v, ok := seasonsCache.Load(entry.ID); ok && time.Since(v.(seasonsEntry).at) < 12*time.Hour {
-		seasons = v.(seasonsEntry).list
-	} else if list, err := t.Seasons(ctx, entry.ID); err == nil {
-		seasons = list
-		seasonsCache.Store(entry.ID, seasonsEntry{at: time.Now(), list: list})
-	}
+	seasons := t.cachedSeasons(ctx, entry.ID)
 	counts, last := map[int]int{}, 0
 	for _, s := range seasons {
 		counts[s.Season] = s.Episodes

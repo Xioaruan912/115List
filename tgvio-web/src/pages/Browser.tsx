@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
 import { useLocation } from "wouter";
 import { ContextMenu } from "../components/ContextMenu";
 import { Dialogs } from "../components/Dialogs";
@@ -8,7 +8,6 @@ import { Palette } from "../components/Palette";
 import { Stage } from "../components/Stage";
 import { TopBar } from "../components/TopBar";
 import { Transfers } from "../components/Transfers";
-import { Viewer } from "../components/Viewer";
 import { useDir } from "../hooks/useDir";
 import { encodePath, parent } from "../lib/path";
 import { can, isGuest, Perm } from "../lib/perm";
@@ -17,6 +16,10 @@ import { useUploads } from "../stores/uploads";
 import { usePrefs } from "../stores/prefs";
 import { useSession } from "../stores/session";
 import { useUi } from "../stores/ui";
+
+// The viewer (and the video player in it) loads the first time something is
+// opened, and stays so its closing animation can play.
+const Viewer = lazy(() => import("../components/Viewer").then(m => ({ default: m.Viewer })));
 import { fromList } from "../lib/magnets";
 
 function typing(target: EventTarget | null): boolean {
@@ -70,6 +73,9 @@ function useUnfinishedUploads(): void {
 }
 
 export function Browser({ path }: { path: string }) {
+  const opened = useUi(state => !!state.viewer);
+  const [viewerWanted, setViewerWanted] = useState(opened);
+  if (opened && !viewerWanted) setViewerWanted(true);
   const blur = usePrefs(state => state.blur);
   const me = useSession(state => state.me);
   useUnfinishedUploads();
@@ -111,7 +117,7 @@ export function Browser({ path }: { path: string }) {
       <Dock path={path} />
       <ContextMenu />
       <Dialogs />
-      <Viewer />
+      {viewerWanted && <Suspense fallback={null}><Viewer /></Suspense>}
       <Palette path={path} />
       <Transfers />
       <DropZone dir={path} enabled={can(me, Perm.Write, list.data?.write)} />

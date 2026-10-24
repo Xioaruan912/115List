@@ -1,7 +1,7 @@
 import { CaretRightIcon, CopyIcon, FolderSimpleIcon, HouseIcon } from "@phosphor-icons/react";
 import { useQuery } from "@tanstack/react-query";
 import { AnimatePresence, motion } from "motion/react";
-import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react";
+import { lazy, Suspense, useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react";
 import * as auth from "../api/auth";
 import * as fs from "../api/fs";
 import { passwordFor } from "../hooks/useDir";
@@ -16,15 +16,18 @@ import { toast, useToasts } from "../stores/toast";
 import { useUi, type Dialog } from "../stores/ui";
 import type { Obj } from "../lib/types";
 import { KindIcon } from "./KindIcon";
-import { DeviceList } from "./Devices";
-import { PosterPicker } from "./PosterPicker";
-import { ResourceFinder } from "./ResourceFinder";
-import { Share115Dialog } from "./Share115";
-import { SubtitleSearch } from "./SubtitleSearch";
-import { TmdbRename } from "./TmdbRename";
-import { ShareDialog, SharesDialog } from "./Share";
 import { Sheet } from "./Sheet";
 import { ErrorState } from "./ErrorState";
+
+// The sheets below load when first opened: most visits open none of them.
+const DeviceList = lazy(() => import("./Devices").then(m => ({ default: m.DeviceList })));
+const PosterPicker = lazy(() => import("./PosterPicker").then(m => ({ default: m.PosterPicker })));
+const ResourceFinder = lazy(() => import("./ResourceFinder").then(m => ({ default: m.ResourceFinder })));
+const Share115Dialog = lazy(() => import("./Share115").then(m => ({ default: m.Share115Dialog })));
+const SubtitleSearch = lazy(() => import("./SubtitleSearch").then(m => ({ default: m.SubtitleSearch })));
+const TmdbRename = lazy(() => import("./TmdbRename").then(m => ({ default: m.TmdbRename })));
+const ShareDialog = lazy(() => import("./Share").then(m => ({ default: m.ShareDialog })));
+const SharesDialog = lazy(() => import("./Share").then(m => ({ default: m.SharesDialog })));
 import { Select } from "./Select";
 
 function useBusy() {
@@ -287,7 +290,7 @@ function AccountDialog({ onClose }: { onClose: () => void }) {
 export function Dialogs() {
   const dialog = useUi(state => state.dialog);
   const close = useUi(state => state.closeDialog);
-  return <AnimatePresence>{dialog && <DialogFor key={dialog.kind} dialog={dialog} onClose={close} />}</AnimatePresence>;
+  return <AnimatePresence>{dialog && <Suspense key={dialog.kind} fallback={null}><DialogFor dialog={dialog} onClose={close} /></Suspense>}</AnimatePresence>;
 }
 
 function DialogFor({ dialog, onClose }: { dialog: Dialog; onClose: () => void }) {

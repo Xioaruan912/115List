@@ -5,7 +5,6 @@ import (
 	stdpath "path"
 	"sort"
 	"strconv"
-	"sync"
 	"time"
 )
 
@@ -45,37 +44,20 @@ type SeriesView struct {
 	Extra []string
 }
 
-var detailsCache sync.Map // "kind/id/language" -> detailsEntry
-
-type detailsEntry struct {
-	at time.Time
-	p  *Poster
-}
+var (
+	detailsMemo = newMemo[*Poster]("details")       // "kind/id/language"
+	seasonsMemo = newMemo[[]SeasonInfo]("seasons") // series id
+)
 
 // cachedDetails is Details kept for half a day.
 func (t *TMDB) cachedDetails(ctx context.Context, kind string, id int) (*Poster, error) {
 	key := kind + "/" + strconv.Itoa(id) + "/" + t.Config().Language
-	if v, ok := detailsCache.Load(key); ok && time.Since(v.(detailsEntry).at) < 12*time.Hour {
-		return v.(detailsEntry).p, nil
-	}
-	p, err := t.Details(ctx, kind, id)
-	if err != nil {
-		return nil, err
-	}
-	detailsCache.Store(key, detailsEntry{at: time.Now(), p: p})
-	return p, nil
+	return detailsMemo.fetch(ctx, key, func(ctx context.Context) (*Poster, error) { return t.Details(ctx, kind, id) })
 }
 
 // cachedSeasons is Seasons kept for half a day.
 func (t *TMDB) cachedSeasons(ctx context.Context, id int) []SeasonInfo {
-	if v, ok := seasonsCache.Load(id); ok && time.Since(v.(seasonsEntry).at) < 12*time.Hour {
-		return v.(seasonsEntry).list
-	}
-	list, err := t.Seasons(ctx, id)
-	if err != nil {
-		return nil
-	}
-	seasonsCache.Store(id, seasonsEntry{at: time.Now(), list: list})
+	list, _ := seasonsMemo.fetch(ctx, strconv.Itoa(id), func(ctx context.Context) ([]SeasonInfo, error) { return t.Seasons(ctx, id) })
 	return list
 }
 
