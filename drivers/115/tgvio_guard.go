@@ -59,8 +59,8 @@ func newAPIGuard(perSecond float64, burst int) *apiGuard {
 	}
 }
 
-// TGVIO_115_API_RATE overrides the shared pace (calls per second, default 4).
-var guard = newAPIGuard(envFloat("TGVIO_115_API_RATE", 4), 8)
+// OPENLIST_115_API_RATE (formerly TGVIO_115_API_RATE) overrides the shared pace (calls per second, default 4).
+var guard = newAPIGuard(envFloat("OPENLIST_115_API_RATE", envFloat("TGVIO_115_API_RATE", 4)), 8)
 
 func init() {
 	tgvio.Provide("115_breaker", func() any { return guard.state() })

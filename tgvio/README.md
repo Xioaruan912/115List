@@ -1,6 +1,8 @@
-# TGVIO 版 OpenList
+# PPEE 文件站（OpenList 二开）
 
-本分支（`tgvio`）= 官方 OpenList v4.2.6 + 为 TGVIO 适配的少量补丁。原二开（缩略图、代理节点池、多根挂载）已移除；`main` 分支仅作历史参考。
+file.722225.xyz 用的 OpenList：官方 OpenList v4.2.7 + 这里的补丁和自己的前端（`tgvio-web/`）。版本号后缀 `-ppee`。
+
+**关于名字里的 tgvio**：这个分支最早（2026-10-09）是为了让 TGVIO 的大量 WebDAV 读写不被 115 拦截而开的，分支、目录、代码包（`internal/tgvio`）和数据目录（`data/tgvio/`）沿用了当时的名字。它和 TGVIO 是两个项目；为了不迁移数据，这些内部名字保留。环境变量已改为 `OPENLIST_*`，旧的 `TGVIO_*` 仍然有效。
 
 ## 补丁
 
@@ -11,7 +13,7 @@
 | c00910a5 | `/api/fs/remove` 同一存储多文件合并为一次网盘删除（`driver.BatchRemove`） | Player 删除一个视频的封面、副本、原片 |
 | 446ba887 | 批量删除后从网盘重新列目录核实，残留逐个删除 | 115 曾对 148 个文件的批量删除报成功却留下 2 个 |
 | 40d12fc8 | 分片上传在返回前取消并等待读取协程结束 | 提前返回后协程仍读已释放的缓存，进程 SIGSEGV（一天 4 次） |
-| 366c18ab | 全部 115 存储共用限速（`TGVIO_115_API_RATE`，默认 4 次/秒）；405 触发熔断（降到 5 s 一次，30 s 起翻倍至 15 min）；发送前的连接失败（拨号、TLS 握手超时）重试 3 次 | 风控按账号/IP 判断；本机到 115 的新 TLS 握手约一半被丢弃 |
+| 366c18ab | 全部 115 存储共用限速（`OPENLIST_115_API_RATE`，默认 4 次/秒）；405 触发熔断（降到 5 s 一次，30 s 起翻倍至 15 min）；发送前的连接失败（拨号、TLS 握手超时）重试 3 次 | 风控按账号/IP 判断；本机到 115 的新 TLS 握手约一半被丢弃 |
 | 5e3b5100 | 列出并按 ID 清理 115 回收站（拒绝空列表，空列表对 115 意味着全部） | 经 OpenList 的删除只进回收站，不释放空间 |
 | 439c8095 | 监控与回收站接口（见下） | Player/运维可读运行状况与空间 |
 | 654580d1 | 大文件上传断点续传（45 min 内同文件同目录跳过 OSS 已有分片，失败自动整传）；分片重试 5 次、间隔 1/2/4/8 s | 每次上传初始化都分配新 OSS 对象，只能沿用上次的参数续传 |
@@ -74,7 +76,7 @@
 
 ```sh
 bash tgvio/build.sh                      # 默认嵌入 tgvio-web（先跑 tsc、vitest、vite build）
-TGVIO_UI=official bash tgvio/build.sh    # 改嵌官方前端 v4.2.6
+OPENLIST_UI=official bash tgvio/build.sh    # 改嵌官方前端 v4.2.6
 ```
 
 需要 Go（/usr/local/go）、Node（/root/.local/bin）与干净的工作区。输出 `/root/build/openlist-tgvio/openlist-<commit>`；官方前端同时解压在 `/root/build/openlist-tgvio/web/official-v4.2.6/`，在 `data/config.json` 设 `"dist_dir"` 指向它并重启，即可不换二进制切回官方界面（清空 `dist_dir` 再重启切回）。

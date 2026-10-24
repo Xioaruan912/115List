@@ -30,7 +30,7 @@ import (
 // "Chainsaw Man Reze Arc", 2025), looked up once in the background and kept in
 // <data>/tgvio/posters.json; images are fetched once into <data>/tgvio/posters/.
 // Nothing here talks to the drive. The read token lives in <data>/tgvio/tmdb_token
-// (or TGVIO_TMDB_TOKEN) and never leaves the server.
+// (or OPENLIST_TMDB_TOKEN) and never leaves the server.
 
 // Poster is what the front end gets for one name.
 type Poster struct {
@@ -280,7 +280,7 @@ var (
 func Posters(dataDir string) *TMDB {
 	tmdbOnce.Do(func() {
 		dir := filepath.Join(dataDir, "tgvio")
-		token := strings.TrimSpace(os.Getenv("TGVIO_TMDB_TOKEN"))
+		token := strings.TrimSpace(Env("OPENLIST_TMDB_TOKEN", "TGVIO_TMDB_TOKEN"))
 		if token == "" {
 			if raw, err := os.ReadFile(filepath.Join(dir, "tmdb_token")); err == nil {
 				token = strings.TrimSpace(string(raw))
