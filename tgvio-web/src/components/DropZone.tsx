@@ -42,22 +42,32 @@ export function DropZone({ dir, enabled }: { dir: string; enabled: boolean }) {
   useEffect(() => {
     if (!enabled) return;
     let depth = 0;
-    const isFiles = (event: DragEvent): boolean => !!event.dataTransfer?.types.includes("Files");
+    // A drag that starts on the page (a poster, a tile) is no upload, though
+    // the browser offers a dragged picture as a file.
+    let inside = false;
+    const start = (): void => { inside = true; };
+    const end = (): void => { inside = false; };
+    const isFiles = (event: DragEvent): boolean => !inside && !!event.dataTransfer?.types.includes("Files");
     const enter = (event: DragEvent): void => { if (!isFiles(event)) return; depth++; setOver(true); };
     const leave = (event: DragEvent): void => { if (!isFiles(event)) return; depth = Math.max(0, depth - 1); if (!depth) setOver(false); };
     const overHandler = (event: DragEvent): void => { if (isFiles(event)) event.preventDefault(); };
     const drop = (event: DragEvent): void => {
+      if (inside) { inside = false; return; }
       if (!isFiles(event) || !event.dataTransfer) return;
       event.preventDefault();
       depth = 0;
       setOver(false);
       void filesFromDrop(event.dataTransfer).then(files => { if (files.length) add(dir, files); });
     };
+    window.addEventListener("dragstart", start);
+    window.addEventListener("dragend", end);
     window.addEventListener("dragenter", enter);
     window.addEventListener("dragleave", leave);
     window.addEventListener("dragover", overHandler);
     window.addEventListener("drop", drop);
     return () => {
+      window.removeEventListener("dragstart", start);
+      window.removeEventListener("dragend", end);
       window.removeEventListener("dragenter", enter);
       window.removeEventListener("dragleave", leave);
       window.removeEventListener("dragover", overHandler);

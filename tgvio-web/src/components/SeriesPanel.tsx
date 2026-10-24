@@ -1,7 +1,7 @@
-import { CaretRightIcon, CheckIcon, MagnetIcon, PlayIcon, StarIcon } from "@phosphor-icons/react";
+import { CaretLeftIcon, CaretRightIcon, CheckIcon, MagnetIcon, PlayIcon, StarIcon } from "@phosphor-icons/react";
 import { useQuery } from "@tanstack/react-query";
 import { motion } from "motion/react";
-import { useMemo, useSyncExternalStore } from "react";
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { useLocation } from "wouter";
 import { posterSrc } from "../api/posters";
 import { series, type Films, type SeriesEpisode } from "../api/series";
@@ -90,6 +90,65 @@ export function hasTitlePanel(data: Awaited<ReturnType<typeof series>> | undefin
   return !!(data?.series || data?.films);
 }
 
+/**
+ * A row that scrolls sideways: by touch, a trackpad, Shift and the wheel, the
+ * arrows at its ends, or pressing the mouse and dragging (a drag is no click).
+ */
+function Strip({ className, children }: { className: string; children: ReactNode }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [ends, setEnds] = useState({ start: true, end: true });
+  const drag = useRef<{ x: number; left: number; moved: boolean } | null>(null);
+  const measure = (): void => {
+    const el = ref.current;
+    if (el) setEnds({ start: el.scrollLeft <= 2, end: el.scrollLeft + el.clientWidth >= el.scrollWidth - 2 });
+  };
+  useEffect(() => {
+    measure();
+    const el = ref.current;
+    if (!el) return;
+    const observer = new ResizeObserver(measure);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [children]);
+  const page = (direction: 1 | -1): void => {
+    const el = ref.current;
+    if (el) el.scrollBy({ left: direction * el.clientWidth * 0.8, behavior: "smooth" });
+  };
+  const arrow = "absolute top-[calc(50%-2.5rem)] z-10 grid size-10 place-items-center rounded-full bg-black/60 text-white backdrop-blur-md transition-opacity hover:bg-black/80 [@media(hover:none)]:hidden";
+  return (
+    <div className="group/strip relative">
+      <div ref={ref} className={`${className} [&_img]:select-none`} onScroll={measure}
+        onPointerDown={event => {
+          if (event.pointerType !== "mouse" || event.button !== 0) return;
+          drag.current = { x: event.clientX, left: event.currentTarget.scrollLeft, moved: false };
+        }}
+        onPointerMove={event => {
+          const d = drag.current;
+          if (!d) return;
+          if (!d.moved && Math.abs(event.clientX - d.x) > 6) {
+            d.moved = true;
+            event.currentTarget.setPointerCapture(event.pointerId);
+            event.currentTarget.style.scrollSnapType = "none";
+          }
+          if (d.moved) event.currentTarget.scrollLeft = d.left - (event.clientX - d.x);
+        }}
+        onPointerUp={event => {
+          const moved = drag.current?.moved;
+          drag.current = null;
+          event.currentTarget.style.scrollSnapType = "";
+          // The release after a drag is no click on the poster under it.
+          if (moved) event.currentTarget.addEventListener("click", stop => { stop.stopPropagation(); stop.preventDefault(); }, { capture: true, once: true });
+        }}
+        onPointerCancel={() => { drag.current = null; }}
+        onDragStart={event => event.preventDefault()}>
+        {children}
+      </div>
+      {!ends.start && <button type="button" aria-label="向左" className={`${arrow} left-1 opacity-0 group-hover/strip:opacity-100 focus-visible:opacity-100`} onClick={() => page(-1)}><CaretLeftIcon size={18} weight="bold" /></button>}
+      {!ends.end && <button type="button" aria-label="向右" className={`${arrow} right-1 opacity-0 group-hover/strip:opacity-100 focus-visible:opacity-100`} onClick={() => page(1)}><CaretRightIcon size={18} weight="bold" /></button>}
+    </div>
+  );
+}
+
 export function SeriesPanel({ path, items }: { path: string; items: Obj[] }) {
   const [, navigate] = useLocation();
   const finder = useResourceRoot();
@@ -112,12 +171,12 @@ export function SeriesPanel({ path, items }: { path: string; items: Obj[] }) {
     <motion.section className="relative mb-8 overflow-hidden rounded-[var(--radius-sheet)] bg-stage text-white" style={{ boxShadow: "inset 0 0 0 1px var(--line)" }}
       initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={spring.soft} aria-label={`${base.title} 剧集信息`}>
       {backdrop && (
-        <img src={posterSrc(backdrop)} alt="" className="absolute inset-0 size-full object-cover opacity-45 sm:left-auto sm:w-[70%]" style={{ maskImage: "linear-gradient(90deg, transparent, black 45%)" }} />
+        <img src={posterSrc(backdrop)} alt="" draggable={false} className="absolute inset-0 size-full object-cover opacity-45 sm:left-auto sm:w-[70%]" style={{ maskImage: "linear-gradient(90deg, transparent, black 45%)" }} />
       )}
       <div className="absolute inset-0 bg-gradient-to-t from-stage via-stage/70 to-stage/20" />
       <div className="relative p-5 sm:p-8">
         <div className="flex gap-5">
-          {subject.poster && <img src={posterSrc(subject.poster, "w342")} alt="" className="hidden h-[168px] w-[112px] shrink-0 rounded-[10px] object-cover shadow-2xl sm:block" />}
+          {subject.poster && <img src={posterSrc(subject.poster, "w342")} alt="" draggable={false} className="hidden h-[168px] w-[112px] shrink-0 rounded-[10px] object-cover shadow-2xl sm:block" />}
           <div className="min-w-0 sm:max-w-[60ch]">
             <h2 className="text-[clamp(24px,3.4vw,38px)] font-semibold leading-tight tracking-[-0.03em]">{base.title}</h2>
             <p className="mt-1.5 flex flex-wrap items-center gap-x-3 text-[13px] text-white/70 tabular">
@@ -156,7 +215,7 @@ export function SeriesPanel({ path, items }: { path: string; items: Obj[] }) {
         </div>
 
         {!data.season && data.seasons.length > 0 && (
-          <div className="mt-6 flex gap-3 overflow-x-auto pb-1 [scrollbar-width:none]">
+          <Strip className="mt-6 flex gap-3 overflow-x-auto pb-1 [scrollbar-width:none]">
             {data.seasons.map(s => (
               <button key={s.season} disabled={!s.folder && !(finder.enabled && aired(s.air) && s.season > 0)}
                 title={!s.folder && finder.enabled && aired(s.air) ? `找第 ${s.season} 季的资源` : undefined}
@@ -166,24 +225,24 @@ export function SeriesPanel({ path, items }: { path: string; items: Obj[] }) {
                 }}
                 className={`group/season w-[104px] shrink-0 text-left ${s.folder ? "" : "opacity-45 enabled:hover:opacity-80"}`}>
                 <div className="aspect-[2/3] overflow-hidden rounded-[10px] bg-white/10 transition-transform duration-300 ease-[var(--ease-expo)] group-enabled/season:group-hover/season:-translate-y-1">
-                  {s.poster && <img src={posterSrc(s.poster, "w185")} alt="" loading="lazy" className="size-full object-cover" />}
+                  {s.poster && <img src={posterSrc(s.poster, "w185")} alt="" draggable={false} loading="lazy" className="size-full object-cover" />}
                 </div>
                 <p className="mt-1.5 truncate text-[12.5px] font-medium">{s.season ? `第 ${s.season} 季` : "特别篇"}</p>
                 <p className="text-[11.5px] text-white/55 tabular">{s.folder ? `${s.episodes} 集` : aired(s.air) ? "未下载" : s.air ? `${s.air} 播出` : "还没播出"}</p>
               </button>
             ))}
-          </div>
+          </Strip>
         )}
 
         {data.episodes.length > 0 && (
-          <div className="-mx-5 mt-6 flex snap-x gap-3 overflow-x-auto px-5 pb-1 [scrollbar-width:none] sm:-mx-8 sm:px-8">
+          <Strip className="-mx-5 mt-6 flex snap-x gap-3 overflow-x-auto px-5 pb-1 [scrollbar-width:none] sm:-mx-8 sm:px-8">
             {data.episodes.map(e => {
               const seen = e.file ? watched(join(path, e.file)) : 0;
               return (
                 <button key={e.episode} disabled={!e.file} onClick={() => play(e)} title={e.file ?? "这一集不在文件夹里"}
                   className={`group/ep w-[min(70vw,248px)] shrink-0 snap-start text-left ${e.file ? "" : "opacity-40"}`}>
                   <div className="relative aspect-video overflow-hidden rounded-[10px] bg-white/10">
-                    {e.still && <img src={e.still} alt="" loading="lazy" className="size-full object-cover transition-transform duration-500 ease-[var(--ease-expo)] group-enabled/ep:group-hover/ep:scale-105" />}
+                    {e.still && <img src={e.still} alt="" draggable={false} loading="lazy" className="size-full object-cover transition-transform duration-500 ease-[var(--ease-expo)] group-enabled/ep:group-hover/ep:scale-105" />}
                     {e.file && (
                       <span className="absolute inset-0 grid place-items-center bg-black/25 opacity-0 transition-opacity group-hover/ep:opacity-100 [@media(hover:none)]:hidden">
                         <span className="grid size-10 place-items-center rounded-full bg-accent text-accent-ink"><PlayIcon size={15} weight="fill" className="translate-x-px" /></span>
@@ -204,7 +263,7 @@ export function SeriesPanel({ path, items }: { path: string; items: Obj[] }) {
                 </button>
               );
             })}
-          </div>
+          </Strip>
         )}
       </div>
     </motion.section>
@@ -249,12 +308,12 @@ function FilmsPanel({ path, films, items, canFind }: { path: string; films: Film
     <motion.section className="relative mb-8 overflow-hidden rounded-[var(--radius-sheet)] bg-stage text-white" style={{ boxShadow: "inset 0 0 0 1px var(--line)" }}
       initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={spring.soft} aria-label={`${title} ${own ? "影片" : shelf ? "片单" : "系列"}信息`}>
       {backdrop && (
-        <img src={posterSrc(backdrop)} alt="" className="absolute inset-0 size-full object-cover opacity-45 sm:left-auto sm:w-[70%]" style={{ maskImage: "linear-gradient(90deg, transparent, black 45%)" }} />
+        <img src={posterSrc(backdrop)} alt="" draggable={false} className="absolute inset-0 size-full object-cover opacity-45 sm:left-auto sm:w-[70%]" style={{ maskImage: "linear-gradient(90deg, transparent, black 45%)" }} />
       )}
       <div className="absolute inset-0 bg-gradient-to-t from-stage via-stage/70 to-stage/20" />
       <div className="relative p-5 sm:p-8">
         <div className="flex gap-5">
-          {poster && <img src={posterSrc(poster, "w342")} alt="" className="hidden h-[168px] w-[112px] shrink-0 rounded-[10px] object-cover shadow-2xl sm:block" />}
+          {poster && <img src={posterSrc(poster, "w342")} alt="" draggable={false} className="hidden h-[168px] w-[112px] shrink-0 rounded-[10px] object-cover shadow-2xl sm:block" />}
           <div className="min-w-0 sm:max-w-[60ch]">
             <h2 className="text-[clamp(24px,3.4vw,38px)] font-semibold leading-tight tracking-[-0.03em] break-words">{title}</h2>
             <p className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[13px] text-white/70 tabular">
@@ -285,7 +344,7 @@ function FilmsPanel({ path, films, items, canFind }: { path: string; films: Film
         </div>
 
         {parts.length > 0 && (
-          <div className="-mx-5 mt-6 flex snap-x gap-3 overflow-x-auto px-5 pb-1 [scrollbar-width:none] sm:-mx-8 sm:px-8">
+          <Strip className="-mx-5 mt-6 flex snap-x gap-3 overflow-x-auto px-5 pb-1 [scrollbar-width:none] sm:-mx-8 sm:px-8">
             {parts.map(part => {
               const here = !!part.place;
               const findable = !here && part.released && canFind;
@@ -296,7 +355,7 @@ function FilmsPanel({ path, films, items, canFind }: { path: string; films: Film
                   title={here ? place === "." ? "就是这个文件夹" : part.place : findable ? `找「${part.title}」的资源` : part.release ? `${part.release} 上映` : "还没上映"}
                   className={`group/part w-[120px] shrink-0 snap-start text-left ${here ? "" : "opacity-50 enabled:hover:opacity-85"}`}>
                   <div className="relative aspect-[2/3] overflow-hidden rounded-[10px] bg-white/10 transition-transform duration-300 ease-[var(--ease-expo)] group-enabled/part:group-hover/part:-translate-y-1">
-                    {part.poster && <img src={posterSrc(part.poster, "w342")} alt="" loading="lazy" className="size-full object-cover" />}
+                    {part.poster && <img src={posterSrc(part.poster, "w342")} alt="" draggable={false} loading="lazy" className="size-full object-cover" />}
                     {place === "." && <span className="absolute left-1.5 top-1.5 rounded-full bg-accent px-2 py-0.5 text-[10.5px] font-medium text-accent-ink">当前</span>}
                     {part.kind === "tv" && <span className="absolute left-1.5 top-1.5 rounded-full bg-black/65 px-2 py-0.5 text-[10.5px] backdrop-blur-md">剧集</span>}
                     {!here && (
@@ -312,7 +371,7 @@ function FilmsPanel({ path, films, items, canFind }: { path: string; films: Film
                 </button>
               );
             })}
-          </div>
+          </Strip>
         )}
       </div>
     </motion.section>

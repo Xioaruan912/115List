@@ -6,6 +6,7 @@ import { useIsMobile } from "../hooks/useMedia";
 import * as actions from "../lib/actions";
 import { spring } from "../lib/motion";
 import { encodePath, parent, segments } from "../lib/path";
+import { useViewMode } from "../hooks/useViewMode";
 import { can, isAdmin, isGuest, Perm } from "../lib/perm";
 import { resolvedTheme, usePrefs, type Theme } from "../stores/prefs";
 import { useSession } from "../stores/session";
@@ -76,12 +77,12 @@ export function Breadcrumbs({ path }: { path: string }) {
 const VIEW_LABEL = { grid: "网格", list: "列表", cinema: "影院" } as const;
 const VIEW_ICON = { grid: <SquaresFourIcon size={16} />, list: <ListBulletsIcon size={16} />, cinema: <FilmSlateIcon size={16} /> } as const;
 
-function ViewToggle() {
-  const view = usePrefs(state => state.view);
+function ViewToggle({ path }: { path: string }) {
+  const { view, modes } = useViewMode(path);
   const setView = usePrefs(state => state.setView);
   return (
     <div className="relative flex rounded-[11px] p-0.5 hairline" role="group" aria-label="视图">
-      {(["grid", "list", "cinema"] as const).map(mode => (
+      {modes.map(mode => (
         <button key={mode} className={`relative grid size-8 place-items-center rounded-[9px] touch:size-10 transition-colors ${view === mode ? "text-ink" : "text-muted hover:text-ink"}`}
           onClick={() => setView(mode)} aria-pressed={view === mode} aria-label={VIEW_LABEL[mode]} title={VIEW_LABEL[mode]}>
           {view === mode && <motion.span layoutId="view-thumb" className="absolute inset-0 rounded-[9px] bg-raised" style={{ boxShadow: "var(--shadow-lift)" }} transition={spring.pop} />}
@@ -110,13 +111,13 @@ export function ThemeButton() {
   );
 }
 
-function Account() {
+function Account({ path }: { path: string }) {
   const me = useSession(state => state.me);
   const signOut = useSession(state => state.signOut);
   const [, navigate] = useLocation();
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
   const mobile = useIsMobile();
-  const view = usePrefs(state => state.view);
+  const { view, modes } = useViewMode(path);
   const theme = usePrefs(state => resolvedTheme(state.theme));
   const motionMode = usePrefs(state => state.motion);
   const lite = useLite();
@@ -144,7 +145,7 @@ function Account() {
           ...(can(me, Perm.Share) ? [{ label: "我的分享", icon: <ShareNetworkIcon size={15} />, run: () => useUi.getState().openDialog({ kind: "shares" }) }] : []),
           ...(mobile ? [
             "divider" as const,
-            ...(["grid", "list", "cinema"] as const).filter(mode => mode !== view).map(mode => ({ label: `${VIEW_LABEL[mode]}视图`, icon: VIEW_ICON[mode], run: () => usePrefs.getState().setView(mode) })),
+            ...modes.filter(mode => mode !== view).map(mode => ({ label: `${VIEW_LABEL[mode]}视图`, icon: VIEW_ICON[mode], run: () => usePrefs.getState().setView(mode) })),
             { label: theme === "light" ? "深色主题" : "浅色主题", icon: theme === "light" ? <MoonIcon size={15} /> : <SunIcon size={15} />, run: () => switchTheme(theme === "light" ? "dark" : "light", innerWidth - 30, 30) },
           ] : []),
           { label: `动效：${MOTION_LABEL[motionMode]}`, icon: <SparkleIcon size={15} />, hint: motionMode === "auto" ? (lite ? "已精简" : "") : "",
@@ -204,9 +205,9 @@ export function TopBar({ path }: { path: string }) {
             <FilmReelIcon size={18} />
           </motion.button>
         )}
-        <div className="hidden sm:block"><ViewToggle /></div>
+        <div className="hidden sm:block"><ViewToggle path={path} /></div>
         <div className="max-sm:hidden"><ThemeButton /></div>
-        <Account />
+        <Account path={path} />
       </div>
     </header>
   );

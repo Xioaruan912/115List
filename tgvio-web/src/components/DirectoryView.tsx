@@ -13,6 +13,7 @@ import { judged, needsOrganizing } from "../lib/organized";
 import { categoryCounts, categoryOf, type Category } from "../api/posters";
 import { CategoryFilter } from "./CategoryFilter";
 import { RenameNudge } from "./RenameNudge";
+import { useViewMode } from "../hooks/useViewMode";
 import { hasTitlePanel, SeriesPanel, useTitlePanel } from "./SeriesPanel";
 import { useThumbs } from "../hooks/useThumbs";
 import { useIsMobile } from "../hooks/useMedia";
@@ -141,7 +142,7 @@ export function DirectoryView({ path }: { path: string }) {
   const resourceRoot = useResourceRoot();
   const client = useQueryClient();
   const [, navigate] = useLocation();
-  const view = usePrefs(state => state.view);
+  const { view } = useViewMode(path);
   const phoneCols = usePrefs(state => state.phoneCols);
   const sortKey = usePrefs(state => state.sortKey);
   const sortDesc = usePrefs(state => state.sortDesc);
