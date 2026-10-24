@@ -86,11 +86,11 @@ export function ResourceSettings() {
       {/* Downloads 找资源 sent: organized by the server once done, unless turned off. */}
       <div className="mt-2 flex items-center justify-between gap-4 rounded-[14px] p-3.5 hairline">
         <div className="min-w-0">
-          <p className="text-[13.5px] font-medium">下载完自动整理</p>
-          <p className="mt-0.5 text-[12.5px] leading-relaxed text-muted">改成规范的名字，删掉广告文件，拆掉多余的一层文件夹。拿不准的留给你在整理模式里看。</p>
+          <p className="text-[13.5px] font-medium">新片自动整理</p>
+          <p className="mt-0.5 text-[12.5px] leading-relaxed text-muted">找资源下载的片，和新放进影视库文件夹的片，会自动改成规范的名字，删掉广告文件，拆掉多余的一层文件夹。已有的内容不动，拿不准的留给你在整理模式里看。</p>
         </div>
-        <button type="button" role="switch" aria-checked={!saved.manual_organize} aria-label="下载完自动整理" className="switch shrink-0"
-          onClick={() => void save({ ...saved, manual_organize: !saved.manual_organize }, saved.manual_organize ? "下载完会自动整理" : "下载完不再自动整理")} />
+        <button type="button" role="switch" aria-checked={!saved.manual_organize} aria-label="新片自动整理" className="switch shrink-0"
+          onClick={() => void save({ ...saved, manual_organize: !saved.manual_organize }, saved.manual_organize ? "新片会自动整理" : "新片不再自动整理")} />
       </div>
       <Sheet open={picking} onClose={() => setPicking(false)} width={520} title="默认保存位置"
         footer={<><button className="btn btn-ghost" onClick={() => setPicking(false)}>取消</button>

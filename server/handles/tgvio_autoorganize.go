@@ -76,6 +76,7 @@ const (
 // StartTgvioAutoOrganize starts the background organizer (once).
 func StartTgvioAutoOrganize() {
 	autoOrganizeOnce.Do(func() {
+		followPaths()
 		if raw, err := os.ReadFile(autoRecentFile()); err == nil {
 			_ = json.Unmarshal(raw, &autoRecent)
 		}
@@ -98,15 +99,16 @@ func autoOrganizeRound() {
 	if resourceSites().Config().ManualOrganize || !posters().Enabled() {
 		return
 	}
-	pending := organizeStore().Pending(2 * time.Minute)
-	if len(pending) == 0 {
-		return
-	}
 	admin, err := op.GetAdmin()
 	if err != nil {
 		return
 	}
 	ctx := context.WithValue(context.Background(), conf.UserKey, admin)
+	scanLibraryRoots(ctx)
+	pending := organizeStore().Pending(2 * time.Minute)
+	if len(pending) == 0 {
+		return
+	}
 	busy := downloadingInto()
 	sort.Strings(pending)
 	for _, dir := range pending {
@@ -135,6 +137,40 @@ func autoOrganizeRound() {
 			_ = organizeStore().Mark(final, false)
 		}
 		log.Infof("tgvio auto organize: %s -> %s", dir, final)
+	}
+}
+
+var lastRootScan time.Time
+
+// scanLibraryRoots: folders put straight into a library folder (by hand, by
+// upload, by another tool) wait to be organized like downloads 找资源 made,
+// once they have been there a while. Each library folder is read afresh
+// every ten minutes; what was there before the first look is left alone.
+func scanLibraryRoots(ctx context.Context) {
+	if time.Since(lastRootScan) < 10*time.Minute {
+		return
+	}
+	lastRootScan = time.Now()
+	for _, root := range posters().Config().Paths {
+		if root == "/" || !posters().InLibrary(root) {
+			continue // the whole drive: no folder of its own to watch
+		}
+		objs, err := fs.List(ctx, root, &fs.ListArgs{Refresh: true})
+		if err != nil {
+			continue
+		}
+		var names []string
+		for _, obj := range objs {
+			if obj.IsDir() && !tgvio.Skip(obj.GetName()) {
+				names = append(names, obj.GetName())
+			}
+		}
+		for _, p := range organizeStore().NewFolders(root, names) {
+			if !busyUnder(downloadingInto(), p) {
+				_ = organizeStore().Mark(p, true)
+				log.Infof("tgvio auto organize: new folder %s", p)
+			}
+		}
 	}
 }
 

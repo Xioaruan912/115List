@@ -418,6 +418,9 @@ func Move(ctx context.Context, storage driver.Driver, srcPath, dstDirPath string
 	if err != nil {
 		return errors.WithStack(err)
 	}
+	// TGVIO: what is remembered about it follows (posters, 整理 marks, 继续观看).
+	mount := storage.GetStorage().MountPath
+	tgvio.PathMoved(stdpath.Join(mount, srcPath), stdpath.Join(mount, dstDirPath, srcRawObj.GetName()))
 
 	srcKey := Key(storage, srcDirPath)
 	dstKey := Key(storage, dstDirPath)
@@ -483,6 +486,9 @@ func Rename(ctx context.Context, storage driver.Driver, srcPath, dstName string)
 	if err != nil {
 		return errors.WithStack(err)
 	}
+	// TGVIO: what is remembered about it follows (posters, 整理 marks, 继续观看).
+	mount := storage.GetStorage().MountPath
+	tgvio.PathMoved(stdpath.Join(mount, srcPath), stdpath.Join(mount, stdpath.Dir(srcPath), dstName))
 
 	dirKey := Key(storage, stdpath.Dir(srcPath))
 	if !srcRawObj.IsDir() {
@@ -606,6 +612,8 @@ func Remove(ctx context.Context, storage driver.Driver, path string) error {
 		err = s.Remove(ctx, model.UnwrapObjName(rawObj))
 		if err == nil {
 			Cache.removeDirectoryObject(storage, dirPath, rawObj)
+			// TGVIO: the library forgets it, so nothing links to it.
+			tgvio.PathRemoved(stdpath.Join(storage.GetStorage().MountPath, path))
 		}
 	default:
 		return errs.NotImplement

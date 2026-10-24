@@ -54,6 +54,32 @@ export interface LibraryItem extends Poster {
 
 export const library = () => get<{ items: LibraryItem[]; blur: boolean }>("/tgvio/library");
 
+/**
+ * 追剧与新片. season: a season aired after the last one here; episode: the next
+ * episode of a season being followed; upcoming: a season or a film of a series
+ * here comes soon; missing: films of a series here are out but not here.
+ */
+export interface NewsItem {
+  kind: "season" | "episode" | "upcoming" | "missing" | "gap";
+  id: number;
+  title: string;
+  poster?: string;
+  /** Its folder here (shown path). */
+  dir?: string;
+  date?: string;
+  season?: number;
+  episode?: number;
+  name?: string;
+  missing?: string[];
+  /** gap: older seasons not here. */
+  seasons?: number[];
+  query?: string;
+  /** An episode: its season's folder here (shown path), where the download goes. */
+  into?: string;
+}
+
+export const libraryNews = () => get<{ items: NewsItem[]; computing: boolean; at: string }>("/tgvio/library/news");
+
 export interface SeasonInfo { season: number; name: string; poster?: string; year?: number; episodes: number; /** First air date. */ air?: string }
 
 export interface PosterLookup { items: Record<string, Poster>; pending: number; enabled: boolean; blur: boolean }

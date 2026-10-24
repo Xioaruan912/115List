@@ -27,7 +27,7 @@ const EPISODISH = /(S\d{1,2}\s*E\d{1,4}|第\s*\d+\s*[集话話]|\bE[Pp]?\d{1,3}\
 
 const CN = ["零", "一", "二", "三", "四", "五", "六", "七", "八", "九"];
 /** 1..99 as season folders are named: 二, 十二, 二十 (the server's cnNumeral). */
-function cnNumeral(n: number): string {
+export function cnNumeral(n: number): string {
   if (n <= 0 || n >= 100) return String(n);
   if (n < 10) return CN[n];
   if (n === 10) return "十";

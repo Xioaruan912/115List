@@ -7,6 +7,7 @@ import (
 	"os"
 	stdpath "path"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -15,6 +16,8 @@ import (
 	"github.com/OpenListTeam/OpenList/v4/internal/errs"
 	"github.com/OpenListTeam/OpenList/v4/internal/fs"
 	"github.com/OpenListTeam/OpenList/v4/internal/model"
+	"github.com/OpenListTeam/OpenList/v4/internal/op"
+	"github.com/OpenListTeam/OpenList/v4/internal/tgvio"
 	"github.com/OpenListTeam/OpenList/v4/server/common"
 	"github.com/gin-gonic/gin"
 )
@@ -163,32 +166,40 @@ func TgvioRenameUndo(c *gin.Context) {
 		common.ErrorStrResp(c, "this run was put back already", 400)
 		return
 	}
-	ops := append([]journalOp(nil), b.Ops...)
-	journalMu.Unlock()
-	for _, op := range ops {
+	total := len(b.Ops)
+	for _, op := range b.Ops {
 		if !user.Sees(op.Dir) {
+			journalMu.Unlock()
 			common.ErrorResp(c, errs.PermissionDenied, 403)
 			return
 		}
 	}
+	journalMu.Unlock()
 	ctx := c.Request.Context()
-	for i := len(ops) - 1; i >= 0; i-- {
-		if err := undoOp(ctx, ops[i]); err != nil {
-			// What was put back so far stays put back; the rest of the run can be tried again.
-			journalMu.Lock()
-			b.Ops = ops[:i+1]
+	// Last change first. Each step is read again: putting a change back moves
+	// paths, and the journal follows (followPaths), so later steps see where things are now.
+	for {
+		journalMu.Lock()
+		if len(b.Ops) == 0 {
+			b.Undone = true
 			journalSaveLocked()
 			journalMu.Unlock()
-			common.ErrorStrResp(c, fmt.Sprintf("%s: %v", stdpath.Join(ops[i].Dir, ops[i].Old), err), 500)
+			break
+		}
+		op := b.Ops[len(b.Ops)-1]
+		journalMu.Unlock()
+		if err := undoOp(ctx, op); err != nil {
+			// What was put back so far stays put back; the rest of the run can be tried again.
+			common.ErrorStrResp(c, fmt.Sprintf("%s: %v", stdpath.Join(op.Dir, op.Old), err), 500)
 			return
 		}
+		journalMu.Lock()
+		b.Ops = b.Ops[:len(b.Ops)-1]
+		journalSaveLocked()
+		journalMu.Unlock()
 		time.Sleep(250 * time.Millisecond)
 	}
-	journalMu.Lock()
-	b.Undone = true
-	journalSaveLocked()
-	journalMu.Unlock()
-	common.SuccessResp(c, gin.H{"changes": len(ops)})
+	common.SuccessResp(c, gin.H{"changes": total})
 }
 
 func undoOp(ctx context.Context, op journalOp) error {
@@ -235,4 +246,45 @@ func undoOp(ctx context.Context, op journalOp) error {
 		return err
 	}
 	return fmt.Errorf("unknown change %q", op.Op)
+}
+
+// followPaths keeps 继续观看 and the journal right when a path changes (tgvio.PathMoved).
+func followPaths() {
+	tgvio.OnPathMoved(func(oldPath, newPath string) {
+		store := watching()
+		for _, id := range store.Users() {
+			user, err := op.GetUserById(id)
+			if err != nil {
+				continue
+			}
+			from, ok1 := user.ShowPath(oldPath)
+			to, ok2 := user.ShowPath(newPath)
+			if ok1 && ok2 {
+				store.Moved(id, from, to)
+			}
+		}
+		journalMu.Lock()
+		defer journalMu.Unlock()
+		journalLoadLocked()
+		move := func(p string) string {
+			if p == oldPath || strings.HasPrefix(p, oldPath+"/") {
+				return newPath + strings.TrimPrefix(p, oldPath)
+			}
+			return p
+		}
+		changed := false
+		for _, b := range journal {
+			if r := move(b.Root); r != b.Root {
+				b.Root, changed = r, true
+			}
+			for i := range b.Ops {
+				if d := move(b.Ops[i].Dir); d != b.Ops[i].Dir {
+					b.Ops[i].Dir, changed = d, true
+				}
+			}
+		}
+		if changed {
+			journalSaveLocked()
+		}
+	})
 }

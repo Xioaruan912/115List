@@ -176,3 +176,27 @@ func TgvioLibraryScope(c *gin.Context) {
 	}
 	common.SuccessResp(c, gin.H{"enabled": enabled && len(paths) > 0, "paths": paths})
 }
+
+// TgvioLibraryNews: GET /api/tgvio/library/news — 追剧与新片: new seasons and
+// episodes of series here, films of series here that are out or coming. Worked
+// out in the background (computing: true until the first answer is ready).
+func TgvioLibraryNews(c *gin.Context) {
+	user := c.Request.Context().Value(conf.UserKey).(*model.User)
+	items, computing, at := posters().News()
+	out := make([]tgvio.NewsItem, 0, len(items))
+	for _, item := range items {
+		if item.Dir != "" {
+			shown, ok := user.ShowPath(item.Dir)
+			if !ok {
+				continue
+			}
+			item.Dir = shown
+		}
+		if item.Into != "" {
+			item.Into, _ = user.ShowPath(item.Into)
+		}
+		item.Poster = posterURL("w342", item.Poster)
+		out = append(out, item)
+	}
+	common.SuccessResp(c, gin.H{"items": out, "computing": computing, "at": at})
+}
