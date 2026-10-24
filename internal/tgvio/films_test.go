@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"strconv"
 	"testing"
-	"time"
 )
 
 func filmsTMDB(t *testing.T, films []tmdbItem, names map[string]int) *TMDB {
@@ -79,7 +78,7 @@ func fakeCollection(tm *TMDB, id int, name string, films ...int) {
 		_ = json.Unmarshal(raw, &item)
 		c.Parts = append(c.Parts, item)
 	}
-	collectionCache.Store(strconv.Itoa(id)+"/"+tm.Config().Language, collectionEntry{at: time.Now(), c: c})
+	collectionMemo.put(strconv.Itoa(id)+"/"+tm.Config().Language, c)
 }
 
 func fakeOf(tm *TMDB, id int) tmdbItem {

@@ -1,11 +1,11 @@
-import { sha256 } from "@noble/hashes/sha2.js";
-import { bytesToHex, utf8ToBytes } from "@noble/hashes/utils.js";
 import { ApiError, apiUrl, authHeaders, get, post } from "../lib/api";
 import type { ApiResponse, Me, Settings } from "../lib/types";
 
 const SALT = "https://github.com/alist-org/alist";
 
-export function hashPassword(password: string): string {
+/** The password as the server's hashed login takes it (the hash library loads at sign-in only). */
+export async function hashPassword(password: string): Promise<string> {
+  const [{ sha256 }, { bytesToHex, utf8ToBytes }] = await Promise.all([import("@noble/hashes/sha2.js"), import("@noble/hashes/utils.js")]);
   return bytesToHex(sha256(utf8ToBytes(`${password}-${SALT}`)));
 }
 
@@ -14,7 +14,7 @@ export async function login(username: string, password: string, otp: string): Pr
   const response = await fetch(apiUrl("/auth/login/hash"), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ username, password: hashPassword(password), otp_code: otp }),
+    body: JSON.stringify({ username, password: await hashPassword(password), otp_code: otp }),
   });
   const body = await response.json() as ApiResponse<{ token: string }>;
   if (body.code !== 200) throw new ApiError(body.code, body.message);

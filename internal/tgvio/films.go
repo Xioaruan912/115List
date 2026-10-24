@@ -5,7 +5,6 @@ import (
 	stdpath "path"
 	"sort"
 	"strconv"
-	"sync"
 	"time"
 )
 
@@ -58,25 +57,18 @@ type tmdbCollection struct {
 	Parts        []tmdbItem `json:"parts"`
 }
 
-type collectionEntry struct {
-	at time.Time
-	c  *tmdbCollection
-}
-
-var collectionCache sync.Map // "id/language" -> collectionEntry
+var collectionMemo = newMemo[*tmdbCollection]("collections") // "id/language"
 
 // Collection reads a TMDB collection with its films, kept for half a day.
 func (t *TMDB) Collection(ctx context.Context, id int) (*tmdbCollection, error) {
 	key := strconv.Itoa(id) + "/" + t.Config().Language
-	if v, ok := collectionCache.Load(key); ok && time.Since(v.(collectionEntry).at) < 12*time.Hour {
-		return v.(collectionEntry).c, nil
-	}
-	var c tmdbCollection
-	if err := t.get(ctx, "collection/"+strconv.Itoa(id), nil, &c); err != nil {
-		return nil, err
-	}
-	collectionCache.Store(key, collectionEntry{at: time.Now(), c: &c})
-	return &c, nil
+	return collectionMemo.fetch(ctx, key, func(ctx context.Context) (*tmdbCollection, error) {
+		var c tmdbCollection
+		if err := t.get(ctx, "collection/"+strconv.Itoa(id), nil, &c); err != nil {
+			return nil, err
+		}
+		return &c, nil
+	})
 }
 
 // filmsMax: a folder holding more films than this is a library shelf, not one

@@ -16,6 +16,24 @@ ping_ok() {
     done
     return 1
 }
+# Videos played through the server (cloud transcoding) break when it restarts;
+# others play from the drive straight. Wait until none has played for a minute,
+# at most TGVIO_WAIT seconds (default 600; 0 skips). The admin token stays here.
+wait_idle() {
+    local max=${TGVIO_WAIT:-600} waited=0 token idle
+    (( max > 0 )) || return 0
+    token=$(cd /opt/openlist && ./openlist admin token 2>/dev/null | sed -n 's/^Admin token: //p')
+    while :; do
+        idle=$(curl -s -H "Authorization: $token" http://127.0.0.1:5244/api/admin/tgvio/activity |
+            python3 -c 'import json,sys
+try: print(json.load(sys.stdin)["data"]["idle"])
+except Exception: print(-1)')
+        if (( idle < 0 || idle >= 60 )); then return 0; fi
+        if (( waited >= max )); then echo "still playing after ${max}s; restarting anyway" >&2; return 0; fi
+        (( waited == 0 )) && echo "a video is playing through the server; waiting until it stops (at most ${max}s)" >&2
+        sleep 15; waited=$((waited + 15))
+    done
+}
 "$new_bin" version | grep -qE 'Version: v4\.2\.[67]-tgvio'
 python3 "$probe" list > /dev/null  # credentials and site reachable before touching anything
 mkdir -p "$backup"
@@ -29,6 +47,7 @@ rollback() {
     ping_ok && echo "previous binary restored; ping ok" >&2
     exit 1
 }
+wait_idle
 trap 'rollback "unexpected error at line $LINENO"' ERR
 systemctl stop openlist
 install -m 755 "$new_bin" /opt/openlist/openlist

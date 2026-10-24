@@ -167,6 +167,7 @@ func admin(g *gin.RouterGroup) {
 	tgvioAdmin.GET("/recycle", handles.TgvioRecycleList)
 	tgvioAdmin.POST("/recycle/clean", handles.TgvioRecycleClean)
 	tgvioAdmin.Any("/folder_lock", handles.TgvioFolderLock)
+	tgvioAdmin.GET("/activity", handles.TgvioActivity)
 	tgvioAdmin.GET("/devices", handles.TgvioDevices)
 	tgvioAdmin.POST("/devices/revoke", handles.TgvioDeviceRevoke)
 	tgvioAdmin.Any("/sessions", handles.TgvioSessionConfig)

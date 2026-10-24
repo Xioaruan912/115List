@@ -38,7 +38,10 @@ func film(id int, title, date string, collection int, collectionName string) tmd
 }
 
 func planTMDB(t *testing.T, films []tmdbItem, names map[string]int) *TMDB {
-	detailsCache.Range(func(k, _ any) bool { detailsCache.Delete(k); return true }) // ids mean other films in each test
+	detailsMemo.clear() // ids mean other films in each test
+	seasonsMemo.clear()
+	collectionMemo.clear()
+	episodesMemo.clear()
 	fake := fakeTMDB{}
 	byID := map[int]tmdbItem{}
 	for _, f := range films {

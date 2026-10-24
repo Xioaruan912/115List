@@ -17,7 +17,7 @@ import { KindIcon } from "./KindIcon";
 import { reason } from "../lib/errors";
 import { taskName } from "../lib/taskName";
 import { organize } from "../api/organize";
-import { undoRun } from "./TmdbRename";
+import { undoRun } from "../lib/undo";
 import { encodePath } from "../lib/path";
 import { navigate } from "wouter/use-browser-location";
 

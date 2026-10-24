@@ -7,7 +7,7 @@ import { posters, posterSrc } from "../api/posters";
 import { doable, tmdbRename, type RenameInherit, type RenameItem, type RenamePlan } from "../api/rename";
 import { passwordFor } from "../hooks/useDir";
 import * as actions from "../lib/actions";
-import { queryClient } from "../lib/query";
+import { undoRun } from "../lib/undo";
 import { reason } from "../lib/errors";
 import { formatBytes } from "../lib/format";
 import { spring } from "../lib/motion";
@@ -43,15 +43,6 @@ const WHY: Record<NonNullable<RenameItem["reason"]>, string> = {
 type RowState = { status: "busy" } | { status: "done" } | { status: "error"; message: string };
 
 /** Puts a 整理 run back and reloads what it touched. */
-export async function undoRun(id: string): Promise<void> {
-  try {
-    const { changes } = await tmdbRename.undo(id);
-    toast.success("已撤销", `改回了 ${changes} 项`);
-  } catch (error) {
-    toast.error("没能全部撤销", error);
-  }
-  void queryClient.invalidateQueries();
-}
 
 /** A folder to plan; `only` limits it to chosen files (and their subtitles), leaving the folder's name alone. */
 export interface RenameTarget { path: string; only?: string[] }

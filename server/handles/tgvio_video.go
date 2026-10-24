@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/OpenListTeam/OpenList/v4/internal/conf"
@@ -174,6 +175,21 @@ func mediaPlaylist(playlist *tgvio.CloudPlaylist) string {
 	return b.String()
 }
 
+// lastStream: when a cloud video was last played through this server (unix
+// seconds). Other videos play from the drive straight; only these break when
+// the server restarts, so an upgrade waits for them (TgvioActivity).
+var lastStream atomic.Int64
+
+// TgvioActivity: GET /api/admin/tgvio/activity → {idle}: seconds since a video
+// last played through the server, -1 when none has since it started.
+func TgvioActivity(c *gin.Context) {
+	idle := int64(-1)
+	if at := lastStream.Load(); at > 0 {
+		idle = time.Now().Unix() - at
+	}
+	common.SuccessResp(c, gin.H{"idle": idle})
+}
+
 // TgvioHLS: GET /tgvio/hls/:ticket/:quality/index.m3u8 and /:n.ts
 func TgvioHLS(c *gin.Context) {
 	ticket, ok := lookupTicket(c.Param("ticket"))
@@ -181,6 +197,7 @@ func TgvioHLS(c *gin.Context) {
 		c.String(http.StatusGone, "playback ticket expired")
 		return
 	}
+	lastStream.Store(time.Now().Unix())
 	videoTickets.Lock()
 	storage, obj := ticket.storage, ticket.obj
 	videoTickets.Unlock()

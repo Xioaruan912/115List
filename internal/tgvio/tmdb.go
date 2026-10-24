@@ -79,6 +79,8 @@ var (
 	gluedYear  = regexp.MustCompile(`(\p{Han})((?:19|20)\d{2})$`)
 	// "哈利·波特与死亡圣器(上)", "暮光之城4上": two films on TMDB, not two parts of one.
 	parenYear = regexp.MustCompile(`[(（]((?:19|20)\d{2})[)）]`)
+	// orderPrefix: "01_", "02、" before the parts of a box (a number with a space stays: "1917 xxx").
+	orderPrefix = regexp.MustCompile(`^\d{1,2}[_、]\s*`)
 	halfTag   = regexp.MustCompile(`(?:[(（]([上下])[)）]|\d([上下]))$`)
 	// A folder of several films ("[周星驰] [原盘电影集 国粤语]") names no one film.
 	collection = regexp.MustCompile(`电影集|作品集|合集|全集|系列|collection`)
@@ -87,7 +89,7 @@ var (
 // cleanerRev changes whenever CleanName or matching gets better: names that
 // found nothing under an older revision are looked up again, and matches found
 // by older rules are checked again when a folder is planned (never a choice made by hand).
-const cleanerRev = 10
+const cleanerRev = 11
 
 // CleanName reads a file or folder name for what a film database can search.
 func CleanName(name string) (query string, year int, tmdbID int, imdbID string) {
@@ -115,8 +117,12 @@ func CleanName(name string) (query string, year int, tmdbID int, imdbID string) 
 	if m := imdbTag.FindStringSubmatch(name); m != nil {
 		imdbID = "tt" + m[1]
 	}
-	if m := parenYear.FindStringSubmatch(name); m != nil {
-		year, _ = strconv.Atoi(m[1]) // "2012 (2009)": the year in brackets is the year
+	// "01_刃牙 死囚篇": the number a box puts before each part is no title.
+	name = orderPrefix.ReplaceAllString(name, "")
+	if m := parenYear.FindStringSubmatchIndex(name); m != nil {
+		year, _ = strconv.Atoi(name[m[2]:m[3]]) // "2012 (2009)": the year in brackets is the year
+		// "Spider-Man： No Way Home (2021) - 2160p UHD …": what follows is release detail.
+		name = name[:m[1]]
 	} else if m := yearTag.FindStringSubmatch(name); m != nil {
 		year, _ = strconv.Atoi(m[1])
 	}
@@ -291,6 +297,7 @@ func Posters(dataDir string) *TMDB {
 			enrich:   make(chan [2]string, 4096),
 			enriched: map[string]bool{},
 		}
+		openMemos(dir)
 		if raw, err := os.ReadFile(filepath.Join(dir, "posters.json")); err == nil {
 			_ = json.Unmarshal(raw, &t.entries)
 			// "Nothing found" entries from before folders were recorded can never
