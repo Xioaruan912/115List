@@ -12,7 +12,7 @@ import { reason } from "../lib/errors";
 import { formatBytes } from "../lib/format";
 import { bookmarklet, folderName, fromHTML, fromSeed, fromText, rank, seriesName, type Magnet } from "../lib/magnets";
 import { spring } from "../lib/motion";
-import { join } from "../lib/path";
+import { join, parent } from "../lib/path";
 import { organize } from "../api/organize";
 import { toast } from "../stores/toast";
 import { FolderPicker } from "./Dialogs";
@@ -303,7 +303,7 @@ export function ResourceFinder({ initialQuery = "", initialItems, base: fixedBas
         const target = targetOf(group);
         if (target !== parentDir) await fs.mkdir(target).catch((error: unknown) => { if (!/exist/i.test(reason(error))) throw error; });
         const own = target === base ? null : target.slice(target.lastIndexOf("/") + 1);
-        if (own && group.subject) await posters.set(own, { kind: group.subject.kind, id: group.subject.id }).catch(() => undefined);
+        if (own && group.subject) await posters.set(own, { kind: group.subject.kind, id: group.subject.id }, parent(target)).catch(() => undefined);
         const tools = await fs.offlineTools(target);
         const tool = tools.find(item => fs.nativeOfflineTools.includes(item)) ?? tools[0];
         if (!tool) throw new Error("这个文件夹所在的网盘不支持离线下载");

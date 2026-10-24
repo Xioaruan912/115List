@@ -74,7 +74,7 @@ export function ContextMenu() {
         ...(obj.is_dir && can(me, Perm.Rename) && !isGuest(me) && library.has(join(dir, obj.name))
           ? [{ label: "整理…", icon: <TextAaIcon size={15} />, run: () => ui().openDialog({ kind: "tmdb-rename", targets: [{ path }] }) }]
           : (obj.is_dir || isFilm(obj)) && !isGuest(me) && library.has(join(dir, obj.name))
-            ? [{ label: "更换封面", icon: <FilmSlateIcon size={15} />, run: () => ui().openDialog({ kind: "poster", name: obj.name }) }] : []),
+            ? [{ label: "更换封面", icon: <FilmSlateIcon size={15} />, run: () => ui().openDialog({ kind: "poster", name: obj.name, dir }) }] : []),
         { label: "选择", icon: <CheckSquareIcon size={15} />, run: () => ui().toggle(dir, obj.name) },
         "divider",
         { label: "重命名", icon: <PencilSimpleIcon size={15} />, hint: "F2", disabled: !can(me, Perm.Rename), run: () => ui().openDialog({ kind: "rename", dir, obj }) },

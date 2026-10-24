@@ -918,6 +918,9 @@ func (t *TMDB) Lookup(dir string, names []string) (map[string]*Poster, int) {
 		// "Nothing found" is retried after a week (TMDB keeps growing) or when
 		// the name cleaning has improved since.
 		if ok && (!entry.None || entry.Manual || (now-entry.At < 7*24*3600 && entry.Rev >= cleanerRev)) {
+			if entry.Dir == "" && !entry.None {
+				entry.Dir, pruned = dir, true // a choice made without its folder: here it is (片库 needs it)
+			}
 			out[name] = entry
 			if t.wantCategoryLocked(entry) {
 				pending++ // asked again shortly, with its category
@@ -1033,11 +1036,19 @@ func (t *TMDB) Covers(dir string) bool {
 }
 
 // Set stores a choice made by a person; it wins over any lookup.
-func (t *TMDB) Set(name string, p *Poster) {
+// dir is the folder the object is in (real path), "" when not known: the
+// folder recorded before stays.
+func (t *TMDB) Set(name, dir string, p *Poster) {
 	p.Manual = true
 	p.Name = name
 	p.At = time.Now().Unix()
 	t.mu.Lock()
+	if dir == "" {
+		if old := t.entries[Key(name)]; old != nil {
+			dir = old.Dir
+		}
+	}
+	p.Dir = dir
 	t.entries[Key(name)] = p
 	t.mu.Unlock()
 	t.save()

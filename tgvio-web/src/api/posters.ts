@@ -88,8 +88,9 @@ export const posters = {
   lookup: (dir: string, names: string[]) => post<PosterLookup>("/tgvio/posters", { dir, names }),
   seasons: (id: number) => get<SeasonInfo[]>("/tgvio/posters/seasons", { id }),
   search: (query: string) => post<{ query: string; results: Poster[] }>("/tgvio/posters/search", { query }),
-  set: (name: string, choice: { kind: string; id: number; season?: number } | null) =>
-    post<{ item: Poster | null }>("/tgvio/posters/set", choice ? { name, ...choice } : { name, none: true }),
+  /** `dir`: the folder it is in, recorded with the choice (片库 lists titles by their folder). */
+  set: (name: string, choice: { kind: string; id: number; season?: number } | null, dir?: string) =>
+    post<{ item: Poster | null }>("/tgvio/posters/set", choice ? { name, dir, ...choice } : { name, dir, none: true }),
 };
 
 /** Image URLs come back as server paths; the poster size can be swapped for sharper art. */

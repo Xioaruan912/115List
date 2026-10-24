@@ -51,6 +51,12 @@ func TgvioLibrary(c *gin.Context) {
 		places  []string
 	}
 	picks := map[string]*pick{}
+	type cand struct {
+		entry tgvio.Poster
+		path  string
+		file  bool
+	}
+	cands := map[string][]cand{} // every place a title was found as
 	type placed struct{ path, key string }
 	var seen []placed
 	allowed := map[string]bool{} // real folder -> may open
@@ -95,6 +101,7 @@ func TgvioLibrary(c *gin.Context) {
 		file := tgvio.IsMediaFile(entry.Name) // a file shares its folder's access
 		key := entry.Kind + "/" + strconv.Itoa(entry.ID)
 		seen = append(seen, placed{shown, key})
+		cands[key] = append(cands[key], cand{entry, shown, file})
 		cur := picks[key]
 		if cur == nil {
 			cur = &pick{entry: entry, path: shown, file: file, seasons: map[int]bool{}, first: entry.At}
@@ -126,9 +133,22 @@ func TgvioLibrary(c *gin.Context) {
 	}
 	items := make([]libraryItem, 0, len(picks))
 	for key, p := range picks {
-		if !p.file && shelf(p.path, key) {
+		// The card goes to the best place that is no shelf: a series' folder named
+		// for its first film ("哈利·波特" as 魔法石) leaves the card to the film's own folder.
+		var best *cand
+		for i := range cands[key] {
+			c := &cands[key][i]
+			if !c.file && shelf(c.path, key) {
+				continue
+			}
+			if best == nil || better(&pick{entry: best.entry, path: best.path, file: best.file}, c.file, c.entry, c.path) {
+				best = c
+			}
+		}
+		if best == nil {
 			continue
 		}
+		p.entry, p.path, p.file = best.entry, best.path, best.file
 		entry := p.entry
 		if entry.Season > 0 {
 			// A card for the whole series: drop the season from its title.
