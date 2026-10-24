@@ -13,7 +13,7 @@ import { judged, needsOrganizing } from "../lib/organized";
 import { categoryCounts, categoryOf, type Category } from "../api/posters";
 import { CategoryFilter } from "./CategoryFilter";
 import { RenameNudge } from "./RenameNudge";
-import { SeriesPanel } from "./SeriesPanel";
+import { hasTitlePanel, SeriesPanel, useTitlePanel } from "./SeriesPanel";
 import { useThumbs } from "../hooks/useThumbs";
 import { useIsMobile } from "../hooks/useMedia";
 import { useWidth } from "../hooks/useSize";
@@ -153,6 +153,8 @@ export function DirectoryView({ path }: { path: string }) {
   // Posters are asked for in the listing's own order (their query key follows
   // it), then rating and year reorder what they answered.
   const listed = useMemo(() => sortObjs(query.data?.content ?? [], sortKey, sortDesc), [query.data, sortKey, sortDesc]);
+  // The folder as a title (a film, a series): the cinema view leaves out its billboard then.
+  const titled = hasTitlePanel(useTitlePanel(path, listed).data);
   const writable = can(me, Perm.Write, query.data?.write);
   const { items: posterMap, blur: posterBlur } = usePosters(path, listed);
   const sorted = useMemo(() => sortKey === "rating" || sortKey === "year" ? sortByPoster(listed, sortKey, sortDesc, posterMap) : listed,
@@ -488,7 +490,7 @@ export function DirectoryView({ path }: { path: string }) {
       </div>
     );
   } else if (view === "cinema") {
-    body = <Cinema key={path} dir={path} items={items} handlers={handlers} posters={posterMap} />;
+    body = <Cinema key={path} dir={path} items={items} handlers={handlers} posters={posterMap} billboard={!titled} />;
   } else {
     body = (
       <div key={view} className="relative w-full" style={{ height: virtualizer.getTotalSize() }}>
@@ -596,7 +598,7 @@ export function DirectoryView({ path }: { path: string }) {
             <button className="btn btn-primary h-9 px-3.5 text-[13px]" onClick={() => useUi.getState().openDialog({ kind: "tmdb-rename", targets: actions.tmdbTargets(path, items) })}>整理全部 {items.length} 项</button>
           </div>
         )}
-        {view !== "cinema" && query.data && <SeriesPanel path={path} items={listed} />}
+        {query.data && <SeriesPanel path={path} items={listed} />}
         <div ref={listRef}>{body}</div>
       </div>
       {query.data && <Readme dir={path} readme={query.data.readme} items={items} />}

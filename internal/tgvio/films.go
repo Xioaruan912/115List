@@ -29,16 +29,22 @@ type FilmPart struct {
 	Place string `json:"place,omitempty"`
 	// Released: out already (TMDB release date today or before).
 	Released bool `json:"released"`
+	// Kind: "movie" or "tv" (a shelf holds series too).
+	Kind string `json:"kind,omitempty"`
 }
 
-// FilmsView is the collection a folder belongs to.
+// FilmsView is what a folder of films is: the collection its films belong
+// to, one film of none ("film"), or a shelf of several titles ("shelf").
 type FilmsView struct {
+	Kind     string     `json:"kind"` // "collection", "film", "shelf"
 	ID       int        `json:"id"`
 	Name     string     `json:"name"`
 	Overview string     `json:"overview,omitempty"`
 	Poster   string     `json:"poster,omitempty"`
 	Backdrop string     `json:"backdrop,omitempty"`
 	Parts    []FilmPart `json:"parts"`
+	// Film: the folder's own film, when the folder is one.
+	Film *FilmPart `json:"film,omitempty"`
 }
 
 type tmdbCollection struct {
@@ -71,8 +77,12 @@ func (t *TMDB) Collection(ctx context.Context, id int) (*tmdbCollection, error) 
 	return &c, nil
 }
 
-// filmsMax: a folder holding more films than this is a library shelf, not one series.
-const filmsMax = 16
+// filmsMax: a folder holding more films than this is a library shelf, not one
+// series; shelfMax: more than this is too big to show as one (a library root).
+const (
+	filmsMax = 16
+	shelfMax = 80
+)
 
 // Films finds the collection a folder's films belong to; nil when there is
 // none, or the folder holds several series (a library root, a mixed shelf).
@@ -94,11 +104,43 @@ func (t *TMDB) Films(ctx context.Context, dir string, entries []RenameEntry) (*F
 			continue
 		}
 		candidates++
-		if candidates > filmsMax {
+		if candidates > shelfMax {
 			return nil, nil
 		}
 	}
-	if self, err := t.subjectOf(ctx, dir, entries); err == nil && self != nil && !self.None && self.Kind == "movie" {
+	today := time.Now().Format("2006-01-02")
+	part := func(p *Poster, place string) FilmPart {
+		return FilmPart{ID: p.ID, Title: p.Title, Original: p.Original, Year: p.Year, Poster: p.Poster, Backdrop: p.Backdrop,
+			Overview: p.Overview, Rating: p.Rating, Place: place, Released: true, Kind: p.Kind}
+	}
+	var self *Poster
+	if p, err := t.subjectOf(ctx, dir, entries); err == nil && p != nil && !p.None && p.Kind == "movie" {
+		self = p
+	}
+	// The folder's own film, with its details (overview, backdrop, collection).
+	var own *FilmPart
+	filmOf := func() {
+		if self == nil || own != nil {
+			return
+		}
+		p := *self
+		if d, err := t.cachedDetails(ctx, "movie", self.ID); err == nil {
+			p.Overview, p.Backdrop, p.Rating = firstOf(d.Overview, p.Overview), firstOf(d.Backdrop, p.Backdrop), d.Rating
+			if p.Poster == "" {
+				p.Poster = d.Poster
+			}
+		}
+		f := part(&p, ".")
+		own = &f
+	}
+	alone := func() *FilmsView {
+		filmOf()
+		if own == nil {
+			return nil
+		}
+		return &FilmsView{Kind: "film", ID: own.ID, Name: own.Title, Overview: own.Overview, Poster: own.Poster, Backdrop: own.Backdrop, Film: own}
+	}
+	if self != nil {
 		videos := 0
 		for _, e := range entries {
 			if !e.IsDir && mediaExt.MatchString(e.Name) {
@@ -108,9 +150,14 @@ func (t *TMDB) Films(ctx context.Context, dir string, entries []RenameEntry) (*F
 		// A folder of one film (its video, maybe in parts): the film is the folder.
 		if videos > 0 && videos <= 2 && candidates == videos {
 			films = append(films, here{".", self})
+			filmOf()
 		}
 	}
+	var titles []here // a shelf: every title here, films and series
 	if len(films) == 0 {
+		if candidates > filmsMax && t.isRoot(dir) {
+			return nil, nil
+		}
 		for _, e := range entries {
 			if Skip(e.Name) || !e.IsDir && !mediaExt.MatchString(e.Name) {
 				continue
@@ -122,10 +169,36 @@ func (t *TMDB) Films(ctx context.Context, dir string, entries []RenameEntry) (*F
 			if !p.None && p.Kind == "movie" {
 				films = append(films, here{e.Name, p})
 			}
+			if !p.None {
+				titles = append(titles, here{e.Name, p})
+			}
 		}
 	}
-	if len(films) == 0 {
-		return nil, nil
+	// Several titles of no one series: a shelf ("周星驰电影合集"), never a library's root.
+	shelf := func() *FilmsView {
+		if len(titles) < 2 || t.isRoot(dir) {
+			return alone()
+		}
+		view := &FilmsView{Kind: "shelf", Name: pathBase(dir)}
+		for _, h := range titles {
+			view.Parts = append(view.Parts, part(h.p, h.place))
+		}
+		sort.SliceStable(view.Parts, func(i, j int) bool {
+			a, b := view.Parts[i].Year, view.Parts[j].Year
+			if (a == 0) != (b == 0) {
+				return b == 0
+			}
+			return a < b
+		})
+		for _, p := range view.Parts {
+			if view.Backdrop == "" && p.Backdrop != "" {
+				view.Backdrop = p.Backdrop
+			}
+		}
+		return view
+	}
+	if len(films) == 0 || len(films) > filmsMax {
+		return shelf(), nil
 	}
 	// Each film's collection, from its details; the one most of them share.
 	counts := map[int]int{}
@@ -147,20 +220,19 @@ func (t *TMDB) Films(ctx context.Context, dir string, entries []RenameEntry) (*F
 		}
 	}
 	// Most of what is here has to be of that series (a shelf of many series is no series page).
-	if best == 0 || top*10 < len(films)*6 {
-		return nil, nil
+	if best == 0 || top*10 < len(films)*6 || len(titles) > 0 && top*10 < len(titles)*6 {
+		return shelf(), nil
 	}
 	c, err := t.Collection(ctx, best)
 	if err != nil {
 		return nil, err
 	}
-	today := time.Now().Format("2006-01-02")
-	view := &FilmsView{ID: c.ID, Name: c.Name, Overview: c.Overview, Poster: c.PosterPath, Backdrop: c.BackdropPath}
+	view := &FilmsView{Kind: "collection", Film: own, ID: c.ID, Name: c.Name, Overview: c.Overview, Poster: c.PosterPath, Backdrop: c.BackdropPath}
 	for _, item := range c.Parts {
 		p := item.poster("movie")
 		view.Parts = append(view.Parts, FilmPart{ID: p.ID, Title: p.Title, Original: p.Original, Year: p.Year, Release: item.ReleaseDate,
 			Poster: p.Poster, Backdrop: p.Backdrop, Overview: p.Overview, Rating: p.Rating, Place: byFilm[p.ID],
-			Released: item.ReleaseDate != "" && item.ReleaseDate <= today})
+			Released: item.ReleaseDate != "" && item.ReleaseDate <= today, Kind: "movie"})
 	}
 	// In release order; films without a date (announced) last.
 	sort.SliceStable(view.Parts, func(i, j int) bool {

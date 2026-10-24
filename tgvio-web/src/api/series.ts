@@ -45,10 +45,18 @@ export interface FilmPart {
   rating?: number;
   place?: string;
   released: boolean;
+  /** "movie" or "tv": a shelf holds series too. */
+  kind?: string;
 }
 
-/** The TMDB collection a folder's films belong to (福尔摩斯小姐（系列）). */
+/**
+ * What a folder of films is: the TMDB collection its films belong to (福尔摩斯小姐（系列）),
+ * one film of none ("film"), or a shelf of several titles ("shelf", 周星驰电影合集).
+ */
 export interface Films {
+  kind: "collection" | "film" | "shelf";
+  /** The folder's own film, when the folder is one. */
+  film?: FilmPart;
   id: number;
   name: string;
   overview?: string;
