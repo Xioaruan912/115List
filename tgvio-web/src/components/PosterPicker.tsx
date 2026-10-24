@@ -80,7 +80,7 @@ function SeasonStep({ name, series, chosen, onBack, onPick }: { name: string; se
   );
 }
 
-export function PosterPicker({ name, then, onClose }: { name: string; then?: Dialog; onClose: () => void }) {
+export function PosterPicker({ name, dir, then, onClose }: { name: string; dir?: string; then?: Dialog; onClose: () => void }) {
   const client = useQueryClient();
   const [text, setText] = useState(name);
   const [query, setQuery] = useState(name);
@@ -97,7 +97,7 @@ export function PosterPicker({ name, then, onClose }: { name: string; then?: Dia
     if (choice?.kind === "tv" && season === undefined && !series) { setSeries(choice); return; }
     setChosen(choice ? `${choice.kind}-${choice.id}-${season ?? 0}` : "none");
     try {
-      await posters.set(name, choice ? { kind: choice.kind, id: choice.id, season: season || undefined } : null);
+      await posters.set(name, choice ? { kind: choice.kind, id: choice.id, season: season || undefined } : null, dir);
       await client.invalidateQueries({ queryKey: ["posters"] });
       void client.invalidateQueries({ queryKey: ["poster-settings"] });
       toast.success(choice ? `封面换成了「${choice.title}${season ? ` 第 ${season} 季` : ""}」` : "不再显示海报");

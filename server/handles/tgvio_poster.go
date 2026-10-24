@@ -123,6 +123,7 @@ type posterSetReq struct {
 	ID     int    `json:"id"`
 	Season int    `json:"season"`
 	None   bool   `json:"none"`
+	Dir    string `json:"dir"` // the folder the object is in (shown path), optional
 }
 
 // TgvioPosterSet: POST /api/tgvio/posters/set {name, kind, id} or {name, none: true}
@@ -132,8 +133,16 @@ func TgvioPosterSet(c *gin.Context) {
 		common.ErrorStrResp(c, "name is required", 400)
 		return
 	}
+	// The folder it is in, as the user sees it: recorded with the choice (片库 lists it by it).
+	dir := ""
+	if req.Dir != "" {
+		user := c.Request.Context().Value(conf.UserKey).(*model.User)
+		if real, err := user.JoinPath(req.Dir); err == nil {
+			dir = real
+		}
+	}
 	if req.None {
-		posters().Set(req.Name, &tgvio.Poster{None: true})
+		posters().Set(req.Name, dir, &tgvio.Poster{None: true})
 		common.SuccessResp(c, gin.H{"item": nil})
 		return
 	}
@@ -149,7 +158,7 @@ func TgvioPosterSet(c *gin.Context) {
 	if req.Kind == "tv" && req.Season > 0 {
 		posters().ApplySeason(c.Request.Context(), p, req.Season)
 	}
-	posters().Set(req.Name, p)
+	posters().Set(req.Name, dir, p)
 	common.SuccessResp(c, gin.H{"item": toPosterOut(p)})
 }
 

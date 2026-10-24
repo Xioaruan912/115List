@@ -270,7 +270,7 @@ export function TmdbRename({ targets: chosen, onClose }: { targets: RenameTarget
     void load([target], targets, () => true, season).then(() => load(below, targets, () => true));
   };
   // Which film a folder is: its cover, and what it is named after. Back here afterwards, planned again.
-  const changeFilm = (target: Entry): void => useUi.getState().openDialog({ kind: "poster", name: basename(target.path), then: { kind: "tmdb-rename", targets: chosen } });
+  const changeFilm = (target: Entry): void => useUi.getState().openDialog({ kind: "poster", name: basename(target.path), dir: parent(target.path), then: { kind: "tmdb-rename", targets: chosen } });
   // Nothing to do here (a shelf of one's own, not a film): 整理模式 stops showing it.
   const settle = (): void => {
     const paths = chosen.filter(target => !target.only).map(target => target.path);

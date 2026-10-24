@@ -15,7 +15,7 @@ export type Dialog =
   | { kind: "share"; dir: string; names: string[] }
   | { kind: "shares" }
   /** `then`: the dialog to go back to once a poster is chosen (整理 asks again with the new film). */
-  | { kind: "poster"; name: string; then?: Dialog }
+  | { kind: "poster"; name: string; dir?: string; then?: Dialog }
   | { kind: "tmdb-rename"; targets: { path: string; only?: string[] }[] }
   | { kind: "resources"; query?: string; items?: Magnet[]; base?: string; folder?: string }
   | { kind: "account" };

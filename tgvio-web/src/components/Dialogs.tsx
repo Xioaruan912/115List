@@ -315,7 +315,7 @@ function DialogFor({ dialog, onClose }: { dialog: Dialog; onClose: () => void })
     case "share":
       return <ShareDialog dir={dialog.dir} names={dialog.names} onClose={onClose} />;
     case "poster":
-      return <PosterPicker name={dialog.name} then={dialog.then} onClose={onClose} />;
+      return <PosterPicker name={dialog.name} dir={dialog.dir} then={dialog.then} onClose={onClose} />;
     case "tmdb-rename":
       return <TmdbRename targets={dialog.targets} onClose={onClose} />;
     case "shares":
