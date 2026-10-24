@@ -31,6 +31,12 @@ type Organize struct {
 	path string
 	mu   sync.Mutex
 	at   map[string]organizeEntry
+	// seen: folders known in each library folder (real path -> first seen),
+	// to tell a folder newly put in from one that was always there.
+	// Kept in organize-seen.json; a library folder is listed once ("baseline")
+	// before anything in it counts as new.
+	seen     map[string]time.Time
+	seenPath string
 }
 
 var (
@@ -42,9 +48,13 @@ const organizeTTL = 90 * 24 * time.Hour
 
 func OrganizeStore(dataDir string) *Organize {
 	organizeOnce.Do(func() {
-		o := &Organize{path: filepath.Join(dataDir, "tgvio", "organize.json"), at: map[string]organizeEntry{}}
+		o := &Organize{path: filepath.Join(dataDir, "tgvio", "organize.json"), at: map[string]organizeEntry{},
+			seenPath: filepath.Join(dataDir, "tgvio", "organize-seen.json"), seen: map[string]time.Time{}}
 		if raw, err := os.ReadFile(o.path); err == nil {
 			_ = json.Unmarshal(raw, &o.at)
+		}
+		if raw, err := os.ReadFile(o.seenPath); err == nil {
+			_ = json.Unmarshal(raw, &o.seen)
 		}
 		organizeInstance = o
 	})
@@ -111,17 +121,74 @@ func (o *Organize) RenamedDir(oldPath, newPath string) {
 	if changed {
 		_ = o.saveLocked()
 	}
+	moved := false
+	for key, at := range o.seen {
+		if key == oldPath || strings.HasPrefix(key, oldPath+"/") {
+			delete(o.seen, key)
+			o.seen[newPath+strings.TrimPrefix(key, oldPath)] = at
+			moved = true
+		}
+	}
+	if moved {
+		o.saveSeenLocked()
+	}
 }
 
-// MountMoved: a storage's mount path changed. What was recorded under the old
-// path (posters, 整理 marks) follows, for the stores in use.
-func MountMoved(oldPath, newPath string) {
-	if tmdbInstance != nil {
-		tmdbInstance.RenamedDir(oldPath, newPath)
+func (o *Organize) saveSeenLocked() {
+	if o.seenPath == "" {
+		return
 	}
-	if organizeInstance != nil {
-		organizeInstance.RenamedDir(oldPath, newPath)
+	raw, _ := json.Marshal(o.seen)
+	_ = os.MkdirAll(filepath.Dir(o.seenPath), 0o700)
+	_ = os.WriteFile(o.seenPath, raw, 0o600)
+}
+
+// newFolderAge: how long a new folder is left alone (still uploading, still
+// being filled) before it counts.
+const newFolderAge = 10 * time.Minute
+
+// NewFolders takes the folders now in a library folder and answers those put
+// in at least newFolderAge ago that are neither waiting nor organized. The
+// first look at a library folder only learns what is there.
+func (o *Organize) NewFolders(root string, names []string) []string {
+	root = organizeKey(root)
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	baseline := root + "/\x00baseline"
+	_, known := o.seen[baseline]
+	now := time.Now()
+	changed := false
+	present := map[string]bool{}
+	var out []string
+	for _, name := range names {
+		p := path.Join(root, name)
+		present[p] = true
+		first, ok := o.seen[p]
+		if !ok {
+			first = now
+			if !known {
+				first = time.Time{} // there before: never new
+			}
+			o.seen[p], changed = first, true
+		}
+		if _, marked := o.at[p]; !first.IsZero() && !marked && now.Sub(first) >= newFolderAge {
+			out = append(out, p)
+		}
 	}
+	// Gone from it (deleted, moved away): forgotten, so a folder put back later is new again.
+	for p := range o.seen {
+		if path.Dir(p) == root && !present[p] && p != baseline {
+			delete(o.seen, p)
+			changed = true
+		}
+	}
+	if !known {
+		o.seen[baseline], changed = now, true
+	}
+	if changed {
+		o.saveSeenLocked()
+	}
+	return out
 }
 
 // Pending lists the folders waiting to be organized that were marked at least

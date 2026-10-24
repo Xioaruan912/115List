@@ -182,7 +182,7 @@ function AutoOrganized() {
   const open = (path: string): void => { useUi.getState().setTasks(false); navigate(encodePath(path)); };
   return (
     <section>
-      <h3 className="px-2 pb-1 text-[12px] font-medium text-muted">下载后自动整理</h3>
+      <h3 className="px-2 pb-1 text-[12px] font-medium text-muted">自动整理</h3>
       <ul>
         {items.map(item => (
           <li key={item.path} className="flex items-center gap-1">
