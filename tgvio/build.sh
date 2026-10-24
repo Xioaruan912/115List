@@ -38,7 +38,7 @@ case "$ui" in
         for old in $(ls -1t "$history" | head -n 6); do cp -rn "$history/$old/." "$repo/public/dist/assets/"; done
         ls -1t "$history" | tail -n +7 | while read -r gone; do rm -r -- "${history:?}/$gone"; done
         cp -r "$repo/tgvio-web/dist/." "$repo/public/dist/"
-        label="tgvio-web-$commit"
+        label="ppee-web-$commit"
         ;;
     official)
         tar -xzf "$dist" -C "$repo/public/dist"
