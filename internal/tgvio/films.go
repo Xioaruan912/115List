@@ -2,6 +2,7 @@ package tgvio
 
 import (
 	"context"
+	stdpath "path"
 	"sort"
 	"strconv"
 	"sync"
@@ -26,6 +27,7 @@ type FilmPart struct {
 	Overview string  `json:"overview,omitempty"`
 	Rating   float64 `json:"rating,omitempty"`
 	// Place: the folder or video here that is this film; "." for the folder itself; empty when missing.
+	// For a folder that is one film, its series' other films beside it are named as in the folder above.
 	Place string `json:"place,omitempty"`
 	// Released: out already (TMDB release date today or before).
 	Released bool `json:"released"`
@@ -226,6 +228,22 @@ func (t *TMDB) Films(ctx context.Context, dir string, entries []RenameEntry) (*F
 	c, err := t.Collection(ctx, best)
 	if err != nil {
 		return nil, err
+	}
+	// The folder is one film: its series' other films may be beside it
+	// ("星球大战合集/星球大战2 (2002)/"), known from the poster records of the
+	// folder above (no drive listing). A folder there over a video file.
+	if own != nil {
+		up := stdpath.Dir(dir)
+		t.mu.Lock()
+		for _, entry := range t.entries {
+			if entry.Dir != up || entry.None || entry.Kind != "movie" || entry.Name == "" || entry.Name == pathBase(dir) {
+				continue
+			}
+			if cur := byFilm[entry.ID]; cur == "" || cur != "." && mediaExt.MatchString(cur) && !mediaExt.MatchString(entry.Name) {
+				byFilm[entry.ID] = entry.Name
+			}
+		}
+		t.mu.Unlock()
 	}
 	view := &FilmsView{Kind: "collection", Film: own, ID: c.ID, Name: c.Name, Overview: c.Overview, Poster: c.PosterPath, Backdrop: c.BackdropPath}
 	for _, item := range c.Parts {
