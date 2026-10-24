@@ -204,8 +204,19 @@ func TgvioLibraryNews(c *gin.Context) {
 	user := c.Request.Context().Value(conf.UserKey).(*model.User)
 	items, computing, at := posters().News()
 	out := make([]tgvio.NewsItem, 0, len(items))
+	allowed := map[string]bool{}
 	for _, item := range items {
 		if item.Dir != "" {
+			// A folder behind a password is left out, as in the library itself.
+			ok, seen := allowed[item.Dir]
+			if !seen {
+				meta, err := op.GetNearestMeta(item.Dir)
+				ok = (err == nil || errors.Is(errors.Cause(err), errs.MetaNotFound)) && webCanAccess(user, meta, item.Dir, "")
+				allowed[item.Dir] = ok
+			}
+			if !ok {
+				continue
+			}
 			shown, ok := user.ShowPath(item.Dir)
 			if !ok {
 				continue

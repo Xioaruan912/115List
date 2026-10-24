@@ -105,7 +105,7 @@ function PasswordGate({ path, onUnlock }: { path: string; onUnlock: () => void }
       <span className="grid size-12 place-items-center rounded-2xl bg-surface text-accent-text hairline"><LockIcon size={22} weight="duotone" /></span>
       <div>
         <h2 className="text-lg font-semibold tracking-tight">这个文件夹需要密码</h2>
-        <p className="mt-1 text-muted">密码只保存在本次浏览会话里。</p>
+        <p className="mt-1 text-muted">密码不会保存，刷新或重新打开网站后要再输入。</p>
       </div>
       <label className="w-full">
         <span className="label">密码</span>

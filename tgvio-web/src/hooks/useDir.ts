@@ -5,42 +5,33 @@ import { ApiError } from "../lib/api";
 
 const PASSWORDS = "tgvio-web:passwords";
 
-// Folder passwords are asked once per device: kept in localStorage for 30 days
-// (they used to be per tab, so every new tab asked again), dropped on sign-out.
-const TTL = 30 * 86_400_000;
+// Folder passwords live in this page's memory only: every visit (a reload, a
+// new tab, opening the site again) asks again, as a protected folder should.
+const passwords: Record<string, string> = {};
+// The last one typed, tried on folders above where it was typed (opened a
+// subfolder's link first, then went up): one password usually guards them all.
+let lastTyped = "";
 
-function loadPasswords(): Record<string, string> {
-  try {
-    const saved = JSON.parse(localStorage.getItem(PASSWORDS) ?? "{}") as { at?: number; list?: Record<string, string> };
-    const old = JSON.parse(sessionStorage.getItem(PASSWORDS) ?? "{}") as Record<string, string>;
-    const fresh = saved.at && Date.now() - saved.at < TTL ? saved.list ?? {} : {};
-    return { ...old, ...fresh };
-  } catch { return {}; }
-}
+// Passwords kept by older versions (30 days in localStorage) are dropped.
+try { localStorage.removeItem(PASSWORDS); sessionStorage.removeItem(PASSWORDS); } catch { /* ignore */ }
 
-const passwords = loadPasswords();
-
-function savePasswords(): void {
-  try { localStorage.setItem(PASSWORDS, JSON.stringify({ at: Date.now(), list: passwords })); } catch { /* ignore */ }
-}
-
-/** Sign-out: this device forgets the folder passwords. */
+/** Sign-out: this page forgets the folder passwords. */
 export function forgetPasswords(): void {
   for (const key of Object.keys(passwords)) delete passwords[key];
-  try { localStorage.removeItem(PASSWORDS); sessionStorage.removeItem(PASSWORDS); } catch { /* ignore */ }
+  lastTyped = "";
 }
 
 /** The password a user typed for this folder or the nearest ancestor. */
 export function passwordFor(path: string): string {
   for (let probe = path; ; probe = probe.slice(0, Math.max(0, probe.lastIndexOf("/"))) || "/") {
     if (passwords[probe]) return passwords[probe];
-    if (probe === "/") return "";
+    if (probe === "/") return lastTyped;
   }
 }
 
 export function rememberPassword(path: string, password: string): void {
   passwords[path] = password;
-  savePasswords();
+  lastTyped = password;
 }
 
 export const dirKey = (path: string) => ["list", path] as const;
