@@ -874,6 +874,10 @@ type lookupJob struct {
 // store, and queues unknown names for the background worker. Names no longer
 // in the folder are forgotten, so deleted folders leave no trace. A bare
 // season folder ("第一季", "Season 01") is looked up with its series' name.
+// notTitle: files that are never a film or a series (artwork, subtitles, notes,
+// links), whatever a caller sends; TMDB is not asked about them.
+var notTitle = regexp.MustCompile(`(?i)\.(jpe?g|png|webp|gif|bmp|srt|ass|ssa|vtt|sub|idx|sup|nfo|url|txt|html?|torrent|xml|json|lrc|log|db)$`)
+
 func (t *TMDB) Lookup(dir string, names []string) (map[string]*Poster, int) {
 	out := make(map[string]*Poster, len(names))
 	pending := 0
@@ -893,7 +897,7 @@ func (t *TMDB) Lookup(dir string, names []string) (map[string]*Poster, int) {
 		}
 	}
 	for _, name := range names {
-		if Skip(name) {
+		if Skip(name) || notTitle.MatchString(name) {
 			continue
 		}
 		look := name

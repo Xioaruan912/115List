@@ -2,7 +2,10 @@ package tgvio
 
 import (
 	"context"
+	"encoding/json"
+	"strconv"
 	"testing"
+	"time"
 )
 
 func filmsTMDB(t *testing.T, films []tmdbItem, names map[string]int) *TMDB {
@@ -43,5 +46,50 @@ func TestFilmsShelfOfNoSeries(t *testing.T) {
 	}
 	if root, _ := tm.Films(context.Background(), "/lib", entries); root != nil {
 		t.Fatalf("root -> %+v", root)
+	}
+}
+
+func TestFilmsOfSeriesBesideFilm(t *testing.T) {
+	// "星球大战合集/星球大战1 (1999)/": the other films beside it are here, not missing.
+	tm := filmsTMDB(t, []tmdbItem{film(1, "星球大战1", "1999-05-19", 7, "星球大战（系列）"), film(2, "星球大战2", "2002-05-16", 7, "星球大战（系列）"),
+		film(3, "星球大战3", "2005-05-19", 7, "星球大战（系列）")},
+		map[string]int{"星球大战1 (1999)": 1, "星球大战2 (2002)": 2})
+	tm.entries[Key("星球大战1 (1999)")].Dir = "/lib/星球大战合集"
+	tm.entries[Key("星球大战2 (2002)")].Dir = "/lib/星球大战合集"
+	fakeCollection(tm, 7, "星球大战（系列）", 1, 2, 3)
+	view, err := tm.Films(context.Background(), "/lib/星球大战合集/星球大战1 (1999)", []RenameEntry{{Name: "星球大战1 (1999).mkv", Size: 9}})
+	if err != nil || view == nil || view.Kind != "collection" {
+		t.Fatalf("view -> %+v %v", view, err)
+	}
+	places := map[int]string{}
+	for _, p := range view.Parts {
+		places[p.ID] = p.Place
+	}
+	if places[1] != "." || places[2] != "星球大战2 (2002)" || places[3] != "" {
+		t.Fatalf("places -> %v", places)
+	}
+}
+
+// fakeCollection puts a TMDB collection of those films in the cache.
+func fakeCollection(tm *TMDB, id int, name string, films ...int) {
+	c := &tmdbCollection{ID: id, Name: name}
+	for _, f := range films {
+		var item tmdbItem
+		raw, _ := json.Marshal(fakeOf(tm, f))
+		_ = json.Unmarshal(raw, &item)
+		c.Parts = append(c.Parts, item)
+	}
+	collectionCache.Store(strconv.Itoa(id)+"/"+tm.Config().Language, collectionEntry{at: time.Now(), c: c})
+}
+
+func fakeOf(tm *TMDB, id int) tmdbItem {
+	return tm.http.Transport.(fakeTMDB)["movie/"+itoa(id)]
+}
+
+func TestLookupLeavesOutArtworkAndNotes(t *testing.T) {
+	tm := filmsTMDB(t, nil, nil)
+	_, pending := tm.Lookup("/lib/Running Man (2010)", []string{"poster.jpg", "tvshow.nfo", "a.ass", "广告.url"})
+	if pending != 0 || len(tm.entries) != 0 {
+		t.Fatalf("pending %d entries %v", pending, tm.entries)
 	}
 }
