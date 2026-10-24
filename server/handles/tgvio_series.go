@@ -75,6 +75,9 @@ func TgvioSeries(c *gin.Context) {
 			return
 		}
 		films.Poster, films.Backdrop = posterURL("w342", films.Poster), posterURL("w1280", films.Backdrop)
+		if f := films.Film; f != nil {
+			f.Poster, f.Backdrop = posterURL("w342", f.Poster), posterURL("w1280", f.Backdrop)
+		}
 		for i := range films.Parts {
 			films.Parts[i].Poster = posterURL("w342", films.Parts[i].Poster)
 			films.Parts[i].Backdrop = posterURL("w1280", films.Parts[i].Backdrop)

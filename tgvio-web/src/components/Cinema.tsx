@@ -277,7 +277,8 @@ function ContinueRow({ dir, items, handlers }: { dir: string; items: Obj[]; hand
 
 /* -------------------------------------------------------------- view */
 
-export function Cinema({ dir, items, handlers, posters = {} }: { dir: string; items: Obj[]; handlers: TileHandlers; posters?: Record<string, Art> }) {
+/** billboard: off when the folder already shows its title panel (a film, a series) above. */
+export function Cinema({ dir, items, handlers, posters = {}, billboard = true }: { dir: string; items: Obj[]; handlers: TileHandlers; posters?: Record<string, Art>; billboard?: boolean }) {
   const [shown, setShown] = useState(PAGE);
   const [focused, setFocused] = useState<Obj | null>(null);
   const selected = useUi(state => state.selectionDir === dir ? state.selected : NONE);
@@ -307,10 +308,10 @@ export function Cinema({ dir, items, handlers, posters = {} }: { dir: string; it
   const shuffleRef = useRef(shuffle);
   shuffleRef.current = shuffle;
   useEffect(() => {
-    if (held || focused || reduced || pool.length < 2) return;
+    if (!billboard || held || focused || reduced || pool.length < 2) return;
     const timer = window.setInterval(() => { if (!document.hidden) shuffleRef.current(); }, ROTATE);
     return () => clearInterval(timer);
-  }, [held, focused, reduced, pool.length]);
+  }, [billboard, held, focused, reduced, pool.length]);
   const featured = useMemo(() => {
     if (focused && items.some(item => item.name === focused.name)) return focused;
     return pool[Math.min(pool.length - 1, Math.floor(seed * pool.length))];
@@ -318,7 +319,7 @@ export function Cinema({ dir, items, handlers, posters = {} }: { dir: string; it
 
   return (
     <div>
-      {featured && <Billboard dir={dir} obj={featured} art={posters[featured.name]} handlers={handlers}
+      {billboard && featured && <Billboard dir={dir} obj={featured} art={posters[featured.name]} handlers={handlers}
         onShuffle={pool.length > 1 ? shuffle : undefined} onHold={setHeld} />}
       <ContinueRow dir={dir} items={items} handlers={handlers} />
       <section>

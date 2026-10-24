@@ -6,7 +6,7 @@ import { useLocation } from "wouter";
 import { posterSrc } from "../api/posters";
 import { series, type Films, type SeriesEpisode } from "../api/series";
 import { useResourceRoot } from "../hooks/useResourceRoot";
-import { kindOf } from "../lib/kind";
+import { isFilm } from "../lib/kind";
 import { passwordFor } from "../hooks/useDir";
 import { useLibraryScope } from "../hooks/useLibraryScope";
 import { spring } from "../lib/motion";
@@ -21,9 +21,6 @@ import { useUi } from "../stores/ui";
  * stills, names and what was watched. Episodes not in the folder are dimmed.
  * The file grid below stays as it is.
  */
-
-const SEASONISH = /(第\s*[\d一二三四五六七八九十]+\s*季|season\s*\d+|\bS\d{1,2}\b)/i;
-const EPISODISH = /(S\d{1,2}\s*E\d{1,4}|第\s*\d+\s*[集话話]|\bE[Pp]?\d{1,3}\b|\[\d{1,3}\]| - \d{1,3}[ .[(])/i;
 
 const CN = ["零", "一", "二", "三", "四", "五", "六", "七", "八", "九"];
 /** 1..99 as season folders are named: 二, 十二, 二十 (the server's cnNumeral). */
@@ -71,27 +68,35 @@ function nextUp(path: string, episodes: SeriesEpisode[]): { episode: SeriesEpiso
   return withFiles[index + 1] ? { episode: withFiles[index + 1], resume: false } : null;
 }
 
-export function SeriesPanel({ path, items }: { path: string; items: Obj[] }) {
-  const [, navigate] = useLocation();
+/**
+ * What a folder is as a title: a TV series (anime, 综艺 too), a film, a film
+ * series, or a shelf of titles. Shared by the panel and the cinema view (one
+ * request: the same query). A folder of neither folders nor videos is nothing.
+ */
+export function useTitlePanel(path: string, items: Obj[]) {
   const library = useLibraryScope();
-  // A series (season folders, episode names) or a few films (a film's folder, a series of films):
-  // a folder of many is a shelf, not one title.
-  const looksLike = useMemo(() => {
-    if (items.some(item => item.is_dir ? SEASONISH.test(item.name) : EPISODISH.test(item.name))) return true;
-    const titles = items.filter(item => item.is_dir || kindOf(item) === "video").length;
-    return titles > 0 && titles <= 16;
-  }, [items]);
-  const finder = useResourceRoot();
-  const query = useQuery({
+  const media = useMemo(() => items.some(item => item.is_dir || isFilm(item)), [items]);
+  return useQuery({
     queryKey: ["series", path, items.length],
     queryFn: () => series(path, passwordFor(path)),
-    enabled: looksLike && library.has(path),
+    enabled: media && library.has(path),
     staleTime: 5 * 60_000,
     retry: false,
   });
+}
+
+/** Whether the folder shows a title panel. */
+export function hasTitlePanel(data: Awaited<ReturnType<typeof series>> | undefined): boolean {
+  return !!(data?.series || data?.films);
+}
+
+export function SeriesPanel({ path, items }: { path: string; items: Obj[] }) {
+  const [, navigate] = useLocation();
+  const finder = useResourceRoot();
+  const query = useTitlePanel(path, items);
   useSyncExternalStore(subscribeProgress, () => tick);
   const data = query.data?.series;
-  if (!data && query.data?.films) return <FilmsPanel path={path} films={query.data.films} canFind={finder.enabled} />;
+  if (!data && query.data?.films) return <FilmsPanel path={path} films={query.data.films} items={items} canFind={finder.enabled} />;
   if (!data) return null;
   const { base, subject } = data;
   const backdrop = base.backdrop || subject.backdrop;
@@ -206,78 +211,109 @@ export function SeriesPanel({ path, items }: { path: string; items: Obj[] }) {
   );
 }
 
+/** The video to play for a film's folder: its largest, the first part for a film in parts. */
+function filmVideo(items: Obj[]): Obj | undefined {
+  const videos = items.filter(item => !item.is_dir && isFilm(item));
+  const parts = videos.filter(item => /(?:cd|disc|part)\s*0?1\b/i.test(item.name));
+  return (parts.length ? parts : videos).reduce<Obj | undefined>((best, item) => !best || item.size > best.size ? item : best, undefined);
+}
+
 /**
- * A folder of films of one TMDB collection (or one film of it): the whole
- * collection, which films are here, which are missing (a tap finds them),
- * which are not out yet.
+ * A folder of films, in the series panel's form: one film (its poster,
+ * overview, a button to play), one film of a series or a series' folder (the
+ * series below: which films are here, which are missing, which are not out
+ * yet), or a shelf of titles (周星驰电影合集: every title here).
  */
-function FilmsPanel({ path, films, canFind }: { path: string; films: Films; canFind: boolean }) {
+function FilmsPanel({ path, films, items, canFind }: { path: string; films: Films; items: Obj[]; canFind: boolean }) {
   const [, navigate] = useLocation();
-  // The folder is one film ("."): its series' other films go beside it.
-  const single = films.parts.some(part => part.place === ".");
-  const shelf = single ? parent(path) : path;
-  const have = films.parts.filter(part => part.place).length;
-  const missing = films.parts.filter(part => !part.place && part.released);
-  const backdrop = films.backdrop || films.parts.find(part => part.place)?.backdrop;
+  const own = films.film;
+  const shelf = films.kind === "shelf";
+  // The folder is one film: its series' other films go beside it.
+  const home = own ? parent(path) : path;
+  const parts = films.kind === "film" ? [] : films.parts;
+  const have = parts.filter(part => part.place).length;
+  const missing = shelf ? [] : parts.filter(part => !part.place && part.released);
+  const backdrop = own?.backdrop || films.backdrop || parts.find(part => part.place)?.backdrop;
   const plain = films.name.replace(/[（(]系列[）)]$|系列$|\s*Collection$/i, "").trim();
+  const video = own ? filmVideo(items) : undefined;
+  const seen = video ? watched(join(path, video.name)) : 0;
   const open = (place: string): void => {
     if (place === ".") return;
     if (/\.[a-z0-9]{2,4}$/i.test(place)) useUi.getState().openViewer(path, place, null);
     else navigate(encodePath(join(path, place)));
   };
+  const title = own?.title ?? films.name;
+  const poster = own?.poster || films.poster || (shelf ? parts.find(part => part.poster)?.poster : undefined);
+  const overview = own?.overview || (shelf ? "" : films.overview);
   return (
     <motion.section className="relative mb-8 overflow-hidden rounded-[var(--radius-sheet)] bg-stage text-white" style={{ boxShadow: "inset 0 0 0 1px var(--line)" }}
-      initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={spring.soft} aria-label={`${films.name} 系列信息`}>
+      initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={spring.soft} aria-label={`${title} ${own ? "影片" : shelf ? "片单" : "系列"}信息`}>
       {backdrop && (
         <img src={posterSrc(backdrop)} alt="" className="absolute inset-0 size-full object-cover opacity-45 sm:left-auto sm:w-[70%]" style={{ maskImage: "linear-gradient(90deg, transparent, black 45%)" }} />
       )}
       <div className="absolute inset-0 bg-gradient-to-t from-stage via-stage/70 to-stage/20" />
       <div className="relative p-5 sm:p-8">
         <div className="flex gap-5">
-          {films.poster && <img src={posterSrc(films.poster, "w342")} alt="" className="hidden h-[168px] w-[112px] shrink-0 rounded-[10px] object-cover shadow-2xl sm:block" />}
+          {poster && <img src={posterSrc(poster, "w342")} alt="" className="hidden h-[168px] w-[112px] shrink-0 rounded-[10px] object-cover shadow-2xl sm:block" />}
           <div className="min-w-0 sm:max-w-[60ch]">
-            <h2 className="text-[clamp(24px,3.4vw,38px)] font-semibold leading-tight tracking-[-0.03em]">{films.name}</h2>
+            <h2 className="text-[clamp(24px,3.4vw,38px)] font-semibold leading-tight tracking-[-0.03em] break-words">{title}</h2>
             <p className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[13px] text-white/70 tabular">
-              <span>{films.parts.length} 部 · 有 {have} 部</span>
+              {own?.year ? <span>{own.year}</span> : null}
+              {own?.rating ? <span className="inline-flex items-center gap-1"><StarIcon size={12} weight="fill" className="text-accent" />{own.rating.toFixed(1)}</span> : null}
+              {shelf && <span>{parts.length} 部</span>}
+              {!shelf && parts.length > 0 && <span>{own ? `${plain} · ` : ""}{parts.length} 部 · 有 {have} 部</span>}
               {missing.length > 0 && <span className="rounded-full bg-white/12 px-2 py-0.5 text-[12px] text-white">缺 {missing.length} 部</span>}
+              {seen >= 1 && <span className="inline-flex items-center gap-1"><CheckIcon size={12} weight="bold" className="text-accent" />看完了</span>}
             </p>
-            {films.overview && <p className="mt-3 line-clamp-3 text-[13.5px] leading-relaxed text-white/75">{films.overview}</p>}
-            {canFind && missing.length > 0 && (
+            {overview && <p className="mt-3 line-clamp-3 text-[13.5px] leading-relaxed text-white/75">{overview}</p>}
+            {(video || canFind && missing.length > 0) && (
               <div className="mt-4 flex flex-wrap gap-2">
-                <button className="btn btn-primary h-10 px-4" onClick={() => openFinder(missing.length === 1 ? missing[0].title : plain, shelf)}>
-                  <MagnetIcon size={15} />{missing.length === 1 ? `找「${missing[0].title}」` : `找缺的 ${missing.length} 部`}
-                </button>
+                {video && (
+                  <button className="btn btn-primary h-10 px-4" onClick={() => useUi.getState().openViewer(path, video.name, null)}>
+                    <PlayIcon size={15} weight="fill" />{seen > 0 && seen < 1 ? "继续看" : seen >= 1 ? "再看一遍" : "播放"}
+                  </button>
+                )}
+                {canFind && missing.length > 0 && (
+                  <button className={video ? "btn h-10 bg-white/12 px-4 text-white backdrop-blur-md hover:bg-white/20" : "btn btn-primary h-10 px-4"}
+                    onClick={() => openFinder(missing.length === 1 ? missing[0].title : plain, home)}>
+                    <MagnetIcon size={15} />{missing.length === 1 ? `找「${missing[0].title}」` : `找缺的 ${missing.length} 部`}
+                  </button>
+                )}
               </div>
             )}
           </div>
         </div>
 
-        <div className="-mx-5 mt-6 flex snap-x gap-3 overflow-x-auto px-5 pb-1 [scrollbar-width:none] sm:-mx-8 sm:px-8">
-          {films.parts.map(part => {
-            const here = !!part.place;
-            const findable = !here && part.released && canFind;
-            return (
-              <button key={part.id} disabled={!here && !findable}
-                onClick={() => { if (part.place) open(part.place); else if (findable) openFinder(part.title, shelf); }}
-                title={here ? part.place === "." ? "就是这个文件夹" : part.place : findable ? `找「${part.title}」的资源` : part.release ? `${part.release} 上映` : "还没上映"}
-                className={`group/part w-[120px] shrink-0 snap-start text-left ${here ? "" : "opacity-50 enabled:hover:opacity-85"}`}>
-                <div className="relative aspect-[2/3] overflow-hidden rounded-[10px] bg-white/10 transition-transform duration-300 ease-[var(--ease-expo)] group-enabled/part:group-hover/part:-translate-y-1">
-                  {part.poster && <img src={posterSrc(part.poster, "w342")} alt="" loading="lazy" className="size-full object-cover" />}
-                  {part.place === "." && <span className="absolute left-1.5 top-1.5 rounded-full bg-accent px-2 py-0.5 text-[10.5px] font-medium text-accent-ink">当前</span>}
-                  {!here && (
-                    <span className="absolute inset-x-1.5 bottom-1.5 flex items-center justify-center gap-1 rounded-full bg-black/65 px-2 py-0.5 text-[10.5px] backdrop-blur-md">
-                      {findable ? <><MagnetIcon size={11} />找资源</> : part.released ? "未下载" : part.release ? `${part.release} 上映` : "还没上映"}
-                    </span>
-                  )}
-                </div>
-                <p className="mt-1.5 line-clamp-2 text-[12.5px] font-medium leading-snug">{part.title}</p>
-                <p className="text-[11.5px] text-white/55 tabular">
-                  {part.year || ""}{part.rating ? <span className="ml-1.5 inline-flex items-center gap-0.5"><StarIcon size={10} weight="fill" className="text-accent" />{part.rating.toFixed(1)}</span> : null}
-                </p>
-              </button>
-            );
-          })}
-        </div>
+        {parts.length > 0 && (
+          <div className="-mx-5 mt-6 flex snap-x gap-3 overflow-x-auto px-5 pb-1 [scrollbar-width:none] sm:-mx-8 sm:px-8">
+            {parts.map(part => {
+              const here = !!part.place;
+              const findable = !here && part.released && canFind;
+              const place = own && part.place === "." ? "." : part.place;
+              return (
+                <button key={`${part.kind}-${part.id}-${part.place ?? ""}`} disabled={!here && !findable}
+                  onClick={() => { if (place) { if (own && place !== ".") navigate(encodePath(join(home, place))); else open(place); } else if (findable) openFinder(part.title, home); }}
+                  title={here ? place === "." ? "就是这个文件夹" : part.place : findable ? `找「${part.title}」的资源` : part.release ? `${part.release} 上映` : "还没上映"}
+                  className={`group/part w-[120px] shrink-0 snap-start text-left ${here ? "" : "opacity-50 enabled:hover:opacity-85"}`}>
+                  <div className="relative aspect-[2/3] overflow-hidden rounded-[10px] bg-white/10 transition-transform duration-300 ease-[var(--ease-expo)] group-enabled/part:group-hover/part:-translate-y-1">
+                    {part.poster && <img src={posterSrc(part.poster, "w342")} alt="" loading="lazy" className="size-full object-cover" />}
+                    {place === "." && <span className="absolute left-1.5 top-1.5 rounded-full bg-accent px-2 py-0.5 text-[10.5px] font-medium text-accent-ink">当前</span>}
+                    {part.kind === "tv" && <span className="absolute left-1.5 top-1.5 rounded-full bg-black/65 px-2 py-0.5 text-[10.5px] backdrop-blur-md">剧集</span>}
+                    {!here && (
+                      <span className="absolute inset-x-1.5 bottom-1.5 flex items-center justify-center gap-1 rounded-full bg-black/65 px-2 py-0.5 text-[10.5px] backdrop-blur-md">
+                        {findable ? <><MagnetIcon size={11} />找资源</> : part.released ? "未下载" : part.release ? `${part.release} 上映` : "还没上映"}
+                      </span>
+                    )}
+                  </div>
+                  <p className="mt-1.5 line-clamp-2 text-[12.5px] font-medium leading-snug">{part.title}</p>
+                  <p className="text-[11.5px] text-white/55 tabular">
+                    {part.year || ""}{part.rating ? <span className="ml-1.5 inline-flex items-center gap-0.5"><StarIcon size={10} weight="fill" className="text-accent" />{part.rating.toFixed(1)}</span> : null}
+                  </p>
+                </button>
+              );
+            })}
+          </div>
+        )}
       </div>
     </motion.section>
   );
