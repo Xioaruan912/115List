@@ -111,6 +111,9 @@ var (
 // files (its video, artwork such as "poster.jpg") say none of this.
 var adWords = regexp.MustCompile(`(?i)www\.|https?[:：]|\.(?:com|net|org|cc|me|tv|xyz|top|vip|cn)\b|下载|访问|官网|网址|地址|发布页|扫码|二维码|关注|公众号|交流群|电报群|telegram|t\.me|@|无水印|更多.{0,6}(?:电影|剧集|资源)`)
 
+// adEpisode: a name with an episode in it is the title's own (ads never number episodes).
+var adEpisode = regexp.MustCompile(`(?i)\bS\d{1,2}E\d{1,4}\b|第\s*\d+\s*[集话話期]`)
+
 // adMax: an ad is small, whatever its kind (a picture, a note, a page, a
 // document, a clip); a film's video is far larger, so a big file always stays.
 const adMax = 20 << 20
@@ -128,7 +131,9 @@ func IsJunk(e RenameEntry) bool {
 	switch {
 	case junkAny.MatchString(e.Name):
 		return true
-	case subtitleExt.MatchString(e.Name):
+	case subtitleExt.MatchString(e.Name), companionImage.MatchString(e.Name), adEpisode.MatchString(e.Name):
+		// A subtitle, a film's or an episode's artwork ("…S01E720.完美的二维码比赛-thumb.jpg"), anything
+		// named for an episode: its name is the title's, not an ad, whatever words it has.
 		return false
 	case adWords.MatchString(e.Name):
 		return e.Size < adMax

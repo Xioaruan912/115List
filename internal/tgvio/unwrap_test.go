@@ -58,6 +58,10 @@ func TestIsJunkKnowsSiteAds(t *testing.T) {
 		{"马戏之王 (2017)-fanart.jpg", 3 << 20, false},
 		{"马戏之王 (2017).nfo", 4 << 10, false},
 		{"马戏之王 (2017).mkv", 10987430613, false},
+		// An episode's own files, whatever its title says ("完美的二维码比赛").
+		{"Running Man (2010) S01E720.完美的二维码比赛.{tmdbid-33238}-thumb.jpg", 117556, false},
+		{"Running Man (2010) S01E720.完美的二维码比赛.{tmdbid-33238}.png", 117556, false},
+		{"综艺 第12期 扫码抽奖.jpg", 300 << 10, false},
 	} {
 		if got := IsJunk(RenameEntry{Name: c.name, Size: c.size}); got != c.junk {
 			t.Errorf("IsJunk(%q, %d) = %v", c.name, c.size, got)
