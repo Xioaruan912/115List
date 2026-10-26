@@ -45,6 +45,19 @@ func TestIsJunkKnowsSiteAds(t *testing.T) {
 		{"【更多高清剧集下载请访问 www.BTHDTV.com】【更多剧集打包下载请访问 www.BTHDTV.com】.mkv", 636976, true},
 		{"【更多电视剧集下载请访问 www.BTHDTV.com】.MKV", 636976, true},
 		{"怪物：杰夫瑞·达莫的故事 - S01E01 - 骗子.mkv", 6939605054, false},
+		// One rule for any kind of file: a document, a page, an app, a gif.
+		{"【更多无水印蓝光电影请访问 www.BBQDDQ.com】【更多无水印蓝光电影请访问 www.BBQDDQ.com】.DOC", 296080, true},
+		{"最新网址发布页.pdf", 2 << 20, true},
+		{"扫码关注公众号.gif", 3 << 20, true},
+		{"高清电影下载器 www.xx.com.exe", 5 << 20, true},
+		{"Thumbs.db", 40 << 10, true},
+		{"desktop.ini", 100, true},
+		{"马戏之王.torrent", 80 << 10, true},
+		// Not ads: a subtitle named after its subtitle site, a film's own artwork and notes.
+		{"马戏之王.2017.简体.www.zimuku.cn.srt", 90 << 10, false},
+		{"马戏之王 (2017)-fanart.jpg", 3 << 20, false},
+		{"马戏之王 (2017).nfo", 4 << 10, false},
+		{"马戏之王 (2017).mkv", 10987430613, false},
 	} {
 		if got := IsJunk(RenameEntry{Name: c.name, Size: c.size}); got != c.junk {
 			t.Errorf("IsJunk(%q, %d) = %v", c.name, c.size, got)
