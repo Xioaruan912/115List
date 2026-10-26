@@ -10,7 +10,7 @@ export const organize = {
    * What the server's organizer did lately with downloads 找资源 made (shown paths, newest first),
    * and what it is doing now (active).
    */
-  recent: () => get<{ items: AutoNote[]; active: { path: string; state: AutoState }[] }>("/tgvio/organize/recent"),
+  recent: () => get<{ items: AutoNote[]; active: { path: string; state: AutoState }[]; removed?: { path: string; size: number; at: string }[] }>("/tgvio/organize/recent"),
   /** What 按 TMDB 整理命名 would call each (same rules as the server's planner): "" unknown to TMDB, "~" a series' episode. */
   check: (dir: string, folders: string[], files: string[]) => post<{ wants: Record<string, string> }>("/tgvio/organize/check", { dir, folders, files }),
 };

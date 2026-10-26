@@ -99,3 +99,26 @@ func TestPlanSeriesAdClipsGoWithoutAskingAPerson(t *testing.T) {
 		t.Fatalf("same-name folder -> %+v", got)
 	}
 }
+
+func TestJunkToSweep(t *testing.T) {
+	ad := RenameEntry{Name: "【更多无水印蓝光电影请访问 www.BBQDDQ.com】.DOC", Size: 296080}
+	film := RenameEntry{Name: "马戏之王 (2017).mkv", Size: 10 << 30}
+	// Beside a film: the ad goes.
+	if names, whole := JunkToSweep([]RenameEntry{film, ad}); len(names) != 1 || whole {
+		t.Fatalf("beside a film -> %v %v", names, whole)
+	}
+	// Beside nothing big (a folder of notes and pictures): nothing is guessed away.
+	if names, _ := JunkToSweep([]RenameEntry{{Name: "说明.docx", Size: 30 << 10}, ad}); names != nil {
+		t.Fatalf("no film -> %v", names)
+	}
+	// A folder of nothing but ads goes whole.
+	txt := RenameEntry{Name: "Torrent Downloaded From Thepiratebay.org.txt", Size: 49}
+	if names, whole := JunkToSweep([]RenameEntry{txt, {Name: "RARBG.txt", Size: 31}}); len(names) != 2 || !whole {
+		t.Fatalf("only ads -> %v %v", names, whole)
+	}
+	// An episode's thumbnail beside its video stays.
+	thumb := RenameEntry{Name: "Running Man (2010) S01E720.完美的二维码比赛.{tmdbid-33238}-thumb.jpg", Size: 117556}
+	if names, _ := JunkToSweep([]RenameEntry{film, thumb}); names != nil {
+		t.Fatalf("thumbnail -> %v", names)
+	}
+}

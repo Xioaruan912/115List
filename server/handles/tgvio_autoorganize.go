@@ -473,5 +473,11 @@ func TgvioOrganizeRecent(c *gin.Context) {
 		}
 	}
 	autoMu.Unlock()
-	common.SuccessResp(c, gin.H{"items": out, "active": active})
+	removed := []gin.H{}
+	for _, f := range recentSwept(50) {
+		if shown, ok := user.ShowPath(f.Path); ok {
+			removed = append(removed, gin.H{"path": shown, "size": f.Size, "at": f.At})
+		}
+	}
+	common.SuccessResp(c, gin.H{"items": out, "active": active, "removed": removed})
 }

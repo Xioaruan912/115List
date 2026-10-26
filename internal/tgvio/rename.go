@@ -1301,3 +1301,36 @@ func (t *TMDB) PlanFiles(ctx context.Context, dir string, entries []RenameEntry,
 	markConflicts(plan, entries)
 	return plan, nil
 }
+
+// sweepFilm: a video this size or larger is a film's or an episode's, never an ad.
+const sweepFilm = 100 << 20
+
+// JunkToSweep picks what of a library folder goes when it is only looked at
+// (no 整理 run): its ads and leftovers, but only beside a film or an episode
+// (a video of 100 MB or more), so a folder of small files is never emptied by
+// guesswork; or the whole folder, when it holds nothing but ads ("Torrent
+// Downloaded From/", "6v电影APP 有他不迷路/").
+func JunkToSweep(entries []RenameEntry) (names []string, whole bool) {
+	film, others := false, 0
+	for _, e := range entries {
+		switch {
+		case IsJunk(e):
+			names = append(names, e.Name)
+		default:
+			others++
+			if !e.IsDir && mediaExt.MatchString(e.Name) && e.Size >= sweepFilm {
+				film = true
+			}
+		}
+	}
+	if len(names) == 0 {
+		return nil, false
+	}
+	if others == 0 {
+		return names, true
+	}
+	if !film {
+		return nil, false
+	}
+	return names, false
+}
