@@ -102,21 +102,25 @@ var (
 	// ".url", a page), a torrent client's padding file, a drive's half-uploaded
 	// leftover (".x.mkv.baiduyun.uploading.cfg").
 	junkSmall = regexp.MustCompile(`(?i)\.(?:txt|url|html?|mht|lnk|website)$`)
-	junkAny   = regexp.MustCompile(`(?i)^_{3,}padding_file|\.(?:uploading|downloading)\.cfg$|\.(?:!qb|bc!|aria2)$`)
+	junkAny   = regexp.MustCompile(`(?i)^_{3,}padding_file|\.(?:uploading|downloading)\.cfg$|\.(?:!qb|bc!|aria2|torrent)$|^(?:thumbs\.db|desktop\.ini|\.ds_store)$`)
 	notEp     = regexp.MustCompile(`(?i)\b\d{3,4}p\b|[xh]\.?26[45]|\b(?:19|20)\d{2}\b|\b\d+bit\b|\bddp?\d\.\d\b|\b[257]\.1\b`)
 )
 
 // A release site's own ad, by its name: "更多电视剧集下载请访问 高清剧集网官网（www.DDHDTV.com）.png",
-// "最新地址发布页.txt", "官方Telegram交流群@xxx.url". A film's artwork ("poster.jpg",
-// "片名-fanart.jpg") says none of this.
-var (
-	adWords = regexp.MustCompile(`(?i)www\.|https?[:：]|\.(?:com|net|org|cc|me|tv|xyz|top|vip)\b|下载|访问|官网|网址|地址|发布页?|扫码|二维码|关注|公众号|交流群|电报群|telegram|t\.me|@`)
-	adImage = regexp.MustCompile(`(?i)\.(?:png|jpe?g|gif|webp|bmp)$`)
-)
+// "【更多无水印蓝光电影请访问 www.BBQDDQ.com】.DOC", "官方Telegram交流群@xxx.url". A film's own
+// files (its video, artwork such as "poster.jpg") say none of this.
+var adWords = regexp.MustCompile(`(?i)www\.|https?[:：]|\.(?:com|net|org|cc|me|tv|xyz|top|vip|cn)\b|下载|访问|官网|网址|地址|发布页|扫码|二维码|关注|公众号|交流群|电报群|telegram|t\.me|@|无水印|更多.{0,6}(?:电影|剧集|资源)`)
+
+// adMax: an ad is small, whatever its kind (a picture, a note, a page, a
+// document, a clip); a film's video is far larger, so a big file always stays.
+const adMax = 20 << 20
 
 // IsJunk reports whether a file is an ad or a leftover a download brought, not
-// part of the film: small text files and links, a site's ad pictures and
-// notes and clips (by their names), padding files, unfinished uploads.
+// part of the film. One rule for any kind of file: a small file whose name
+// advertises a site (subtitles excepted: their names often carry the
+// subtitle site's address), and what downloads leave behind (padding files,
+// unfinished uploads, torrents, Thumbs.db). Small notes and links without a
+// site's name go too.
 func IsJunk(e RenameEntry) bool {
 	if e.IsDir {
 		return false
@@ -124,15 +128,12 @@ func IsJunk(e RenameEntry) bool {
 	switch {
 	case junkAny.MatchString(e.Name):
 		return true
-	case junkSmall.MatchString(e.Name):
-		return e.Size < 64<<10 || e.Size < 1<<20 && adWords.MatchString(e.Name)
-	case adImage.MatchString(e.Name):
-		return e.Size < 8<<20 && adWords.MatchString(e.Name)
-	case mediaExt.MatchString(e.Name):
-		// "【更多高清剧集下载请访问 www.BTHDTV.com】.mkv", 600 KB: a clip of the site's ad, no episode.
-		return e.Size < 20<<20 && adWords.MatchString(e.Name)
+	case subtitleExt.MatchString(e.Name):
+		return false
+	case adWords.MatchString(e.Name):
+		return e.Size < adMax
 	}
-	return false
+	return junkSmall.MatchString(e.Name) && e.Size < 64<<10
 }
 
 // seriesFolder names a folder of films of one series: what their titles
