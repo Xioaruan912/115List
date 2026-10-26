@@ -118,6 +118,7 @@ func FsList(c *gin.Context, req *ListReq, user *model.User) {
 		common.ErrorResp(c, err, 500)
 		return
 	}
+	sweepLibraryJunk(reqPath, objs) // TGVIO: a library folder's ads go in the background
 	total, objs := pagination(objs, &req.PageReq)
 	provider := "unknown"
 	var directUploadTools []string

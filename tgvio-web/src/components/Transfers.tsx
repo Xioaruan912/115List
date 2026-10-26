@@ -180,7 +180,8 @@ function AutoOrganized() {
     refetchInterval: q => (q.state.data?.active.length ? 3000 : 15_000) });
   const items = recent.data?.items ?? [];
   const active = recent.data?.active ?? [];
-  if (!items.length && !active.length) return null;
+  const removed = recent.data?.removed ?? [];
+  if (!items.length && !active.length && !removed.length) return null;
   const open = (path: string): void => { useUi.getState().setTasks(false); navigate(encodePath(path)); };
   return (
     <section>
@@ -215,6 +216,20 @@ function AutoOrganized() {
           </li>
         ))}
       </ul>
+      {removed.length > 0 && (
+        <details className="mt-1 px-2">
+          <summary className="cursor-pointer py-1.5 text-[12.5px] text-muted hover:text-ink">已自动删除的广告和残留文件 {removed.length} 个（在网盘回收站里能找回）</summary>
+          <ul className="pb-2">
+            {removed.map(file => (
+              <li key={file.path + file.at} className="flex items-center gap-2 py-1 text-[12px]">
+                <TrashIcon size={13} className="shrink-0 text-faint" />
+                <span className="min-w-0 flex-1 truncate" title={file.path}>{file.path.slice(file.path.lastIndexOf("/") + 1)}</span>
+                <span className="shrink-0 text-faint tabular">{formatDate(file.at)}</span>
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
     </section>
   );
 }
