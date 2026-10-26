@@ -32,7 +32,13 @@ import (
 
 var (
 	autoOrganizeOnce sync.Once
-	autoTried        = map[string]time.Time{} // folder -> last look that found it not ready
+	autoTried        = map[string]time.Time{} // folder -> last look that left it to a person (or failed)
+	autoLanding      = map[string]time.Time{} // folder -> last look that found no video yet
+	autoLandingSince = map[string]time.Time{} // folder -> first look that found no video
+	autoKick         = make(chan struct{}, 1)
+	// autoActive: what the organizer is doing with each folder now, for the
+	// page to say ("downloading", "waiting", "organizing"); guarded by autoMu.
+	autoActive = map[string]string{}
 
 	autoMu     sync.Mutex
 	autoRecent []autoNote // newest first, what the organizer did (since the server started)
@@ -46,6 +52,10 @@ type autoNote struct {
 	Why  string    `json:"why,omitempty"` // "person": something needs a person; "error": it failed
 	// Batch: the journal's run, to put it back (rename/undo).
 	Batch string `json:"batch,omitempty"`
+	// Need: why a person has to look ("no-match", "pick-season", "no-episode",
+	// "version", "several", "unknown"); Folder: where, when below Path.
+	Need   string `json:"need,omitempty"`
+	Folder string `json:"folder,omitempty"`
 }
 
 func noteAuto(n autoNote) {
@@ -68,10 +78,42 @@ func noteAuto(n autoNote) {
 
 func autoRecentFile() string { return filepath.Join(flags.DataDir, "tgvio", "organize-recent.json") }
 
+// A download is organized as soon as it has landed: the organizer looks every
+// 15 seconds (at once when 找资源 marks a folder), waits while the download
+// runs, and looks again every 30 seconds until its videos are there.
 const (
-	autoOrganizeEvery = 3 * time.Minute
-	autoOrganizeRetry = 30 * time.Minute
+	autoOrganizeEvery = 15 * time.Second
+	autoOrganizeRetry = 30 * time.Minute // left to a person, or failed
+	autoLandingRetry  = 30 * time.Second // nothing landed yet
 )
+
+// forgetAutoTries: a folder marked again is looked at afresh. The rounds touch
+// these maps on their own goroutine only, so this hands the change to it.
+func forgetAutoTries(dir string) {
+	autoMu.Lock()
+	autoForget = append(autoForget, dir)
+	autoMu.Unlock()
+}
+
+var autoForget []string // guarded by autoMu; applied at the start of a round
+
+// KickAutoOrganize starts a round now (a folder was just marked).
+func KickAutoOrganize() {
+	select {
+	case autoKick <- struct{}{}:
+	default:
+	}
+}
+
+func setActive(dir, state string) {
+	autoMu.Lock()
+	defer autoMu.Unlock()
+	if state == "" {
+		delete(autoActive, dir)
+	} else {
+		autoActive[dir] = state
+	}
+}
 
 // StartTgvioAutoOrganize starts the background organizer (once).
 func StartTgvioAutoOrganize() {
@@ -81,10 +123,14 @@ func StartTgvioAutoOrganize() {
 			_ = json.Unmarshal(raw, &autoRecent)
 		}
 		go func() {
-			time.Sleep(time.Minute)
+			time.Sleep(20 * time.Second)
+			tick := time.NewTicker(autoOrganizeEvery)
 			for {
 				autoOrganizeRound()
-				time.Sleep(autoOrganizeEvery)
+				select {
+				case <-tick.C:
+				case <-autoKick:
+				}
 			}
 		}()
 	})
@@ -105,31 +151,75 @@ func autoOrganizeRound() {
 	}
 	ctx := context.WithValue(context.Background(), conf.UserKey, admin)
 	scanLibraryRoots(ctx)
-	pending := organizeStore().Pending(2 * time.Minute)
-	if len(pending) == 0 {
-		return
+	autoMu.Lock()
+	for _, dir := range autoForget {
+		delete(autoTried, dir)
+		delete(autoLanding, dir)
+		delete(autoLandingSince, dir)
 	}
+	autoForget = nil
+	autoMu.Unlock()
+	pending := organizeStore().Pending(0)
 	busy := downloadingInto()
 	sort.Strings(pending)
+	// Folders no longer waiting drop out of what the page is told.
+	waiting := map[string]bool{}
+	for _, dir := range pending {
+		waiting[dir] = true
+	}
+	autoMu.Lock()
+	for dir := range autoActive {
+		if !waiting[dir] {
+			delete(autoActive, dir)
+		}
+	}
+	autoMu.Unlock()
 	for _, dir := range pending {
 		if at, ok := autoTried[dir]; ok && time.Since(at) < autoOrganizeRetry {
+			setActive(dir, "")
 			continue
 		}
-		if busyUnder(busy, dir) || !posters().InLibrary(dir) {
+		if !posters().InLibrary(dir) {
 			continue
 		}
-		done, final, err := autoOrganize(ctx, dir)
+		if busyUnder(busy, dir) {
+			setActive(dir, "downloading")
+			continue
+		}
+		// Nothing landed for two hours (a download that failed): look only now and then, the drive's listing is not free.
+		retry := autoLandingRetry
+		if since, ok := autoLandingSince[dir]; ok && time.Since(since) > 2*time.Hour {
+			retry = autoOrganizeRetry
+		}
+		if at, ok := autoLanding[dir]; ok && time.Since(at) < retry {
+			continue
+		}
+		setActive(dir, "organizing")
+		done, final, why, err := autoOrganize(ctx, dir)
 		if err != nil {
 			log.Warnf("tgvio auto organize %s: %v", dir, err)
 			noteAuto(autoNote{Path: final, At: time.Now(), Why: "error"})
-		}
-		if !done {
-			if err == nil && final == "" {
-				noteAuto(autoNote{Path: dir, At: time.Now(), Why: "person"})
-			}
 			autoTried[dir] = time.Now()
+			setActive(dir, "")
 			continue
 		}
+		if !done {
+			if final == "" {
+				noteAuto(autoNote{Path: dir, At: time.Now(), Why: "person", Need: why.need, Folder: why.folder})
+				autoTried[dir] = time.Now()
+				setActive(dir, "")
+			} else {
+				autoLanding[dir] = time.Now() // not landed yet: soon again
+				if _, ok := autoLandingSince[dir]; !ok {
+					autoLandingSince[dir] = time.Now()
+				}
+				setActive(dir, "waiting")
+			}
+			continue
+		}
+		setActive(dir, "")
+		delete(autoLanding, dir)
+		delete(autoLandingSince, dir)
 		noteAuto(autoNote{Path: final, At: time.Now(), Done: true, Batch: lastAutoBatch})
 		delete(autoTried, dir)
 		_ = organizeStore().Mark(dir, false)
@@ -219,10 +309,13 @@ type autoFolder struct {
 // final is the folder's path afterwards.
 var lastAutoBatch string // the journal run autoOrganize used last (one round at a time)
 
-func autoOrganize(ctx context.Context, root string) (done bool, final string, err error) {
+// autoWhy: what a person has to look at, and in which folder (as the user sees it below root).
+type autoWhy struct{ need, folder string }
+
+func autoOrganize(ctx context.Context, root string) (done bool, final string, why autoWhy, err error) {
 	tree, err := renameTreeOf(ctx, root, true)
 	if err != nil {
-		return false, root, err
+		return false, root, why, err
 	}
 	store := posters()
 	folders := make([]*autoFolder, 0, len(tree))
@@ -230,7 +323,7 @@ func autoOrganize(ctx context.Context, root string) (done bool, final string, er
 	for _, f := range tree {
 		objs, err := fs.List(ctx, f.Path, &fs.ListArgs{})
 		if err != nil {
-			return false, root, err
+			return false, root, why, err
 		}
 		entries := make([]tgvio.RenameEntry, 0, len(objs))
 		for _, obj := range objs {
@@ -247,10 +340,10 @@ func autoOrganize(ctx context.Context, root string) (done bool, final string, er
 		}
 		plan, err := store.PlanRenameIn(ctx, f.Path, entries, 0, inherit)
 		if err != nil {
-			return false, root, err
+			return false, root, why, err
 		}
 		if plan.Reason != "" || plan.Need != "" {
-			return false, "", nil // a person decides
+			return false, "", autoWhy{firstOf(plan.Need, plan.Reason), strings.TrimPrefix(f.Path, root)}, nil // a person decides
 		}
 		for _, item := range plan.Items {
 			if item.Kind != "video" {
@@ -259,13 +352,13 @@ func autoOrganize(ctx context.Context, root string) (done bool, final string, er
 			videos++
 			// A video without a name (no episode number, a conflict) or a version to confirm: a person decides.
 			if item.New == "" && item.Reason != "same" || item.Reason == "version" {
-				return false, "", nil
+				return false, "", autoWhy{firstOf(item.Reason, "unknown"), strings.TrimPrefix(f.Path, root)}, nil
 			}
 		}
 		folders = append(folders, &autoFolder{path: f.Path, depth: f.Depth, plan: plan})
 	}
 	if videos == 0 {
-		return false, root, nil // not landed yet
+		return false, root, why, nil // not landed yet
 	}
 	unwrapped := map[string]bool{}
 	for _, f := range folders {
@@ -319,7 +412,7 @@ func autoOrganize(ctx context.Context, root string) (done bool, final string, er
 				continue
 			}
 			if err != nil {
-				return false, final, err
+				return false, final, why, err
 			}
 			pause()
 		}
@@ -338,7 +431,7 @@ func autoOrganize(ctx context.Context, root string) (done bool, final string, er
 			}
 			moved, err := renameFolderTo(ctx, f.path, item.New, subject)
 			if err != nil {
-				return false, final, err
+				return false, final, why, err
 			}
 			record(batch, admin, &journalOp{Op: "folder", Dir: stdpath.Dir(f.path), Old: stdpath.Base(f.path), New: item.New}, 0)
 			if f.depth == 0 {
@@ -347,7 +440,16 @@ func autoOrganize(ctx context.Context, root string) (done bool, final string, er
 			pause()
 		}
 	}
-	return true, final, nil
+	return true, final, why, nil
+}
+
+func firstOf(values ...string) string {
+	for _, v := range values {
+		if v != "" {
+			return v
+		}
+	}
+	return ""
 }
 
 // TgvioOrganizeRecent: GET /api/tgvio/organize/recent — what the organizer did lately, in the folders this user sees.
@@ -363,5 +465,13 @@ func TgvioOrganizeRecent(c *gin.Context) {
 			out = append(out, n)
 		}
 	}
-	common.SuccessResp(c, gin.H{"items": out})
+	autoMu.Lock()
+	active := make([]gin.H, 0, len(autoActive))
+	for dir, state := range autoActive {
+		if shown, ok := user.ShowPath(dir); ok {
+			active = append(active, gin.H{"path": shown, "state": state})
+		}
+	}
+	autoMu.Unlock()
+	common.SuccessResp(c, gin.H{"items": out, "active": active})
 }

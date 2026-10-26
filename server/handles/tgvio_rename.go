@@ -230,7 +230,9 @@ func TgvioRenameApply(c *gin.Context) {
 	if !ok {
 		return
 	}
-	ctx := c.Request.Context()
+	// Once started, a run goes to its end: a page closed or a connection
+	// dropped halfway must not leave half a release moved up.
+	ctx := context.WithoutCancel(c.Request.Context())
 	user := c.Request.Context().Value(conf.UserKey).(*model.User)
 	if len(req.Remove) > 0 && !user.CanRemove() || len(req.Unwrap) > 0 && (!user.CanMove() || !user.CanRemove()) {
 		common.ErrorResp(c, errs.PermissionDenied, 403)
@@ -315,12 +317,28 @@ func unwrapFolder(ctx context.Context, dir, name string) (moved []string, err er
 	if err != nil {
 		return nil, err
 	}
+	// A site's ads inside go, not up: "更多电视剧集下载请访问 …（www.DDHDTV.com）.png".
+	var junk []string
+	keep := objs[:0:0]
+	for _, obj := range objs {
+		if tgvio.IsJunk(tgvio.RenameEntry{Name: obj.GetName(), IsDir: obj.IsDir(), Size: obj.GetSize()}) {
+			junk = append(junk, obj.GetName())
+			continue
+		}
+		keep = append(keep, obj)
+	}
+	objs = keep
 	for _, obj := range objs {
 		if obj.GetName() == name {
 			return nil, fmt.Errorf("[%s] holds a folder of its own name", name)
 		}
 		if res, _ := fs.Get(ctx, stdpath.Join(dir, obj.GetName()), &fs.GetArgs{NoLog: true}); res != nil {
 			return nil, fmt.Errorf("file [%s] exists", obj.GetName())
+		}
+	}
+	for _, j := range junk {
+		if err := fs.Remove(ctx, stdpath.Join(inner, j)); err != nil {
+			return nil, err
 		}
 	}
 	for i, obj := range objs {

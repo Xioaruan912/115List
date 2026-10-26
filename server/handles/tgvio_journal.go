@@ -175,7 +175,7 @@ func TgvioRenameUndo(c *gin.Context) {
 		}
 	}
 	journalMu.Unlock()
-	ctx := c.Request.Context()
+	ctx := context.WithoutCancel(c.Request.Context()) // put back to the end, as a run is done to its end
 	// Last change first. Each step is read again: putting a change back moves
 	// paths, and the journal follows (followPaths), so later steps see where things are now.
 	for {
