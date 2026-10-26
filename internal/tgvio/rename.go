@@ -106,13 +106,30 @@ var (
 	notEp     = regexp.MustCompile(`(?i)\b\d{3,4}p\b|[xh]\.?26[45]|\b(?:19|20)\d{2}\b|\b\d+bit\b|\bddp?\d\.\d\b|\b[257]\.1\b`)
 )
 
+// A release site's own ad, by its name: "更多电视剧集下载请访问 高清剧集网官网（www.DDHDTV.com）.png",
+// "最新地址发布页.txt", "官方Telegram交流群@xxx.url". A film's artwork ("poster.jpg",
+// "片名-fanart.jpg") says none of this.
+var (
+	adWords = regexp.MustCompile(`(?i)www\.|https?[:：]|\.(?:com|net|org|cc|me|tv|xyz|top|vip)\b|下载|访问|官网|网址|地址|发布页?|扫码|二维码|关注|公众号|交流群|电报群|telegram|t\.me|@`)
+	adImage = regexp.MustCompile(`(?i)\.(?:png|jpe?g|gif|webp|bmp)$`)
+)
+
 // IsJunk reports whether a file is an ad or a leftover a download brought, not
-// part of the film: small text files and links, padding files, unfinished uploads.
+// part of the film: small text files and links, a site's ad pictures and
+// notes (by their names), padding files, unfinished uploads.
 func IsJunk(e RenameEntry) bool {
 	if e.IsDir {
 		return false
 	}
-	return junkAny.MatchString(e.Name) || junkSmall.MatchString(e.Name) && e.Size < 64<<10
+	switch {
+	case junkAny.MatchString(e.Name):
+		return true
+	case junkSmall.MatchString(e.Name):
+		return e.Size < 64<<10 || e.Size < 1<<20 && adWords.MatchString(e.Name)
+	case adImage.MatchString(e.Name):
+		return e.Size < 8<<20 && adWords.MatchString(e.Name)
+	}
+	return false
 }
 
 // seriesFolder names a folder of films of one series: what their titles
@@ -878,13 +895,22 @@ func (t *TMDB) PlanRenameIn(ctx context.Context, dir string, entries []RenameEnt
 		}
 		kept = append(kept, e)
 	}
-	if subject.Kind == "movie" && !multi && len(kept) == 1 && kept[0].IsDir && !Skip(kept[0].Name) && SeasonOf(kept[0].Name) == 0 {
+	// A download lands as its release's folder ("片名 (年份)/【某某发布】片名[全8集].2160p…/"):
+	// a film's, a series' or a show's folder holding only that opens up, so the
+	// videos sit in the title's own folder. A season's folder ("第二季",
+	// "Season 2") is no wrapping: a series keeps its seasons apart.
+	if (subject.Kind == "movie" && !multi || subject.Kind == "tv") && len(kept) == 1 && kept[0].IsDir && !Skip(kept[0].Name) && SeasonOf(kept[0].Name) == 0 {
 		inner, err := t.resolve(ctx, kept[0].Name, dir)
-		// Not when it is clearly another film's folder ("招魂/招魂3 (2021)/"): its
-		// name has that film's title. A guess its name hardly says ("q伏2.2013…"
-		// found 潜伏) is no reason to keep the wrapping.
-		other := !inner.None && (inner.Kind != "movie" || inner.ID != subject.ID && !sequelOf(base, inner, kept[0].Name) &&
-			strings.Contains(normalizeTitle(kept[0].Name), normalizeTitle(inner.Title)))
+		// Not when it is clearly another title's folder ("招魂/招魂3 (2021)/"): its
+		// name has that title. A guess its name hardly says ("q伏2.2013…" found
+		// 潜伏) is no reason to keep the wrapping.
+		var other bool
+		if subject.Kind == "movie" {
+			other = !inner.None && (inner.Kind != "movie" || inner.ID != subject.ID && !sequelOf(base, inner, kept[0].Name) &&
+				strings.Contains(normalizeTitle(kept[0].Name), normalizeTitle(inner.Title)))
+		} else {
+			other = !inner.None && inner.ID != subject.ID && strings.Contains(normalizeTitle(kept[0].Name), normalizeTitle(inner.Title))
+		}
 		if err == nil && !other {
 			plan.Items = append(plan.Items, RenameItem{Old: kept[0].Name, Kind: "unwrap", Action: "unwrap"})
 		}
