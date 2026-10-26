@@ -52,6 +52,12 @@ func TgvioOrganizeMark(c *gin.Context) {
 			common.ErrorResp(c, err, 500)
 			return
 		}
+		if req.Pending {
+			forgetAutoTries(real) // marked again: look at it afresh, now
+		}
+	}
+	if req.Pending {
+		KickAutoOrganize()
 	}
 	common.SuccessResp(c)
 }

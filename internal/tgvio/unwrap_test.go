@@ -42,9 +42,43 @@ func TestIsJunkKnowsSiteAds(t *testing.T) {
 		{"怪物：艾德·盖恩的故事 - S01E01 - 妈妈！-thumb.jpg", 200 << 10, false},
 		{"说明.txt", 300 << 10, false},
 		{"www.site.com 一部很长的电影.mkv", 2 << 30, false},
+		{"【更多高清剧集下载请访问 www.BTHDTV.com】【更多剧集打包下载请访问 www.BTHDTV.com】.mkv", 636976, true},
+		{"【更多电视剧集下载请访问 www.BTHDTV.com】.MKV", 636976, true},
+		{"怪物：杰夫瑞·达莫的故事 - S01E01 - 骗子.mkv", 6939605054, false},
 	} {
 		if got := IsJunk(RenameEntry{Name: c.name, Size: c.size}); got != c.junk {
 			t.Errorf("IsJunk(%q, %d) = %v", c.name, c.size, got)
 		}
+	}
+}
+
+func TestPlanSeriesAdClipsGoWithoutAskingAPerson(t *testing.T) {
+	// "怪物：杰夫瑞·达莫的故事 (2022)/怪物：杰夫瑞·达莫的故事 (2022)/": episodes and two 600 KB ad clips.
+	tm := planTMDB(t, nil, nil)
+	tm.http.Transport.(fakeTMDB)["tv/88"] = tmdbItem{ID: 88, Name: "怪物：杰夫瑞·达莫的故事", FirstAirDate: "2022-09-21"}
+	name := "怪物：杰夫瑞·达莫的故事 (2022)"
+	tm.entries[Key(name)] = &Poster{Kind: "tv", ID: 88, Title: "怪物：杰夫瑞·达莫的故事", Year: 2022, Name: name, Rev: cleanerRev}
+	ad := "【更多高清剧集下载请访问 www.BTHDTV.com】【更多剧集打包下载请访问 www.BTHDTV.com】.mkv"
+	plan, err := tm.PlanRenameIn(context.Background(), "/lib/"+name+"/"+name, []RenameEntry{
+		{Name: "怪物：杰夫瑞·达莫的故事 - S01E01 - 骗子.mkv", Size: 6 << 30}, {Name: ad, Size: 636976}}, 0,
+		&RenameInherit{Kind: "tv", ID: 88})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := find(plan, ad); got.Action != "delete" {
+		t.Fatalf("ad clip -> %+v", got)
+	}
+	for _, item := range plan.Items {
+		if item.Reason == "no-episode" {
+			t.Fatalf("asks a person: %+v", item)
+		}
+	}
+	// The series' folder holding only that folder of its own name opens it up.
+	plan, err = tm.PlanRenameIn(context.Background(), "/lib/"+name, []RenameEntry{{Name: name, IsDir: true}}, 0, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := find(plan, name); got.Action != "unwrap" {
+		t.Fatalf("same-name folder -> %+v", got)
 	}
 }

@@ -116,7 +116,7 @@ var (
 
 // IsJunk reports whether a file is an ad or a leftover a download brought, not
 // part of the film: small text files and links, a site's ad pictures and
-// notes (by their names), padding files, unfinished uploads.
+// notes and clips (by their names), padding files, unfinished uploads.
 func IsJunk(e RenameEntry) bool {
 	if e.IsDir {
 		return false
@@ -128,6 +128,9 @@ func IsJunk(e RenameEntry) bool {
 		return e.Size < 64<<10 || e.Size < 1<<20 && adWords.MatchString(e.Name)
 	case adImage.MatchString(e.Name):
 		return e.Size < 8<<20 && adWords.MatchString(e.Name)
+	case mediaExt.MatchString(e.Name):
+		// "【更多高清剧集下载请访问 www.BTHDTV.com】.mkv", 600 KB: a clip of the site's ad, no episode.
+		return e.Size < 20<<20 && adWords.MatchString(e.Name)
 	}
 	return false
 }
@@ -532,7 +535,7 @@ func (t *TMDB) PlanRenameIn(ctx context.Context, dir string, entries []RenameEnt
 	seriesName := "" // ... or takes their series' name, when they are one series
 	videos := []string{}
 	for _, e := range entries {
-		if !e.IsDir && mediaExt.MatchString(e.Name) {
+		if !e.IsDir && mediaExt.MatchString(e.Name) && !IsJunk(e) { // a site's ad clip is no episode: it goes
 			videos = append(videos, e.Name)
 		}
 	}

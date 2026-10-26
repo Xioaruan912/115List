@@ -313,7 +313,7 @@ export function ResourceFinder({ initialQuery = "", initialItems, base: fixedBas
       }
       if (!sent) throw new Error("没能取到磁力链接，换一个资源试试");
       if (failed) toast.error(`${failed} 个资源没取到磁力`, "其余的已经开始下载");
-      toast.success(`已开始下载 ${sent} 个`, wantsFolder && folder ? sites.data?.auto_organize ? `保存在「${folder}」，下好后会自动整理名字` : `保存在「${folder}」，下好后打开可以整理名字` : `保存到 ${base}`);
+      toast.success(`已开始下载 ${sent} 个`, wantsFolder && folder ? sites.data?.auto_organize ? `保存在「${folder}」。下载完成后马上自动整理，进度在那个文件夹里能看到` : `保存在「${folder}」，下好后打开可以整理名字` : `保存到 ${base}`);
       onClose();
     } catch (error) {
       toast.error(sent ? `已开始 ${sent} 个，其余没有添加成功` : "没有添加成功", error);

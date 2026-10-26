@@ -1,4 +1,4 @@
-import { ArrowClockwiseIcon, CheckCircleIcon, PauseIcon, PlayIcon, TrashIcon, WarningCircleIcon, XIcon } from "@phosphor-icons/react";
+import { ArrowClockwiseIcon, CheckCircleIcon, PauseIcon, PlayIcon, TrashIcon, WarningCircleIcon, XIcon, CircleNotchIcon } from "@phosphor-icons/react";
 import { useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useRef, useState } from "react";
@@ -16,7 +16,7 @@ import { useUploads, type UploadJob } from "../stores/uploads";
 import { KindIcon } from "./KindIcon";
 import { reason } from "../lib/errors";
 import { taskName } from "../lib/taskName";
-import { organize } from "../api/organize";
+import { needText, organize } from "../api/organize";
 import { undoRun } from "../lib/undo";
 import { encodePath } from "../lib/path";
 import { navigate } from "wouter/use-browser-location";
@@ -176,14 +176,27 @@ function OwnTaskList() {
 
 /** Downloads 找资源 made, as the server's organizer left them: organized, or waiting for a person. */
 function AutoOrganized() {
-  const recent = useQuery({ queryKey: ["organize-recent"], queryFn: organize.recent, refetchInterval: 15_000, retry: false });
+  const recent = useQuery({ queryKey: ["organize-recent"], queryFn: organize.recent, retry: false,
+    refetchInterval: q => (q.state.data?.active.length ? 3000 : 15_000) });
   const items = recent.data?.items ?? [];
-  if (!items.length) return null;
+  const active = recent.data?.active ?? [];
+  if (!items.length && !active.length) return null;
   const open = (path: string): void => { useUi.getState().setTasks(false); navigate(encodePath(path)); };
   return (
     <section>
       <h3 className="px-2 pb-1 text-[12px] font-medium text-muted">自动整理</h3>
       <ul>
+        {active.map(item => (
+          <li key={`now-${item.path}`}>
+            <button className="flex w-full min-w-0 items-center gap-3 rounded-xl px-2 py-2 text-left transition-colors hover:bg-[var(--hover)]" onClick={() => open(item.path)}>
+              <CircleNotchIcon size={18} weight="bold" className="spin shrink-0 text-accent-text" />
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-[13.5px]">{item.path.slice(item.path.lastIndexOf("/") + 1)}</span>
+                <span className="block text-[12px] text-faint">{item.state === "downloading" ? "下载中，完成后马上自动整理" : item.state === "waiting" ? "下载完了，等文件到齐" : "正在自动整理"}</span>
+              </span>
+            </button>
+          </li>
+        ))}
         {items.map(item => (
           <li key={item.path} className="flex items-center gap-1">
             <button className="flex min-w-0 flex-1 items-center gap-3 rounded-xl px-2 py-2 text-left transition-colors hover:bg-[var(--hover)]" onClick={() => open(item.path)}>
@@ -191,7 +204,7 @@ function AutoOrganized() {
               <span className="min-w-0 flex-1">
                 <span className="block truncate text-[13.5px]">{item.path.slice(item.path.lastIndexOf("/") + 1)}</span>
                 <span className="block text-[12px] text-faint">
-                  {item.done ? "已整理好" : item.why === "error" ? "整理时出错，打开后可以再试" : "有拿不准的地方，打开后点「整理」看一下"} · {formatDate(item.at)}
+                  {item.done ? "已整理好" : needText(item)} · {formatDate(item.at)}
                 </span>
               </span>
             </button>
