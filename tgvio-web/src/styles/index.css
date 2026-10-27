@@ -376,3 +376,15 @@ button, a, [role="button"] { touch-action: manipulation; }
 :root[data-motion="lite"] .grain, :root[data-motion="lite"] .spot::before { display: none; }
 :root[data-motion="lite"] .ken-burns, :root[data-motion="lite"] .enter, :root[data-motion="lite"] .enter-soft, :root[data-motion="lite"] .cover-cell, :root[data-motion="lite"] .peek { animation: none !important; }
 :root[data-motion="lite"] .poster-backdrop, :root[data-motion="lite"] .poster-card, :root[data-motion="lite"] .cover-img, :root[data-motion="lite"] .folder-sheet { transition: none !important; }
+
+/* Touch devices (iPad, phones): the small badges on every tile, card and strip
+   item keep their dark tint but drop the frosted blur. Dozens of blurred layers
+   are redrawn on every frame of a scroll, which made long lists stutter on iPad.
+   Sheets, bars and the player keep their blur (they are portals, not in these). */
+@media (hover: none) {
+  [data-view] [class*="backdrop-blur"],
+  main [class*="backdrop-blur"] {
+    -webkit-backdrop-filter: none !important;
+    backdrop-filter: none !important;
+  }
+}

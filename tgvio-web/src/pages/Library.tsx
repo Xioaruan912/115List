@@ -255,7 +255,7 @@ function ContinueRow({ items, onPlay }: { items: LibraryItem[]; onPlay: (path: s
                 <XIcon size={13} weight="bold" />
               </button>
               <div className="relative aspect-video overflow-hidden rounded-[12px] bg-surface" style={{ boxShadow: "inset 0 0 0 1px var(--line)" }}>
-                {art ? <img src={posterSrc(art, owner?.backdrop ? undefined : "w342")} alt="" loading="lazy" className="thumb size-full object-cover transition-transform duration-700 ease-[var(--ease-expo)] group-hover/cont:scale-105" />
+                {art ? <img src={posterSrc(art, owner?.backdrop ? "w780" : "w342")} alt="" loading="lazy" className="thumb size-full object-cover transition-transform duration-700 ease-[var(--ease-expo)] group-hover/cont:scale-105" />
                   : <span className="grid size-full place-items-center text-faint"><FilmSlateIcon size={28} /></span>}
                 <span className="absolute inset-x-0 bottom-0 h-1 bg-black/45">
                   <span className="block h-full origin-left bg-accent" style={{ transform: `scaleX(${Math.min(1, progress.time / progress.duration)})` }} />
