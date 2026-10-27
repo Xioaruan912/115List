@@ -207,6 +207,8 @@ type renameApplyReq struct {
 	Remove []string `json:"remove"`
 	// Unwrap: a folder here wrapped around the film; its contents move up here and it goes.
 	Unwrap []string `json:"unwrap"`
+	// Up: another season's folder here goes up into the series' folder above.
+	Up []string `json:"up"`
 	// Batch: the 整理 run these changes belong to, to put it back later (rename/undo).
 	Batch string `json:"batch"`
 }
@@ -234,7 +236,7 @@ func TgvioRenameApply(c *gin.Context) {
 	// dropped halfway must not leave half a release moved up.
 	ctx := context.WithoutCancel(c.Request.Context())
 	user := c.Request.Context().Value(conf.UserKey).(*model.User)
-	if len(req.Remove) > 0 && !user.CanRemove() || len(req.Unwrap) > 0 && (!user.CanMove() || !user.CanRemove()) {
+	if len(req.Remove) > 0 && !user.CanRemove() || len(req.Unwrap) > 0 && (!user.CanMove() || !user.CanRemove()) || len(req.Up) > 0 && !user.CanMove() {
 		common.ErrorResp(c, errs.PermissionDenied, 403)
 		return
 	}
@@ -248,6 +250,16 @@ func TgvioRenameApply(c *gin.Context) {
 		}
 		results = append(results, result)
 		time.Sleep(250 * time.Millisecond)
+	}
+	for _, name := range req.Up {
+		result := renameResult{Old: name}
+		if err := moveUp(ctx, reqPath, name); err != nil {
+			result.Error = err.Error()
+		} else {
+			record(req.Batch, user.ID, &journalOp{Op: "up", Dir: reqPath, Old: name}, 0)
+		}
+		results = append(results, result)
+		time.Sleep(time.Second)
 	}
 	for _, name := range req.Unwrap {
 		result := renameResult{Old: name}
@@ -419,6 +431,24 @@ func renameFolderTo(ctx context.Context, path, name string, subject *tgvio.Renam
 	}
 	store.RenamedDir(path, moved)
 	return moved, nil
+}
+
+// moveUp moves dir/name into the folder above dir (another season's folder
+// that landed inside a season's), never over another object.
+func moveUp(ctx context.Context, dir, name string) error {
+	if err := checkRelativePath(name); err != nil || strings.Contains(name, "/") || strings.TrimSpace(name) == "" {
+		return fmt.Errorf("not a name here")
+	}
+	up := stdpath.Dir(dir)
+	if res, _ := fs.Get(ctx, stdpath.Join(up, name), &fs.GetArgs{NoLog: true}); res != nil {
+		return fmt.Errorf("file [%s] exists", name)
+	}
+	if err := moveRetrying(ctx, stdpath.Join(dir, name), up); err != nil {
+		return err
+	}
+	posters().Moved(dir, up, name)
+	posters().RenamedDir(stdpath.Join(dir, name), stdpath.Join(up, name))
+	return nil
 }
 
 // nestFolder renames path to leaf and moves it into the folder box beside it

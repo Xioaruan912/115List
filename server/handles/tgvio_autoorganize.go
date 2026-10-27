@@ -388,7 +388,8 @@ func autoOrganize(ctx context.Context, root string) (done bool, final string, wh
 	unwrapped := map[string]bool{}
 	for _, f := range folders {
 		for _, item := range f.plan.Items {
-			if item.Action == "unwrap" {
+			// Opened up, or moved up out of a season's folder: its own name is settled where it lands.
+			if item.Action == "unwrap" || item.Action == "up" {
 				unwrapped[stdpath.Join(f.path, item.Old)] = true
 			}
 		}
@@ -406,7 +407,7 @@ func autoOrganize(ctx context.Context, root string) (done bool, final string, wh
 	for _, f := range folders {
 		rank := func(item tgvio.RenameItem) int {
 			switch item.Action {
-			case "unwrap":
+			case "unwrap", "up":
 				return 2
 			case "delete":
 				return 1
@@ -420,6 +421,10 @@ func autoOrganize(ctx context.Context, root string) (done bool, final string, wh
 			case item.Action == "delete":
 				if err = removeJunk(ctx, f.path, item.Old); err == nil {
 					record(batch, admin, nil, 1)
+				}
+			case item.Action == "up":
+				if err = moveUp(ctx, f.path, item.Old); err == nil {
+					record(batch, admin, &journalOp{Op: "up", Dir: f.path, Old: item.Old}, 0)
 				}
 			case item.Action == "unwrap":
 				var moved []string

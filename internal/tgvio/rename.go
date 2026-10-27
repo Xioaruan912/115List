@@ -30,7 +30,7 @@ type RenameEntry struct {
 type RenameItem struct {
 	Old     string `json:"old"`
 	New     string `json:"new,omitempty"`
-	Kind    string `json:"kind"` // "video", "subtitle", "extra" (.nfo, -thumb.jpg), "folder", "junk", "unwrap"
+	Kind    string `json:"kind"` // "video", "subtitle", "extra" (.nfo, -thumb.jpg), "folder", "junk", "unwrap", "up"
 	Season  int    `json:"season,omitempty"`
 	Episode int    `json:"episode,omitempty"`
 	Reason  string `json:"reason,omitempty"` // why there is no proposal
@@ -951,6 +951,14 @@ func (t *TMDB) PlanRenameIn(ctx context.Context, dir string, entries []RenameEnt
 		if IsJunk(e) {
 			plan.Items = append(plan.Items, RenameItem{Old: e.Name, Kind: "junk", Action: "delete", Size: e.Size})
 			continue
+		}
+		// Another season's folder inside a season's ("第五季/第四季 (2019)/", two seasons
+		// downloaded into one): it goes back up beside it, into the series' folder.
+		if subject.Kind == "tv" && folderSeason > 0 && e.IsDir && !Skip(e.Name) {
+			if s := SeasonOf(e.Name); s > 0 && s != folderSeason {
+				plan.Items = append(plan.Items, RenameItem{Old: e.Name, Kind: "up", Action: "up", Season: s})
+				continue
+			}
 		}
 		kept = append(kept, e)
 	}
