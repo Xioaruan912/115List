@@ -701,12 +701,30 @@ func (t *TMDB) PlanRenameIn(ctx context.Context, dir string, entries []RenameEnt
 				}
 			}
 		}
+		// A series' own folder holding seasons' folders beside loose episodes (a
+		// season of a one-season series came, then another): the loose ones go
+		// into their season's folder, so each season is one folder.
+		seasonDirs := map[int]string{}
+		for _, e := range entries {
+			if e.IsDir && !Skip(e.Name) {
+				if s := SeasonOf(e.Name); s > 0 && seasonDirs[s] == "" {
+					seasonDirs[s] = e.Name
+				}
+			}
+		}
+		gather := folderSeason == 0 && len(seasonDirs) > 0 && last > 1
 		for _, f := range found {
-			newBase[strings.TrimSuffix(f.old, stdpath.Ext(f.old))] = f.name
+			stem := strings.TrimSuffix(f.old, stdpath.Ext(f.old))
+			newBase[stem] = f.name
 			if f.version == "" || f.version == "main" {
 				episodeBase[[2]int{f.s, f.ep}] = f.name
 			}
 			item := RenameItem{Old: f.old, New: f.name + extOf(f.old), Kind: "video", Season: f.s, Episode: f.ep}
+			if gather && f.s > 0 {
+				// By the name its season's folder takes (整理 renames that folder first, deepest first).
+				item.Into = titleYear(title+" 第"+cnNumeral(f.s)+"季", firstYear(years[f.s], base.Year))
+				into[stem] = item.Into
+			}
 			if f.version != "" {
 				item.Reason, item.Size = "version", size[f.old]
 			}
@@ -940,6 +958,18 @@ func (t *TMDB) PlanRenameIn(ctx context.Context, dir string, entries []RenameEnt
 	// A series of one season keeps no season's folder either: its episodes sit in
 	// the series' folder ("Monsters：… (2024)/… 第二季 (2024)/" opens up).
 	oneSeason := subject.Kind == "tv" && folderSeason == 0 && t.regularSeasons(ctx, subject.ID) == 1
+	// ... and when its episodes came twice (loose here, then as a season's folder), the folder merges up.
+	if oneSeason && len(kept) > 1 {
+		var dirs []RenameEntry
+		for _, e := range kept {
+			if e.IsDir && !Skip(e.Name) {
+				dirs = append(dirs, e)
+			}
+		}
+		if len(dirs) == 1 && SeasonOf(dirs[0].Name) > 0 {
+			kept = dirs
+		}
+	}
 	if (subject.Kind == "movie" && !multi || subject.Kind == "tv") && len(kept) == 1 && kept[0].IsDir && !Skip(kept[0].Name) &&
 		(SeasonOf(kept[0].Name) == 0 || oneSeason) {
 		inner, err := t.resolve(ctx, kept[0].Name, dir)
@@ -970,9 +1000,14 @@ func (t *TMDB) PlanRenameIn(ctx context.Context, dir string, entries []RenameEnt
 		// Into the series' folder (made when missing); a series of one season is
 		// just the series' folder.
 		if t.isRoot(stdpath.Dir(dir)) && !plan.Inherited {
-			if t.regularSeasons(ctx, subject.ID) > 1 {
+			// The series' folder already there (by its TMDB id, whatever its name), else one by its title.
+			box := t.SeriesFolderIn(stdpath.Dir(dir), subject.ID)
+			switch {
+			case box != "" && box != folder:
+				folderName = box + "/" + folderName
+			case t.regularSeasons(ctx, subject.ID) > 1:
 				folderName = titleYear(title, base.Year) + "/" + folderName
-			} else {
+			default:
 				folderName = titleYear(title, base.Year)
 			}
 		}

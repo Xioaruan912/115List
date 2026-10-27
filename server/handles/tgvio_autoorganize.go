@@ -227,6 +227,31 @@ func autoOrganizeRound() {
 			_ = organizeStore().Mark(final, false)
 		}
 		log.Infof("tgvio auto organize: %s -> %s", dir, final)
+		mergeIntoSeries(ctx, dir, final)
+	}
+}
+
+// mergeIntoSeries: a season organized into (or beside others in) its series'
+// folder may leave that folder half a tree (loose episodes of one season
+// beside another season's folder, a one-season series with its season twice).
+// The series' folder is organized right after, so seasons merge with no one
+// waiting. Only a series' own folder, or one this run just made.
+func mergeIntoSeries(ctx context.Context, dir, final string) {
+	parent := stdpath.Dir(final)
+	made := stdpath.Dir(dir) != parent // put into its series' folder just now
+	if !made && !posters().IsSeriesFolder(parent) || isLibraryRoot(parent) || !posters().InLibrary(parent) {
+		return
+	}
+	setActive(parent, "organizing")
+	defer setActive(parent, "")
+	done, merged, _, err := autoOrganize(ctx, parent)
+	if err != nil {
+		log.Warnf("tgvio auto organize (series) %s: %v", parent, err)
+		return
+	}
+	if done {
+		noteAuto(autoNote{Path: merged, At: time.Now(), Done: true, Batch: lastAutoBatch})
+		log.Infof("tgvio auto organize: series %s -> %s", parent, merged)
 	}
 }
 

@@ -2,6 +2,7 @@ package tgvio
 
 import (
 	"context"
+	stdpath "path"
 	"regexp"
 	"sort"
 	"strconv"
@@ -160,4 +161,48 @@ func (t *TMDB) regularSeasons(ctx context.Context, id int) int {
 		}
 	}
 	return n
+}
+
+// SeriesFolderIn: the folder in dir that is this series' own (by its poster
+// record's TMDB id, whatever it is called: "怪物：梅内德斯兄弟的故事 (2024)"
+// for TMDB's "Monsters: The Lyle and Erik Menendez Story"), "" when none. No
+// drive listing: the records of what was seen there.
+func (t *TMDB) SeriesFolderIn(dir string, id int) string {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	best := ""
+	for key, e := range t.entries {
+		name := e.Name
+		if name == "" {
+			name = key
+		}
+		if e.Dir != dir || e.None || e.Kind != "tv" || e.ID != id || SeasonOf(name) > 0 || IsMediaFile(name) {
+			continue
+		}
+		if best == "" || len(name) < len(best) {
+			best = name
+		}
+	}
+	return best
+}
+
+// IsSeriesFolder: dir is a series' own folder in the library (not a season's,
+// not the library itself), by its poster record.
+func (t *TMDB) IsSeriesFolder(dir string) bool {
+	if t.isRoot(dir) || !t.InLibrary(dir) {
+		return false
+	}
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	e := t.entries[Key(pathBase(dir))]
+	return e != nil && !e.None && e.Kind == "tv" && e.Dir == stdpath.Dir(dir) && SeasonOf(pathBase(dir)) == 0
+}
+
+func firstYear(years ...int) int {
+	for _, y := range years {
+		if y > 0 {
+			return y
+		}
+	}
+	return 0
 }
