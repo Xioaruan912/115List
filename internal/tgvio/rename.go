@@ -307,13 +307,17 @@ var episodesMemo = newMemo[[]tmdbEpisode]("episodes") // "id/season/language"
 func (t *TMDB) episodes(ctx context.Context, id, season int) *seasonEpisodes {
 	key := fmt.Sprintf("%d/%d/%s", id, season, t.Config().Language)
 	out := &seasonEpisodes{titles: map[int]string{}, stills: map[int]string{}}
-	list, err := episodesMemo.fetch(ctx, key, func(ctx context.Context) ([]tmdbEpisode, error) {
-		var s struct {
-			Episodes []tmdbEpisode `json:"episodes"`
-		}
-		err := t.get(ctx, "tv/"+strconv.Itoa(id)+"/season/"+strconv.Itoa(season), url.Values{}, &s)
-		return s.Episodes, err
-	})
+	list, ordered := t.orderedEpisodes(ctx, id, season)
+	var err error
+	if !ordered {
+		list, err = episodesMemo.fetch(ctx, key, func(ctx context.Context) ([]tmdbEpisode, error) {
+			var s struct {
+				Episodes []tmdbEpisode `json:"episodes"`
+			}
+			err := t.get(ctx, "tv/"+strconv.Itoa(id)+"/season/"+strconv.Itoa(season), url.Values{}, &s)
+			return s.Episodes, err
+		})
+	}
 	if err != nil {
 		return out // not kept: asked again next time
 	}
@@ -575,10 +579,13 @@ func (t *TMDB) PlanRenameIn(ctx context.Context, dir string, entries []RenameEnt
 		}
 		// A folder that is one season decides the season, even over "S01E05" in
 		// a file name: names given under a wrong season must be fixable.
+		anthology := false // set below: TMDB has one season, the release counts another
 		seasonOf := func(s int) int {
 			switch {
 			case folderSeason > 0:
 				return folderSeason
+			case anthology && s > 1:
+				return 1
 			case s > 0:
 				return s
 			}
@@ -595,6 +602,28 @@ func (t *TMDB) PlanRenameIn(ctx context.Context, dir string, entries []RenameEnt
 				years[s.Season] = s.Year
 				if s.Season > last {
 					last = s.Season
+				}
+			}
+		}
+		// A series TMDB has as one season that a release numbers as another: an
+		// anthology's seasons as separate series ("Monster.2022.S02E01" is
+		// 怪物：梅内德斯兄弟的故事, one season of 9 on TMDB). Its only season,
+		// when the episode numbers fit inside it.
+		if last == 1 && counts[1] > 0 {
+			named, top := 0, 0
+			for _, v := range videos {
+				s, ep := ParseEpisode(v)
+				if s > named {
+					named = s
+				}
+				if ep > top {
+					top = ep
+				}
+			}
+			if top > 0 && top <= counts[1] && (folderSeason > 1 || named > 1) {
+				anthology = true
+				if folderSeason > 1 {
+					folderSeason = 1
 				}
 			}
 		}

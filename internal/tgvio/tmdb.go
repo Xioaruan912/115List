@@ -614,6 +614,10 @@ func (t *TMDB) Seasons(ctx context.Context, id int) ([]SeasonInfo, error) {
 		}
 		return out[i].Season < out[j].Season
 	})
+	// Seasons TMDB keeps only in an episode group ("Seasons") count as the series' own.
+	if o := t.order(ctx, id, out); o.Applies {
+		return o.Seasons, nil
+	}
 	return out, nil
 }
 

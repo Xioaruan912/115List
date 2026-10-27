@@ -42,6 +42,7 @@ func planTMDB(t *testing.T, films []tmdbItem, names map[string]int) *TMDB {
 	seasonsMemo.clear()
 	collectionMemo.clear()
 	episodesMemo.clear()
+	orderMemo.clear()
 	fake := fakeTMDB{}
 	byID := map[int]tmdbItem{}
 	for _, f := range films {
