@@ -93,3 +93,53 @@ func TestAnthologySeasonIsTheOnlySeason(t *testing.T) {
 		}
 	}
 }
+
+func TestTreeOfSeasons(t *testing.T) {
+	tm := filmsTMDB(t, nil, nil)
+	var eps []string
+	for i := 1; i <= 28; i++ {
+		eps = append(eps, fmt.Sprintf(`{"episode_number":%d,"name":"第一季 %d","air_date":"2023-10-01","order":%d}`, i, i, i-1))
+	}
+	tm.http.Transport = rawTMDB{
+		// 怪物：梅内德斯兄弟的故事: one season.
+		"tv/2": `{"id":2,"name":"怪物：梅内德斯兄弟的故事","first_air_date":"2024-09-19","seasons":[{"season_number":1,"episode_count":9,"air_date":"2024-09-19"}]}`,
+		"tv/2/season/1": `{"episodes":[{"episode_number":1,"name":"都是下雨的错"}]}`,
+		// 葬送的芙莉莲: two seasons by its episode group.
+		"tv/1": `{"id":1,"name":"葬送的芙莉莲","first_air_date":"2023-09-29","seasons":[{"season_number":1,"episode_count":38,"air_date":"2023-09-29"}]}`,
+		"tv/1/episode_groups": `{"results":[{"id":"g","type":6,"name":"Seasons","group_count":2}]}`,
+		"tv/episode_group/g": `{"groups":[{"name":"Season 1","order":1,"episodes":[` + strings.Join(eps, ",") + `]},
+			{"name":"Season 2","order":2,"episodes":[{"episode_number":29,"name":"那，走吧","air_date":"2026-01-16","order":0}]}]}`,
+	}
+	ctx := context.Background()
+
+	// One season: the series' folder holding its season's folder opens it up.
+	root := "怪物：梅内德斯兄弟的故事 (2024)"
+	tm.entries[Key(root)] = &Poster{Kind: "tv", ID: 2, Title: "怪物：梅内德斯兄弟的故事", Year: 2024, Name: root, Rev: cleanerRev}
+	inner := "怪物：梅内德斯兄弟的故事 第二季 (2024)"
+	plan, err := tm.PlanRenameIn(ctx, "/lib/"+root, []RenameEntry{{Name: inner, IsDir: true}}, 0, nil)
+	if err != nil || find(plan, inner).Action != "unwrap" {
+		t.Fatalf("one season's folder -> %+v %v", find(plan, inner), err)
+	}
+
+	// Several seasons: a season's folder in the library goes into the series' folder.
+	loose := "葬送的芙莉莲 第二季 (2023)"
+	tm.entries[Key(loose)] = &Poster{Kind: "tv", ID: 1, Title: "葬送的芙莉莲", Year: 2023, Name: loose, Season: 2, Rev: cleanerRev}
+	plan, err = tm.PlanRenameIn(ctx, "/lib/"+loose, []RenameEntry{{Name: "[SweetSub] Sousou no Frieren - 29.mkv", Size: 1 << 30}}, 0, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := find(plan, loose).New; got != "葬送的芙莉莲 (2023)/葬送的芙莉莲 第二季 (2026)" {
+		t.Fatalf("loose season -> %q", got)
+	}
+
+	// One season lying in the library as "第一季": it is the series' folder.
+	solo := "怪物：梅内德斯兄弟的故事 第一季 (2024)"
+	tm.entries[Key(solo)] = &Poster{Kind: "tv", ID: 2, Title: "怪物：梅内德斯兄弟的故事", Year: 2024, Name: solo, Season: 1, Rev: cleanerRev}
+	plan, err = tm.PlanRenameIn(ctx, "/lib/"+solo, []RenameEntry{{Name: "Monster.S01E01.mkv", Size: 1 << 30}}, 0, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := find(plan, solo).New; got != "怪物：梅内德斯兄弟的故事 (2024)" {
+		t.Fatalf("solo season -> %q", got)
+	}
+}
