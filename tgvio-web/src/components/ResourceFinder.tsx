@@ -10,7 +10,7 @@ import { resources, searchURL, type ResourceSite, type ResourceTitle } from "../
 import { useLibraryScope } from "../hooks/useLibraryScope";
 import { reason } from "../lib/errors";
 import { formatBytes } from "../lib/format";
-import { bookmarklet, folderName, fromHTML, fromSeed, fromText, rank, seriesName, type Magnet } from "../lib/magnets";
+import { bookmarklet, folderName, fromHTML, fromSeed, fromText, rank, seasonNumeral, seasonOfTitle, seriesName, type Magnet } from "../lib/magnets";
 import { spring } from "../lib/motion";
 import { join, parent } from "../lib/path";
 import { organize } from "../api/organize";
@@ -201,7 +201,7 @@ export function ResourceFinder({ initialQuery = "", initialItems, base: fixedBas
   useEffect(() => { if (!base && defaultBase) setBase(defaultBase); }, [base, defaultBase]);
   const [where, setWhere] = useState(false);
   const [ownFolder, setOwnFolder] = useState<boolean | null>(null);
-  const [name, setName] = useState<string | null>(fixedFolder ?? null);
+  const [name, setName] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
   const enabledSites = sites.data?.sites ?? [];
@@ -214,7 +214,7 @@ export function ResourceFinder({ initialQuery = "", initialItems, base: fixedBas
     setTicked(new Set(next.flatMap(group => group.items.length ? [group.items[0].hash] : [])));
     setOnlySubs(false);
     setOwnFolder(null);
-    setName(fixedFolder ?? null);
+    setName(null);
     for (const group of next) {
       void matchTMDB(group.title === PASTED ? query.trim() : group.title, group.year, group.tv, group.other).then(subject =>
         setGroups(current => current?.map(g => g.key === group.key ? { ...g, subject } : g) ?? current));
@@ -274,11 +274,27 @@ export function ResourceFinder({ initialQuery = "", initialItems, base: fixedBas
   /** A title's folder, named the TMDB way: "瘴气营地的青春性事与死亡 (2026)" (TMDB's title and year when matched, else the site's). */
   const titleOf = (group: Group): string => group.subject?.title
     ?? (group.title === PASTED ? query.trim() || plainTitle(group.items.find(item => ticked.has(item.hash))?.title ?? group.items[0]?.title ?? "") : group.title);
-  const nameOf = (group: Group): string => folderName(titleOf(group), group.subject ? group.subject.year : group.year);
+  /**
+   * A title's folder: "瘴气营地的青春性事与死亡 (2026)", or a season's when the
+   * site's title names one ("我们这一天 第四季" -> "我们这一天 第四季 (2019)").
+   */
+  const nameOf = (group: Group): string => {
+    const season = seasonOfTitle(group.title === PASTED ? "" : group.title);
+    if (season > 0 && !seasonOfTitle(titleOf(group))) {
+      return folderName(`${titleOf(group)} 第${seasonNumeral(season)}季`, group.year ?? group.subject?.year);
+    }
+    return folderName(titleOf(group), group.subject ? group.subject.year : group.year);
+  };
   const one = active[0]?.group;
+  // Opened in a series' own folder for one season (找第五季): the series' folder is
+  // where it goes, each season into its own season's folder there.
+  const inSeries = !!fixedBase && !!fixedFolder;
   // Every download gets a folder named after the title, inside the default folder.
   const wantsFolder = ownFolder ?? true;
-  const folder = (name ?? (several ? seriesName(active.map(entry => entry.group.subject?.title ?? entry.group.title)) : one ? nameOf(one) : "")).trim();
+  // The season it was opened for, unless the title picked names another season.
+  const picked = one ? seasonOfTitle(nameOf(one)) : 0;
+  const preset = inSeries && one && (picked === 0 || picked === seasonOfTitle(fixedFolder ?? "")) ? fixedFolder : undefined;
+  const folder = (name ?? (several ? (inSeries ? "" : seriesName(active.map(entry => entry.group.subject?.title ?? entry.group.title))) : one ? preset ?? nameOf(one) : "")).trim();
   const parentDir = wantsFolder && folder ? join(base, folder) : base;
   /** Each group's folder: inside the series folder when there are several, else the one folder. */
   const targetOf = (group: Group): string => several ? join(parentDir, nameOf(group)) : parentDir;
