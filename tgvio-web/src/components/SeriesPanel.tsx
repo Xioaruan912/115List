@@ -242,7 +242,13 @@ export function SeriesPanel({ path, items }: { path: string; items: Obj[] }) {
                 <button key={e.episode} disabled={!e.file} onClick={() => play(e)} title={e.file ?? "这一集不在文件夹里"}
                   className={`group/ep w-[min(70vw,248px)] shrink-0 snap-start text-left ${e.file ? "" : "opacity-40"}`}>
                   <div className="relative aspect-video overflow-hidden rounded-[10px] bg-white/10">
-                    {e.still && <img src={e.still} alt="" draggable={false} loading="lazy" className="size-full object-cover transition-transform duration-500 ease-[var(--ease-expo)] group-enabled/ep:group-hover/ep:scale-105" />}
+                    {e.still
+                      ? <img src={e.still} alt="" draggable={false} loading="lazy" className="size-full object-cover transition-transform duration-500 ease-[var(--ease-expo)] group-enabled/ep:group-hover/ep:scale-105" />
+                      : <>
+                          {/* TMDB has no still for this one (yet): the series' own picture and the number, never a black box. */}
+                          {backdrop && <img src={posterSrc(backdrop, "w780")} alt="" draggable={false} loading="lazy" className="size-full object-cover opacity-50" />}
+                          <span className="absolute inset-0 grid place-items-center text-[28px] font-semibold tabular text-white/85 [text-shadow:0_2px_12px_rgb(0_0_0/0.6)]">{e.episode}</span>
+                        </>}
                     {e.file && (
                       <span className="absolute inset-0 grid place-items-center bg-black/25 opacity-0 transition-opacity group-hover/ep:opacity-100 [@media(hover:none)]:hidden">
                         <span className="grid size-10 place-items-center rounded-full bg-accent text-accent-ink"><PlayIcon size={15} weight="fill" className="translate-x-px" /></span>

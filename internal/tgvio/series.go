@@ -46,7 +46,7 @@ type SeriesView struct {
 
 var (
 	detailsMemo = newMemo[*Poster]("details")       // "kind/id/language"
-	seasonsMemo = newMemo[[]SeasonInfo]("seasons") // series id
+	seasonsMemo = newMemo[[]SeasonInfo]("seasons2") // series id (seasons2: since episode-group seasons; the old answers are dropped)
 )
 
 // cachedDetails is Details kept for half a day.
