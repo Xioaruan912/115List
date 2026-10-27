@@ -399,10 +399,13 @@ func (t *TMDB) resolve(ctx context.Context, name, in string) (*Poster, error) {
 	t.mu.Unlock()
 	// Kept: a choice made by hand, or a match found by the current rules. A
 	// match found by older rules is looked up again (it may have been wrong).
-	if entry != nil && (entry.Manual || !entry.None && entry.Rev >= cleanerRev) {
+	t.mu.Lock()
+	stray := t.strayLocked(in, name, entry)
+	t.mu.Unlock()
+	if entry != nil && !stray && (entry.Manual || !entry.None && entry.Rev >= cleanerRev) {
 		return entry, nil
 	}
-	p, err := t.lookup(ctx, name)
+	p, err := t.lookupIn(ctx, name, in)
 	if err != nil {
 		return nil, err
 	}

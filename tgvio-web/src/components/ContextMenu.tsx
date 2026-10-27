@@ -70,11 +70,11 @@ export function ContextMenu() {
           { label: "复制链接", icon: <LinkIcon size={15} />, run: () => void actions.copyLinks(dir, [obj]) },
         ] : []),
         ...(can(me, Perm.Share) ? [{ label: "分享", icon: <ShareNetworkIcon size={15} />, run: () => ui().openDialog({ kind: "share", dir, names: [obj.name] }) }] : []),
-        // A folder is organized in one place (its film, cover and names); a film file, or no right to rename, keeps 更换封面.
+        // A folder is organized with 整理; its cover can always be picked by hand too (a match can be wrong).
         ...(obj.is_dir && can(me, Perm.Rename) && !isGuest(me) && library.has(join(dir, obj.name))
-          ? [{ label: "整理…", icon: <TextAaIcon size={15} />, run: () => ui().openDialog({ kind: "tmdb-rename", targets: [{ path }] }) }]
-          : (obj.is_dir || isFilm(obj)) && !isGuest(me) && library.has(join(dir, obj.name))
-            ? [{ label: "更换封面", icon: <FilmSlateIcon size={15} />, run: () => ui().openDialog({ kind: "poster", name: obj.name, dir }) }] : []),
+          ? [{ label: "整理…", icon: <TextAaIcon size={15} />, run: () => ui().openDialog({ kind: "tmdb-rename", targets: [{ path }] }) }] : []),
+        ...((obj.is_dir || isFilm(obj)) && !isGuest(me) && library.has(join(dir, obj.name))
+          ? [{ label: "更换封面", icon: <FilmSlateIcon size={15} />, run: () => ui().openDialog({ kind: "poster", name: obj.name, dir }) }] : []),
         { label: "选择", icon: <CheckSquareIcon size={15} />, run: () => ui().toggle(dir, obj.name) },
         "divider",
         { label: "重命名", icon: <PencilSimpleIcon size={15} />, hint: "F2", disabled: !can(me, Perm.Rename), run: () => ui().openDialog({ kind: "rename", dir, obj }) },

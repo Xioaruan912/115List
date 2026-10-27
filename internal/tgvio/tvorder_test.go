@@ -165,3 +165,22 @@ func TestSeasonInsideSameSeasonOpensUp(t *testing.T) {
 		t.Fatal("another season unwrapped")
 	}
 }
+
+func TestSeasonFolderIsItsSeriesSeason(t *testing.T) {
+	// "亢奋 (2019)/亢奋 第三季 (2026)": 亢奋's third season, even with a record of another series from an older search.
+	tm := filmsTMDB(t, nil, nil)
+	tm.http.Transport = rawTMDB{
+		"tv/85552/season/3": `{"season_number":3,"name":"第 3 季","poster_path":"/s3.jpg","air_date":"2026-04-12"}`,
+	}
+	tm.entries[Key("亢奋 (2019)")] = &Poster{Kind: "tv", ID: 85552, Title: "亢奋", Year: 2019, Name: "亢奋 (2019)", Dir: "/lib", Rev: cleanerRev}
+	tm.entries[Key("亢奋 第三季 (2026)")] = &Poster{Kind: "tv", ID: 999, Title: "Euphoria (another)", Year: 2026, Name: "亢奋 第三季 (2026)", Dir: "/lib/亢奋 (2019)", Rev: cleanerRev}
+	p, err := tm.resolve(context.Background(), "亢奋 第三季 (2026)", "/lib/亢奋 (2019)")
+	if err != nil || p.ID != 85552 || p.Season != 3 || p.Poster != "/s3.jpg" {
+		t.Fatalf("season folder -> %+v %v", p, err)
+	}
+	// A choice made by hand stays.
+	tm.entries[Key("亢奋 第三季 (2026)")] = &Poster{Kind: "tv", ID: 999, Name: "亢奋 第三季 (2026)", Dir: "/lib/亢奋 (2019)", Manual: true}
+	if p, _ := tm.resolve(context.Background(), "亢奋 第三季 (2026)", "/lib/亢奋 (2019)"); p.ID != 999 {
+		t.Fatalf("manual -> %+v", p)
+	}
+}

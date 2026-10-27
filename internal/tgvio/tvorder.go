@@ -3,6 +3,7 @@ package tgvio
 import (
 	"context"
 	stdpath "path"
+	"time"
 	"regexp"
 	"sort"
 	"strconv"
@@ -205,4 +206,48 @@ func firstYear(years ...int) int {
 		}
 	}
 	return 0
+}
+
+// parentSeriesLocked: the series whose own folder dir is (its poster record), nil when dir is none. t.mu is held.
+func (t *TMDB) parentSeriesLocked(dir string) *Poster {
+	if dir == "/" || dir == "" {
+		return nil
+	}
+	p := t.entries[Key(pathBase(dir))]
+	if p == nil || p.None || p.Kind != "tv" || p.Season > 0 || SeasonOf(pathBase(dir)) > 0 || p.Dir != stdpath.Dir(dir) {
+		return nil
+	}
+	return p
+}
+
+// lookupIn looks a name up as seen in dir: a season's folder inside a
+// series' own folder is that series' season ("亢奋 (2019)/亢奋 第三季 (2026)"
+// is 亢奋's third season, not whatever a search for "亢奋" of 2026 finds).
+func (t *TMDB) lookupIn(ctx context.Context, name, dir string) (*Poster, error) {
+	if season := SeasonOf(name); season > 0 {
+		t.mu.Lock()
+		var p *Poster
+		if parent := t.parentSeriesLocked(dir); parent != nil {
+			c := *parent
+			p = &c
+		}
+		t.mu.Unlock()
+		if p != nil {
+			p.Manual, p.Rev, p.At = false, cleanerRev, time.Now().Unix()
+			t.ApplySeason(ctx, p, season)
+			p.Season = season // also when TMDB has no page of that season (one from an episode group)
+			return p, nil
+		}
+	}
+	return t.lookup(ctx, name)
+}
+
+// strayLocked: a season's folder whose record names another series than the
+// series' folder it sits in (found by an older search): looked up again. t.mu is held.
+func (t *TMDB) strayLocked(dir, name string, entry *Poster) bool {
+	if entry == nil || entry.Manual || SeasonOf(name) == 0 {
+		return false
+	}
+	parent := t.parentSeriesLocked(dir)
+	return parent != nil && (entry.None || entry.Kind != "tv" || entry.ID != parent.ID)
 }
