@@ -143,3 +143,44 @@ func TestTreeOfSeasons(t *testing.T) {
 		t.Fatalf("solo season -> %q", got)
 	}
 }
+
+func TestSeasonInsideSameSeasonOpensUp(t *testing.T) {
+	// "葬送的芙莉莲 (2023)/葬送的芙莉莲 第一季 (2023)/葬送的芙莉莲 第一季 (2023)/…": the inner one opens up.
+	tm := filmsTMDB(t, nil, nil)
+	tm.http.Transport = rawTMDB{
+		"tv/1": `{"id":1,"name":"葬送的芙莉莲","first_air_date":"2023-09-29","seasons":[{"season_number":1,"episode_count":28,"air_date":"2023-09-29"},{"season_number":2,"episode_count":10,"air_date":"2026-01-16"}]}`,
+	}
+	box := "葬送的芙莉莲 (2023)"
+	tm.entries[Key(box)] = &Poster{Kind: "tv", ID: 1, Title: "葬送的芙莉莲", Year: 2023, Name: box, Rev: cleanerRev}
+	season := "葬送的芙莉莲 第一季 (2023)"
+	plan, err := tm.PlanRenameIn(context.Background(), "/lib/"+box+"/"+season, []RenameEntry{{Name: season, IsDir: true}}, 0,
+		&RenameInherit{Kind: "tv", ID: 1})
+	if err != nil || find(plan, season).Action != "unwrap" {
+		t.Fatalf("season in season -> %+v %v", find(plan, season), err)
+	}
+	// Another season's folder inside is no wrapping.
+	plan, _ = tm.PlanRenameIn(context.Background(), "/lib/"+box+"/"+season, []RenameEntry{{Name: "葬送的芙莉莲 第二季 (2026)", IsDir: true}}, 0,
+		&RenameInherit{Kind: "tv", ID: 1})
+	if find(plan, "葬送的芙莉莲 第二季 (2026)").Action == "unwrap" {
+		t.Fatal("another season unwrapped")
+	}
+}
+
+func TestSeasonFolderIsItsSeriesSeason(t *testing.T) {
+	// "亢奋 (2019)/亢奋 第三季 (2026)": 亢奋's third season, even with a record of another series from an older search.
+	tm := filmsTMDB(t, nil, nil)
+	tm.http.Transport = rawTMDB{
+		"tv/85552/season/3": `{"season_number":3,"name":"第 3 季","poster_path":"/s3.jpg","air_date":"2026-04-12"}`,
+	}
+	tm.entries[Key("亢奋 (2019)")] = &Poster{Kind: "tv", ID: 85552, Title: "亢奋", Year: 2019, Name: "亢奋 (2019)", Dir: "/lib", Rev: cleanerRev}
+	tm.entries[Key("亢奋 第三季 (2026)")] = &Poster{Kind: "tv", ID: 999, Title: "Euphoria (another)", Year: 2026, Name: "亢奋 第三季 (2026)", Dir: "/lib/亢奋 (2019)", Rev: cleanerRev}
+	p, err := tm.resolve(context.Background(), "亢奋 第三季 (2026)", "/lib/亢奋 (2019)")
+	if err != nil || p.ID != 85552 || p.Season != 3 || p.Poster != "/s3.jpg" {
+		t.Fatalf("season folder -> %+v %v", p, err)
+	}
+	// A choice made by hand stays.
+	tm.entries[Key("亢奋 第三季 (2026)")] = &Poster{Kind: "tv", ID: 999, Name: "亢奋 第三季 (2026)", Dir: "/lib/亢奋 (2019)", Manual: true}
+	if p, _ := tm.resolve(context.Background(), "亢奋 第三季 (2026)", "/lib/亢奋 (2019)"); p.ID != 999 {
+		t.Fatalf("manual -> %+v", p)
+	}
+}

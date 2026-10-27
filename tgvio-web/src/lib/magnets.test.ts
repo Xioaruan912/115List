@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe as group, expect, it } from "vitest";
-import { describe, folderName, fromHTML, fromList, fromSeed, fromText, parseSize, rank, seriesName } from "./magnets";
+import { describe, folderName, seasonNumeral, seasonOfTitle, fromHTML, fromList, fromSeed, fromText, parseSize, rank, seriesName } from "./magnets";
 
 const H1 = "0f8210b19b5d9bae385aceaba5e6abfe66e12cfb";
 const H2 = "1a2b3c4d5e6f708192a3b4c5d6e7f8091a2b3c4d";
@@ -76,5 +76,20 @@ group("magnets", () => {
 
   it("names folders the library can match", () => {
     expect(folderName("潜伏: 特别版", 2009)).toBe("潜伏 特别版 (2009)");
+  });
+});
+
+group("seasonOfTitle", () => {
+  it("reads the season a release title names", () => {
+    expect(seasonOfTitle("我们这一天 第四季")).toBe(4);
+    expect(seasonOfTitle("我们这一天 第十二季")).toBe(12);
+    expect(seasonOfTitle("我们这一天 第二十季")).toBe(20);
+    expect(seasonOfTitle("This.Is.Us.S05.1080p")).toBe(5);
+    expect(seasonOfTitle("Season 2")).toBe(2);
+    expect(seasonOfTitle("This.Is.Us.S04E01.mkv")).toBe(0);
+    expect(seasonOfTitle("我们这一天")).toBe(0);
+    expect(seasonNumeral(4)).toBe("四");
+    expect(seasonNumeral(12)).toBe("十二");
+    expect(seasonNumeral(20)).toBe("二十");
   });
 });

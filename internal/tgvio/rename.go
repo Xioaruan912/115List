@@ -399,10 +399,13 @@ func (t *TMDB) resolve(ctx context.Context, name, in string) (*Poster, error) {
 	t.mu.Unlock()
 	// Kept: a choice made by hand, or a match found by the current rules. A
 	// match found by older rules is looked up again (it may have been wrong).
-	if entry != nil && (entry.Manual || !entry.None && entry.Rev >= cleanerRev) {
+	t.mu.Lock()
+	stray := t.strayLocked(in, name, entry)
+	t.mu.Unlock()
+	if entry != nil && !stray && (entry.Manual || !entry.None && entry.Rev >= cleanerRev) {
 		return entry, nil
 	}
-	p, err := t.lookup(ctx, name)
+	p, err := t.lookupIn(ctx, name, in)
 	if err != nil {
 		return nil, err
 	}
@@ -970,8 +973,10 @@ func (t *TMDB) PlanRenameIn(ctx context.Context, dir string, entries []RenameEnt
 			kept = dirs
 		}
 	}
+	// A season's folder holding nothing but a folder of that same season ("第一季/第一季/"): one too many.
+	sameSeason := subject.Kind == "tv" && folderSeason > 0 && len(kept) == 1 && kept[0].IsDir && SeasonOf(kept[0].Name) == folderSeason
 	if (subject.Kind == "movie" && !multi || subject.Kind == "tv") && len(kept) == 1 && kept[0].IsDir && !Skip(kept[0].Name) &&
-		(SeasonOf(kept[0].Name) == 0 || oneSeason) {
+		(SeasonOf(kept[0].Name) == 0 || oneSeason || sameSeason) {
 		inner, err := t.resolve(ctx, kept[0].Name, dir)
 		// Not when it is clearly another title's folder ("招魂/招魂3 (2021)/"): its
 		// name has that title. A guess its name hardly says ("q伏2.2013…" found

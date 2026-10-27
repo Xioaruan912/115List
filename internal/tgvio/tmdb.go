@@ -932,6 +932,9 @@ func (t *TMDB) Lookup(dir string, names []string) (map[string]*Poster, int) {
 		entry, ok := t.entries[key]
 		// "Nothing found" is retried after a week (TMDB keeps growing) or when
 		// the name cleaning has improved since.
+		if ok && t.strayLocked(dir, look, entry) {
+			ok = false // a season's folder matched to another series: its series' season instead
+		}
 		if ok && (!entry.None || entry.Manual || (now-entry.At < 7*24*3600 && entry.Rev >= cleanerRev)) {
 			if entry.Dir == "" && !entry.None {
 				entry.Dir, pruned = dir, true // a choice made without its folder: here it is (片库 needs it)
@@ -1137,7 +1140,7 @@ func (t *TMDB) work() {
 		name := job.name
 		key := Key(name)
 		ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
-		p, err := t.lookup(ctx, name)
+		p, err := t.lookupIn(ctx, name, job.dir)
 		cancel()
 		t.mu.Lock()
 		delete(t.queued, key)

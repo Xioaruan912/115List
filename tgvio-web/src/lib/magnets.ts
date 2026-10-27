@@ -154,6 +154,29 @@ export function rank(items: Magnet[]): Magnet[] {
 }
 
 /** The library's folder name for a title: "潜伏 (2009)". Characters drives refuse are dropped. */
+const CN_DIGIT: Record<string, number> = { 一: 1, 二: 2, 三: 3, 四: 4, 五: 5, 六: 6, 七: 7, 八: 8, 九: 9 };
+const CN_NAME = ["", "一", "二", "三", "四", "五", "六", "七", "八", "九"];
+
+/** "第四季", "第十二季", "Season 2", "S03": the season a title names, 0 when none. */
+export function seasonOfTitle(title: string): number {
+  const cn = title.match(/第\s*([一二三四五六七八九十]+|\d+)\s*季/);
+  if (cn) {
+    const text = cn[1];
+    if (/^\d+$/.test(text)) return Number(text);
+    const [tens, ones] = text.includes("十") ? text.split("十") : ["", text];
+    return (text.includes("十") ? (tens ? CN_DIGIT[tens] ?? 0 : 1) * 10 : 0) + (ones ? CN_DIGIT[ones] ?? 0 : 0);
+  }
+  const en = title.match(/\bseason\s*(\d{1,2})\b|\bS(\d{1,2})(?!\d|E\d)/i);
+  return en ? Number(en[1] ?? en[2]) : 0;
+}
+
+/** 1..99 the way season folders are named: 二, 十二, 二十. */
+export function seasonNumeral(n: number): string {
+  if (n <= 0 || n >= 100) return String(n);
+  if (n < 10) return CN_NAME[n];
+  return (n >= 20 ? CN_NAME[Math.floor(n / 10)] : "") + "十" + (n % 10 ? CN_NAME[n % 10] : "");
+}
+
 export function folderName(title: string, year?: number): string {
   const clean = title.replace(/[\\/:*?"<>|]/g, " ").replace(/\s+/g, " ").trim();
   return year ? `${clean} (${year})` : clean;
