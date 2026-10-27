@@ -150,3 +150,14 @@ func (t *TMDB) orderedEpisodes(ctx context.Context, id, season int) ([]tmdbEpiso
 	}
 	return o.Episodes[strconv.Itoa(season)], true
 }
+
+// regularSeasons counts a series' seasons, specials aside (by its episode group's seasons, when those are its own).
+func (t *TMDB) regularSeasons(ctx context.Context, id int) int {
+	n := 0
+	for _, s := range t.cachedSeasons(ctx, id) {
+		if s.Season > 0 {
+			n++
+		}
+	}
+	return n
+}

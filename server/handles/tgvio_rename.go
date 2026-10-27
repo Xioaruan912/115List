@@ -277,7 +277,9 @@ func TgvioRenameApply(c *gin.Context) {
 	finalPath := reqPath
 	if folder := strings.TrimSpace(req.Folder); folder != "" && folder != stdpath.Base(reqPath) {
 		result := renameResult{Old: stdpath.Base(reqPath), New: folder}
-		if moved, err := renameFolderTo(ctx, reqPath, folder, req.Subject); err != nil {
+		if strings.Contains(folder, "/") && !user.CanMove() { // into the series' folder: a move
+			result.Error = errs.PermissionDenied.Error()
+		} else if moved, err := renameFolderTo(ctx, reqPath, folder, req.Subject); err != nil {
 			result.Error = err.Error()
 		} else {
 			finalPath = moved
@@ -388,6 +390,11 @@ func renameIn(ctx context.Context, dir, oldName, newName string) error {
 // renameFolderTo renames the folder at path and returns its new path; subject
 // (what it was planned as) gives the new name its poster at once.
 func renameFolderTo(ctx context.Context, path, name string, subject *tgvio.RenameInherit) (string, error) {
+	// "剧名 (年份)/剧名 第二季 (年份)": a season's folder lying in the library
+	// goes into its series' folder (made when missing), as a tree.
+	if box, leaf, ok := strings.Cut(name, "/"); ok {
+		return nestFolder(ctx, path, box, leaf, subject)
+	}
 	parent, old := stdpath.Dir(path), stdpath.Base(path)
 	if err := checkRelativePath(name); err != nil {
 		return "", err
@@ -412,6 +419,46 @@ func renameFolderTo(ctx context.Context, path, name string, subject *tgvio.Renam
 	}
 	store.RenamedDir(path, moved)
 	return moved, nil
+}
+
+// nestFolder renames path to leaf and moves it into the folder box beside it
+// (made when missing), never over another object.
+func nestFolder(ctx context.Context, path, box, leaf string, subject *tgvio.RenameInherit) (string, error) {
+	parent, old := stdpath.Dir(path), stdpath.Base(path)
+	for _, n := range []string{box, leaf} {
+		if err := checkRelativePath(n); err != nil || strings.Contains(n, "/") || strings.TrimSpace(n) == "" {
+			return "", fmt.Errorf("not a name here")
+		}
+	}
+	if box == old {
+		return "", fmt.Errorf("a folder cannot go into itself")
+	}
+	folder := stdpath.Join(parent, box)
+	if obj, _ := fs.Get(ctx, folder, &fs.GetArgs{NoLog: true}); obj == nil {
+		if err := fs.MakeDir(ctx, folder); err != nil {
+			return "", err
+		}
+	} else if !obj.IsDir() {
+		return "", fmt.Errorf("file [%s] exists", box)
+	}
+	if res, _ := fs.Get(ctx, stdpath.Join(folder, leaf), &fs.GetArgs{NoLog: true}); res != nil {
+		return "", fmt.Errorf("file [%s/%s] exists", box, leaf)
+	}
+	at := path
+	if leaf != old {
+		moved, err := renameFolderTo(ctx, path, leaf, subject)
+		if err != nil {
+			return "", err
+		}
+		at = moved
+	}
+	if err := moveRetrying(ctx, at, folder); err != nil {
+		return "", err
+	}
+	posters().Moved(parent, folder, leaf)
+	final := stdpath.Join(folder, leaf)
+	posters().RenamedDir(at, final)
+	return final, nil
 }
 
 // placeFile renames dir/oldName to newName and, with into, moves it into the

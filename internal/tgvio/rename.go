@@ -937,7 +937,11 @@ func (t *TMDB) PlanRenameIn(ctx context.Context, dir string, entries []RenameEnt
 	// a film's, a series' or a show's folder holding only that opens up, so the
 	// videos sit in the title's own folder. A season's folder ("第二季",
 	// "Season 2") is no wrapping: a series keeps its seasons apart.
-	if (subject.Kind == "movie" && !multi || subject.Kind == "tv") && len(kept) == 1 && kept[0].IsDir && !Skip(kept[0].Name) && SeasonOf(kept[0].Name) == 0 {
+	// A series of one season keeps no season's folder either: its episodes sit in
+	// the series' folder ("Monsters：… (2024)/… 第二季 (2024)/" opens up).
+	oneSeason := subject.Kind == "tv" && folderSeason == 0 && t.regularSeasons(ctx, subject.ID) == 1
+	if (subject.Kind == "movie" && !multi || subject.Kind == "tv") && len(kept) == 1 && kept[0].IsDir && !Skip(kept[0].Name) &&
+		(SeasonOf(kept[0].Name) == 0 || oneSeason) {
 		inner, err := t.resolve(ctx, kept[0].Name, dir)
 		// Not when it is clearly another title's folder ("招魂/招魂3 (2021)/"): its
 		// name has that title. A guess its name hardly says ("q伏2.2013…" found
@@ -962,6 +966,16 @@ func (t *TMDB) PlanRenameIn(ctx context.Context, dir string, entries []RenameEnt
 			year = seasonYear
 		}
 		folderName = titleYear(title+" 第"+cnNumeral(folderSeason)+"季", year)
+		// A season's folder lying in the library itself: a tree, 影视库/剧名/剧名 第二季.
+		// Into the series' folder (made when missing); a series of one season is
+		// just the series' folder.
+		if t.isRoot(stdpath.Dir(dir)) && !plan.Inherited {
+			if t.regularSeasons(ctx, subject.ID) > 1 {
+				folderName = titleYear(title, base.Year) + "/" + folderName
+			} else {
+				folderName = titleYear(title, base.Year)
+			}
+		}
 	}
 	if multi && seriesName != "" && !plan.Inherited {
 		add(RenameItem{Old: folder, New: seriesName, Kind: "folder"})

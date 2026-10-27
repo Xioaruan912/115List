@@ -242,6 +242,23 @@ func undoOp(ctx context.Context, op journalOp) error {
 		}
 		return nil
 	case "folder":
+		if box, leaf, ok := strings.Cut(op.New, "/"); ok {
+			// Put into its series' folder: out again, its old name back, and the series' folder goes if empty.
+			folder := stdpath.Join(op.Dir, box)
+			if err := moveRetrying(ctx, stdpath.Join(folder, leaf), op.Dir); err != nil {
+				return err
+			}
+			posters().Moved(folder, op.Dir, leaf)
+			if leaf != op.Old {
+				if _, err := renameFolderTo(ctx, stdpath.Join(op.Dir, leaf), op.Old, nil); err != nil {
+					return err
+				}
+			}
+			if left, err := fs.List(ctx, folder, &fs.ListArgs{Refresh: true}); err == nil && len(left) == 0 {
+				_ = fs.Remove(ctx, folder)
+			}
+			return nil
+		}
 		_, err := renameFolderTo(ctx, stdpath.Join(op.Dir, op.New), op.Old, nil)
 		return err
 	}
