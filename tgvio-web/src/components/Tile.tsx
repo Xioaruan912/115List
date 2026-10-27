@@ -236,7 +236,8 @@ export const ListRow = memo(function ListRow({ obj, index, selected, selecting, 
  */
 export function PosterCover({ poster, small = false }: { poster: Poster; small?: boolean }) {
   const [loaded, setLoaded] = useState(false);
-  const backdrop = posterSrc(poster.backdrop, undefined) || posterSrc(poster.poster, "w342");
+  // A tile is a few hundred pixels wide: w780 is sharp there, and a library of them stays light to decode (iPad).
+  const backdrop = posterSrc(poster.backdrop, "w780") || posterSrc(poster.poster, "w342");
   return (
     <div className="poster-cover absolute inset-0 overflow-hidden bg-stage">
       <img src={backdrop} alt="" loading="lazy" decoding="async" draggable={false}
