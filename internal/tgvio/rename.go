@@ -970,8 +970,10 @@ func (t *TMDB) PlanRenameIn(ctx context.Context, dir string, entries []RenameEnt
 			kept = dirs
 		}
 	}
+	// A season's folder holding nothing but a folder of that same season ("第一季/第一季/"): one too many.
+	sameSeason := subject.Kind == "tv" && folderSeason > 0 && len(kept) == 1 && kept[0].IsDir && SeasonOf(kept[0].Name) == folderSeason
 	if (subject.Kind == "movie" && !multi || subject.Kind == "tv") && len(kept) == 1 && kept[0].IsDir && !Skip(kept[0].Name) &&
-		(SeasonOf(kept[0].Name) == 0 || oneSeason) {
+		(SeasonOf(kept[0].Name) == 0 || oneSeason || sameSeason) {
 		inner, err := t.resolve(ctx, kept[0].Name, dir)
 		// Not when it is clearly another title's folder ("招魂/招魂3 (2021)/"): its
 		// name has that title. A guess its name hardly says ("q伏2.2013…" found

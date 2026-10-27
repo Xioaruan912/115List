@@ -143,3 +143,25 @@ func TestTreeOfSeasons(t *testing.T) {
 		t.Fatalf("solo season -> %q", got)
 	}
 }
+
+func TestSeasonInsideSameSeasonOpensUp(t *testing.T) {
+	// "葬送的芙莉莲 (2023)/葬送的芙莉莲 第一季 (2023)/葬送的芙莉莲 第一季 (2023)/…": the inner one opens up.
+	tm := filmsTMDB(t, nil, nil)
+	tm.http.Transport = rawTMDB{
+		"tv/1": `{"id":1,"name":"葬送的芙莉莲","first_air_date":"2023-09-29","seasons":[{"season_number":1,"episode_count":28,"air_date":"2023-09-29"},{"season_number":2,"episode_count":10,"air_date":"2026-01-16"}]}`,
+	}
+	box := "葬送的芙莉莲 (2023)"
+	tm.entries[Key(box)] = &Poster{Kind: "tv", ID: 1, Title: "葬送的芙莉莲", Year: 2023, Name: box, Rev: cleanerRev}
+	season := "葬送的芙莉莲 第一季 (2023)"
+	plan, err := tm.PlanRenameIn(context.Background(), "/lib/"+box+"/"+season, []RenameEntry{{Name: season, IsDir: true}}, 0,
+		&RenameInherit{Kind: "tv", ID: 1})
+	if err != nil || find(plan, season).Action != "unwrap" {
+		t.Fatalf("season in season -> %+v %v", find(plan, season), err)
+	}
+	// Another season's folder inside is no wrapping.
+	plan, _ = tm.PlanRenameIn(context.Background(), "/lib/"+box+"/"+season, []RenameEntry{{Name: "葬送的芙莉莲 第二季 (2026)", IsDir: true}}, 0,
+		&RenameInherit{Kind: "tv", ID: 1})
+	if find(plan, "葬送的芙莉莲 第二季 (2026)").Action == "unwrap" {
+		t.Fatal("another season unwrapped")
+	}
+}
