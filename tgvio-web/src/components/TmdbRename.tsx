@@ -184,7 +184,7 @@ export function TmdbRename({ targets: chosen, onClose }: { targets: RenameTarget
       const failedBefore = failed;
       let finalPath = target.path;
       // Renames first, then ads go, then wrapper folders open (their contents already renamed, deepest first).
-      const rank = (item: RenameItem): number => item.action === "spill" ? 3 : item.action === "unwrap" ? 2 : item.action === "delete" ? 1 : 0;
+      const rank = (item: RenameItem): number => item.action === "spill" ? 3 : item.action === "unwrap" || item.action === "up" ? 2 : item.action === "delete" ? 1 : 0;
       for (const item of [...files].sort((a, b) => rank(a) - rank(b))) {
         const key = rowKey(target.path, item.old);
         if (!doable(item) || off.has(key)) continue;
@@ -192,6 +192,7 @@ export function TmdbRename({ targets: chosen, onClose }: { targets: RenameTarget
         try {
           const { results } = item.action === "delete" ? await tmdbRename.apply(target.path, password, [], "", undefined, { remove: [item.old], batch })
             : item.action === "unwrap" ? await tmdbRename.apply(target.path, password, [], "", undefined, { unwrap: [item.old], batch })
+            : item.action === "up" ? await tmdbRename.apply(target.path, password, [], "", undefined, { up: [item.old], batch })
             // The whole folder opens up into the one above, and goes.
             : item.action === "spill" ? await tmdbRename.apply(parent(target.path), passwordFor(parent(target.path)), [], "", undefined, { unwrap: [basename(target.path)], batch })
             : await tmdbRename.apply(target.path, password, [{ old: item.old, new: item.new ?? item.old, into: item.into }], "", undefined, { batch });
@@ -439,9 +440,9 @@ function SeasonPicker({ id, current, disabled, ask, onPick }: { id: number; curr
 function Row({ item, on, state, index, locked, onToggle }: { item: RenameItem; on: boolean; state?: RowState; index: number; locked: boolean; onToggle: () => void }) {
   const done = state?.status === "done";
   const tag = item.kind === "folder" ? "文件夹" : item.kind === "subtitle" ? "字幕" : item.kind === "extra" ? "附属"
-    : item.action === "delete" ? "广告" : item.action === "unwrap" ? "多一层" : item.action === "spill" ? "拆开" : item.into ? "单独文件夹"
+    : item.action === "delete" ? "广告" : item.action === "unwrap" ? "多一层" : item.action === "up" ? "放错了季" : item.action === "spill" ? "拆开" : item.into ? "单独文件夹"
     : item.episode ? `S${String(item.season ?? 1).padStart(2, "0")}E${String(item.episode).padStart(2, "0")}` : "";
-  const Icon = item.kind === "folder" || item.action === "unwrap" || item.action === "spill" ? FolderSimpleIcon : item.action === "delete" ? TrashIcon : item.kind === "subtitle" ? SubtitlesIcon : item.kind === "extra" ? FileIcon : FilmStripIcon;
+  const Icon = item.kind === "folder" || item.action === "unwrap" || item.action === "up" || item.action === "spill" ? FolderSimpleIcon : item.action === "delete" ? TrashIcon : item.kind === "subtitle" ? SubtitlesIcon : item.kind === "extra" ? FileIcon : FilmStripIcon;
   return (
     <motion.li
       initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}
@@ -462,10 +463,10 @@ function Row({ item, on, state, index, locked, onToggle }: { item: RenameItem; o
           {item.action ? (
             <>
               <span className={`block truncate text-[14px] font-medium ${done ? "text-faint line-through" : ""}`}>
-                {item.action === "delete" ? "删除" : item.action === "spill" ? "拆开这个合集" : "拆开这一层"}
+                {item.action === "delete" ? "删除" : item.action === "spill" ? "拆开这个合集" : item.action === "up" ? "移回剧名文件夹" : "拆开这一层"}
               </span>
               <span className="mt-0.5 block truncate text-[12.5px] text-faint">
-                {item.action === "delete" ? item.old : item.action === "spill" ? `里面的系列和电影移到上一层，和其他片并列` : `「${item.old}」里的内容移到上一层`}
+                {item.action === "delete" ? item.old : item.action === "spill" ? `里面的系列和电影移到上一层，和其他片并列` : item.action === "up" ? `「${item.old}」是另一季，移回剧名文件夹，和这一季并列` : `「${item.old}」里的内容移到上一层`}
               </span>
             </>
           ) : item.new ? (

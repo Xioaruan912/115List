@@ -184,3 +184,27 @@ func TestSeasonFolderIsItsSeriesSeason(t *testing.T) {
 		t.Fatalf("manual -> %+v", p)
 	}
 }
+
+func TestAnotherSeasonInsideASeasonGoesUp(t *testing.T) {
+	// "我们这一天 (2016)/我们这一天 第五季 (2020)/{我们这一天 第四季 (2019), 我们这一天 第五季 (2020)/…}":
+	// season 4 goes back up into the series' folder, the inner season 5 opens up.
+	tm := filmsTMDB(t, nil, nil)
+	tm.http.Transport = rawTMDB{
+		"tv/67136": `{"id":67136,"name":"我们这一天","first_air_date":"2016-09-20","seasons":[{"season_number":4,"episode_count":18,"air_date":"2019-09-24"},{"season_number":5,"episode_count":16,"air_date":"2020-10-27"},{"season_number":6,"episode_count":18,"air_date":"2022-01-04"}]}`,
+	}
+	box := "我们这一天 (2016)"
+	tm.entries[Key(box)] = &Poster{Kind: "tv", ID: 67136, Title: "我们这一天", Year: 2016, Name: box, Rev: cleanerRev}
+	five := "我们这一天 第五季 (2020)"
+	four := "我们这一天 第四季 (2019)"
+	plan, err := tm.PlanRenameIn(context.Background(), "/lib/"+box+"/"+five, []RenameEntry{{Name: four, IsDir: true}, {Name: five, IsDir: true}}, 0,
+		&RenameInherit{Kind: "tv", ID: 67136})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := find(plan, four); got.Action != "up" {
+		t.Fatalf("season 4 inside season 5 -> %+v", got)
+	}
+	if got := find(plan, five); got.Action != "unwrap" {
+		t.Fatalf("season 5 inside season 5 -> %+v", got)
+	}
+}

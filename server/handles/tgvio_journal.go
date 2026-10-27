@@ -27,7 +27,7 @@ import (
 // come back; they are only counted.
 
 type journalOp struct {
-	Op    string   `json:"op"` // "rename", "place", "unwrap", "folder"
+	Op    string   `json:"op"` // "rename", "place", "unwrap", "folder", "up"
 	Dir   string   `json:"dir"`
 	Old   string   `json:"old"`
 	New   string   `json:"new,omitempty"`
@@ -240,6 +240,14 @@ func undoOp(ctx context.Context, op journalOp) error {
 			}
 			posters().Moved(op.Dir, wrapper, name)
 		}
+		return nil
+	case "up":
+		// Moved up out of a season's folder: back in.
+		up := stdpath.Dir(op.Dir)
+		if err := moveRetrying(ctx, stdpath.Join(up, op.Old), op.Dir); err != nil {
+			return err
+		}
+		posters().Moved(up, op.Dir, op.Old)
 		return nil
 	case "folder":
 		if box, leaf, ok := strings.Cut(op.New, "/"); ok {

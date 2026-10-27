@@ -5,9 +5,9 @@ import type { Poster } from "./posters";
 export interface RenameItem {
   old: string;
   new?: string;
-  kind: "video" | "subtitle" | "extra" | "folder" | "junk" | "unwrap" | "spill";
+  kind: "video" | "subtitle" | "extra" | "folder" | "junk" | "unwrap" | "spill" | "up";
   /** A row that is no rename: delete an ad or leftover, open a folder wrapped around the film, or spill a box of series into the folder above. */
-  action?: "delete" | "unwrap" | "spill";
+  action?: "delete" | "unwrap" | "spill" | "up";
   /** A film of a folder of several goes into a folder of its own of this name. */
   into?: string;
   season?: number;
@@ -52,7 +52,7 @@ export const tmdbRename = {
   tree: (path: string, password: string) => post<{ folders: { path: string; depth: number }[] }>("/tgvio/rename/tree", { path, password }),
   /** `subject`: what the plan named the folder after, so its new name gets that poster at once. */
   apply: (path: string, password: string, items: { old: string; new: string; into?: string }[], folder = "", subject?: RenameInherit,
-    extra?: { remove?: string[]; unwrap?: string[]; batch?: string }) =>
+    extra?: { remove?: string[]; unwrap?: string[]; up?: string[]; batch?: string }) =>
     post<{ results: RenameResult[]; path: string }>("/tgvio/rename/apply", { path, password, items, folder, subject, ...extra }),
   /** Recent 整理 runs, newest first; `undone` once put back. */
   journal: () => get<{ items: { id: string; at: string; root: string; changes: number; deleted: number; undone: boolean }[] }>("/tgvio/rename/journal"),
