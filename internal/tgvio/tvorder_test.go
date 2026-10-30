@@ -208,3 +208,17 @@ func TestAnotherSeasonInsideASeasonGoesUp(t *testing.T) {
 		t.Fatalf("season 5 inside season 5 -> %+v", got)
 	}
 }
+
+func TestSeriesFolderWithALooseVideoStaysTheSeries(t *testing.T) {
+	// "泰迪熊 (2024)/{第一季, 第二季, 泰迪熊.mkv}": the series' page, not season 1's.
+	tm := filmsTMDB(t, nil, nil)
+	tm.http.Transport = rawTMDB{
+		"tv/201834": `{"id":201834,"name":"泰迪熊","first_air_date":"2024-01-11","seasons":[{"season_number":1,"episode_count":7,"air_date":"2024-01-11"},{"season_number":2,"episode_count":8,"air_date":"2026-03-05"}]}`,
+	}
+	tm.entries[Key("泰迪熊 (2024)")] = &Poster{Kind: "tv", ID: 201834, Title: "泰迪熊", Year: 2024, Name: "泰迪熊 (2024)", Dir: "/lib", Manual: true}
+	view, err := tm.Series(context.Background(), "/lib/泰迪熊 (2024)", []RenameEntry{
+		{Name: "泰迪熊 第一季 (2024)", IsDir: true}, {Name: "泰迪熊 第二季 (2026)", IsDir: true}, {Name: "泰迪熊.mkv", Size: 70 << 30}})
+	if err != nil || view == nil || view.Season != 0 || len(view.Episodes) != 0 || len(view.Extra) != 1 {
+		t.Fatalf("view -> %+v %v", view, err)
+	}
+}

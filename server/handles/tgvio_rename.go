@@ -232,6 +232,11 @@ func TgvioRenameApply(c *gin.Context) {
 	if !ok {
 		return
 	}
+	if autoBusy(reqPath) {
+		common.ErrorStrResp(c, "正在自动整理这个文件夹，等它做完再整理", 409)
+		return
+	}
+	holdManual(reqPath)
 	// Once started, a run goes to its end: a page closed or a connection
 	// dropped halfway must not leave half a release moved up.
 	ctx := context.WithoutCancel(c.Request.Context())

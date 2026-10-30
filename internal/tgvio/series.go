@@ -106,6 +106,13 @@ func (t *TMDB) Series(ctx context.Context, dir string, entries []RenameEntry) (*
 	if len(videos) == 0 {
 		return view, nil // the series' own folder: its seasons only
 	}
+	// The series' own folder with seasons' folders in it, and a video or two
+	// lying beside them ("泰迪熊 (2024)/泰迪熊.mkv"): still the series' page,
+	// its seasons; the loose videos are extras, not a season of their own.
+	if len(folders) > 0 && SeasonOf(pathBase(dir)) == 0 && subject.Season == 0 {
+		view.Extra = videos
+		return view, nil
+	}
 
 	// The season of this folder, as the rename planner reads it.
 	folder := pathBase(dir)

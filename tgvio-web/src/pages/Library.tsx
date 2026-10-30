@@ -1,7 +1,7 @@
 import { ArrowLeftIcon, ArrowUUpLeftIcon, CheckIcon, FilmSlateIcon, FolderOpenIcon, MagnetIcon, MagnifyingGlassIcon, StackIcon, StarIcon, XIcon } from "@phosphor-icons/react";
 import { useQuery } from "@tanstack/react-query";
 import { motion } from "motion/react";
-import { memo, useDeferredValue, useEffect, useMemo, useState, useSyncExternalStore } from "react";
+import { lazy, memo, Suspense, useDeferredValue, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { useLocation } from "wouter";
 import { categoryCounts, categoryOf, library, libraryNews, posterSrc, type Category, type LibraryItem, type NewsItem } from "../api/posters";
 import { CategoryFilter } from "../components/CategoryFilter";
@@ -211,6 +211,18 @@ function NewsRow({ onOpen }: { onOpen: (dir: string) => void }) {
 
 const GROUP_KEY = "tgvio-web:library-group";
 
+// What the library page was showing (filter, sort, search, an open series,
+// where it was scrolled to), kept for this tab: back from a folder or a film,
+// it shows the same again.
+const VIEW_KEY = "tgvio-web:library-view";
+interface LibraryView { search: string; sort: LibrarySort; cat: Category | "all"; shelfDir: string | null; scroll: number }
+function savedView(): Partial<LibraryView> {
+  try { return JSON.parse(sessionStorage.getItem(VIEW_KEY) ?? "{}") as Partial<LibraryView>; } catch { return {}; }
+}
+
+// A video opened from the library plays over it (the page stays as it was).
+const Viewer = lazy(() => import("../components/Viewer").then(m => ({ default: m.Viewer })));
+
 const EPISODE = /S(\d{1,2})\s*E(\d{1,4})/i;
 
 /**
@@ -276,16 +288,34 @@ export default function Library() {
   const blur = usePrefs(state => state.blur);
   const title = useSession(state => state.settings.site_title) || "OpenList";
   const query = useQuery({ queryKey: ["library"], queryFn: library, staleTime: 60_000 });
-  const [search, setSearch] = useState("");
+  const saved = useMemo(savedView, []);
+  const [search, setSearch] = useState(saved.search ?? "");
   // Not in the library: look it up on the resource sites, from the folder downloads go to.
   const resourceRoot = useResourceRoot();
   const deferred = useDeferredValue(search.trim());
-  const [sort, setSort] = useState<LibrarySort>("recent");
-  const [cat, setCat] = useState<Category | "all">("all");
+  const [sort, setSort] = useState<LibrarySort>(saved.sort ?? "recent");
+  const [cat, setCat] = useState<Category | "all">(saved.cat ?? "all");
   // Series' folders of films fold into one card; opening one shows its films.
   const scope = useLibraryScope();
   const [grouped, setGrouped] = useState(() => localStorage.getItem(GROUP_KEY) !== "0");
-  const [shelfDir, setShelfDir] = useState<string | null>(null);
+  const [shelfDir, setShelfDir] = useState<string | null>(saved.shelfDir ?? null);
+  // Kept as it changes; the scroll position as the page is left.
+  const scrollAt = useRef(saved.scroll ?? 0);
+  useEffect(() => {
+    sessionStorage.setItem(VIEW_KEY, JSON.stringify({ search, sort, cat, shelfDir, scroll: scrollAt.current } satisfies LibraryView));
+  }, [search, sort, cat, shelfDir]);
+  useEffect(() => {
+    const onScroll = (): void => { scrollAt.current = window.scrollY; };
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => {
+      window.removeEventListener("scroll", onScroll);
+      const view = savedView();
+      sessionStorage.setItem(VIEW_KEY, JSON.stringify({ ...view, scroll: scrollAt.current }));
+    };
+  }, []);
+  const viewerOpen = useUi(state => !!state.viewer);
+  const [viewerWanted, setViewerWanted] = useState(viewerOpen);
+  if (viewerOpen && !viewerWanted) setViewerWanted(true);
   const all = useMemo(() => query.data?.items ?? [], [query.data]);
   const byPath = useMemo(() => Object.fromEntries(all.map(item => [item.path, item])), [all]);
   const counts = useMemo(() => categoryCounts(all.map(item => item.path), byPath), [all, byPath]);
@@ -318,9 +348,16 @@ export default function Library() {
 
   useEffect(() => { document.title = `片库 - ${title}`; }, [title]);
 
+  // Back to where it was scrolled, once the cards are there.
+  const restored = useRef(false);
+  useLayoutEffect(() => {
+    if (restored.current || !query.data) return;
+    restored.current = true;
+    if (scrollAt.current > 0) window.scrollTo(0, scrollAt.current);
+  }, [query.data]);
+
   const open = (item: LibraryItem): void => {
     if (!item.file) { navigate(encodePath(item.path)); return; }
-    navigate(encodePath(parent(item.path)));
     useUi.getState().openViewer(parent(item.path), basename(item.path), null);
   };
 
@@ -374,7 +411,6 @@ export default function Library() {
         {query.data && !deferred && !shelfDir && <NewsRow onOpen={dir => navigate(encodePath(dir))} />}
 
         {query.data && !deferred && !shelfDir && <ContinueRow items={all} onPlay={path => {
-          navigate(encodePath(parent(path)));
           useUi.getState().openViewer(parent(path), basename(path), null);
         }} />}
 
@@ -422,6 +458,7 @@ export default function Library() {
       </main>
       {/* The library is its own page: without this, 找资源 opened a dialog nothing showed. */}
       <Dialogs />
+      {viewerWanted && <Suspense fallback={null}><Viewer /></Suspense>}
     </div>
   );
 }

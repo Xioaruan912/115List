@@ -75,7 +75,41 @@ function inheritFor(path: string, list: Entry[], plans: Record<string, Loaded>):
   return best?.plan.subject ? { kind: best.plan.subject.kind, id: best.plan.subject.id, season: best.plan.season || undefined, film: best.plan.film || undefined } : undefined;
 }
 
-export function TmdbRename({ targets: chosen, onClose }: { targets: RenameTarget[]; onClose: () => void }) {
+/**
+ * A folder already organized (by the organizer or by hand) is locked: 整理 says
+ * so and asks before going again, since organizing twice moves things twice.
+ * While the organizer is working on it, nobody organizes it at the same time.
+ */
+export function TmdbRename({ targets, onClose }: { targets: RenameTarget[]; onClose: () => void }) {
+  const one = targets.length === 1 && !targets[0].only ? targets[0].path : "";
+  const state = useQuery({ queryKey: ["organize", one], queryFn: () => organize.pending(one), enabled: !!one, retry: false, staleTime: 5_000 });
+  const recent = useQuery({ queryKey: ["organize-recent"], queryFn: organize.recent, enabled: !!one, retry: false, staleTime: 3_000 });
+  const [unlocked, setUnlocked] = useState(false);
+  if (one && (state.isPending || recent.isPending)) return null;
+  const busy = one && recent.data?.active.some(a => a.state === "organizing" && (a.path === one || one.startsWith(a.path + "/") || a.path.startsWith(one + "/")));
+  if (busy) {
+    return (
+      <Sheet open onClose={onClose} title="正在自动整理" width={480}
+        footer={<div className="flex justify-end"><button className="btn btn-primary" onClick={onClose}>知道了</button></div>}>
+        <p className="text-[14px] leading-relaxed text-muted">服务器正在自动整理「{basename(one)}」。同时再整理一次会把文件挪来挪去，等它做完，文件夹页面会显示结果。</p>
+      </Sheet>
+    );
+  }
+  if (one && state.data?.self === "done" && !unlocked) {
+    return (
+      <Sheet open onClose={onClose} title="已经整理好了" width={480}
+        footer={<div className="flex justify-end gap-2">
+          <button className="btn btn-line" onClick={() => setUnlocked(true)}>仍要重新整理</button>
+          <button className="btn btn-primary" onClick={onClose}>不用了</button>
+        </div>}>
+        <p className="text-[14px] leading-relaxed text-muted">「{basename(one)}」已经整理过了（自动整理或手动）。再整理一次通常没有必要；如果名字或位置确实不对，可以重新整理，做完也能撤销。</p>
+      </Sheet>
+    );
+  }
+  return <TmdbRenameSheet targets={targets} onClose={onClose} />;
+}
+
+function TmdbRenameSheet({ targets: chosen, onClose }: { targets: RenameTarget[]; onClose: () => void }) {
   const client = useQueryClient();
   const [location, navigate] = useLocation();
   const [targets, setTargets] = useState<Entry[]>([]);
