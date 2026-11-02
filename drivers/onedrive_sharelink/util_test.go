@@ -6,10 +6,19 @@ import (
 	"reflect"
 	"testing"
 
+	"github.com/OpenListTeam/OpenList/v4/internal/conf"
 	internalNet "github.com/OpenListTeam/OpenList/v4/internal/net"
 )
 
+func setupClientConfig(t *testing.T) {
+	t.Helper()
+	old := conf.Conf
+	conf.Conf = conf.DefaultConfig(t.TempDir())
+	t.Cleanup(func() { conf.Conf = old })
+}
+
 func TestNoRedirectClientUsesSharedSettings(t *testing.T) {
+	setupClientConfig(t)
 	client := NewNoRedirectCLient()
 	sharedClient := internalNet.NewHttpClient()
 	if client.Timeout != sharedClient.Timeout {
@@ -21,6 +30,7 @@ func TestNoRedirectClientUsesSharedSettings(t *testing.T) {
 }
 
 func TestNoRedirectClientStopsRedirects(t *testing.T) {
+	setupClientConfig(t)
 	targetRequested := false
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/target" {

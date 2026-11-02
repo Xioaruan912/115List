@@ -54,6 +54,13 @@ jobs:
           fetch-depth: 1
           fetch-tags: true
 
+      - name: Setup Node
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '24.21.0'
+          cache: npm
+          cache-dependency-path: tgvio-web/package-lock.json
+
       - name: Install dependencies
         if: matrix.target-platform == ''
         run: |

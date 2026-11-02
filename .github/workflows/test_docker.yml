@@ -38,6 +38,13 @@ jobs:
         with:
           go-version: '1.27.1'
 
+      - name: Setup Node
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '24.21.0'
+          cache: npm
+          cache-dependency-path: tgvio-web/package-lock.json
+
       - name: Cache Musl
         id: cache-musl
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6

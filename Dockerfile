@@ -1,9 +1,11 @@
 ### Default image is base. You can add other support by modifying BASE_IMAGE_TAG. The following parameters are supported: base (default), aria2, ffmpeg, aio
 ARG BASE_IMAGE_TAG=base
 
-FROM alpine:edge AS builder
+FROM node:24.21.0-alpine AS builder
 LABEL stage=go-builder
 WORKDIR /app/
+ARG OPENLIST_UI=tgvio
+ENV OPENLIST_UI=${OPENLIST_UI}
 RUN apk add --no-cache bash curl jq gcc git go musl-dev
 COPY go.mod go.sum ./
 RUN go mod download

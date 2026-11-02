@@ -35,8 +35,17 @@ jobs:
         with:
           go-version: "1.27.1"
 
+      - name: Setup Node
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '24.21.0'
+          cache: npm
+          cache-dependency-path: tgvio-web/package-lock.json
+
       - name: Setup web
-        run: bash build.sh dev web
+        run: |
+          bash build.sh dev web
+          echo "PPEE_WEB_VERSION=ppee-web-$(git rev-parse --short HEAD)" >> "$GITHUB_ENV"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           FRONTEND_REPO: ${{ vars.FRONTEND_REPO }}
@@ -55,7 +64,7 @@ jobs:
             github.com/OpenListTeam/OpenList/v4/internal/conf.GitAuthor=The OpenList Projects Contributors <noreply@oplist.org>
             github.com/OpenListTeam/OpenList/v4/internal/conf.GitCommit=$git_commit
             github.com/OpenListTeam/OpenList/v4/internal/conf.Version=$tag
-            github.com/OpenListTeam/OpenList/v4/internal/conf.WebVersion=rolling
+            github.com/OpenListTeam/OpenList/v4/internal/conf.WebVersion=${{ env.PPEE_WEB_VERSION }}
           output: openlist$ext
 
       - name: Verify musl binary is static

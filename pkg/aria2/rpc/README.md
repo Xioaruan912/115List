@@ -1,5 +1,17 @@
 # PACKAGE DOCUMENTATION
 
+## Integration tests
+
+The RPC integration tests connect to an external aria2 instance on
+`localhost:6800` and download a public Node.js metadata file. They are opt-in:
+
+```sh
+go test -tags=integration ./pkg/aria2/rpc
+```
+
+Run them only against a dedicated test aria2 instance with RPC enabled and an
+empty RPC secret. The default `go test ./...` does not require that service.
+
 **package rpc**
     
     import "github.com/matzoe/argo/rpc"

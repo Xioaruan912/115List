@@ -4,7 +4,12 @@ builtAt="$(date +'%F %T %z')"
 gitAuthor="The OpenList Projects Contributors <noreply@oplist.org>"
 gitCommit=$(git log --pretty=format:"%h" -1)
 
-# Set frontend repository, default to OpenListTeam/OpenList-Frontend
+# PPEE artifacts use this checkout's frontend unless explicitly overridden.
+ui="${OPENLIST_UI:-${TGVIO_UI:-tgvio}}"
+case "$ui" in
+  tgvio|official) ;;
+  *) echo "OPENLIST_UI must be tgvio or official" >&2; exit 2 ;;
+esac
 frontendRepo="${FRONTEND_REPO:-OpenListTeam/OpenList-Frontend}"
 
 githubAuthArgs=""
@@ -28,12 +33,19 @@ else
   git tag -d beta || true
   # Always true if there's no tag
   version=$(git describe --abbrev=0 --tags 2>/dev/null || echo "v0.0.0")
-  webVersion=$(eval "curl -fsSL --max-time 2 $githubAuthArgs \"https://api.github.com/repos/$frontendRepo/releases/latest\"" | grep "tag_name" | head -n 1 | awk -F ":" '{print $2}' | sed 's/\"//g;s/,//g;s/ //g')
+  if [ "$ui" = "official" ]; then
+    webVersion=$(eval "curl -fsSL --max-time 2 $githubAuthArgs \"https://api.github.com/repos/$frontendRepo/releases/latest\"" | grep "tag_name" | head -n 1 | awk -F ":" '{print $2}' | sed 's/\"//g;s/,//g;s/ //g')
+  fi
+fi
+if [ "$ui" = "tgvio" ]; then
+  webVersion="ppee-web-$gitCommit"
 fi
 
 echo "backend version: $version"
 echo "frontend version: $webVersion"
-if [ "$useLite" = true ]; then
+if [ "$ui" = "tgvio" ]; then
+  echo "using PPEE frontend (standard and lite artifact names share this UI)"
+elif [ "$useLite" = true ]; then
   echo "using lite frontend"
 else
   echo "using standard frontend"
@@ -123,6 +135,16 @@ FetchWebRelease() {
   rm -rf public/dist && mkdir -p public/dist
   tar -zxvf dist.tar.gz -C public/dist
   rm -rf dist.tar.gz
+}
+
+PrepareWeb() {
+  if [ "$ui" = "tgvio" ]; then
+    bash tgvio/prepare-web.sh
+  elif [ "$buildType" = "release" ]; then
+    FetchWebRelease
+  else
+    FetchWebRolling
+  fi
 }
 
 BuildWinArm64() {
@@ -637,7 +659,7 @@ for arg in "$@"; do
 done
 
 if [ "$buildType" = "dev" ]; then
-  FetchWebRolling
+  PrepareWeb
   if [ "$dockerType" = "docker" ]; then
     BuildDocker
   elif [ "$dockerType" = "docker-multiplatform" ]; then
@@ -648,11 +670,7 @@ if [ "$buildType" = "dev" ]; then
     BuildDev
   fi
 elif [ "$buildType" = "release" -o "$buildType" = "beta" ]; then
-  if [ "$buildType" = "beta" ]; then
-    FetchWebRolling
-  else
-    FetchWebRelease
-  fi
+  PrepareWeb
   if [ "$dockerType" = "docker" ]; then
     BuildDocker
   elif [ "$dockerType" = "docker-multiplatform" ]; then

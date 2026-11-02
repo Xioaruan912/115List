@@ -57,6 +57,8 @@ file.722225.xyz 用的 OpenList：官方 OpenList v4.2.7 + 这里的补丁和自
 - 挂载 115 文件夹：存储页「挂载 115 文件夹」借一个已登录的 115 存储的账号，点进网盘里的文件夹直接挂载，新存储复制它的登录和设置（Cookie 不经过浏览器）；编辑 115 存储时「根文件夹 ID」旁边可以「在网盘里选」。文件夹列表每次点击一次 115 列表请求，结果缓存 2 分钟，走统一限速（`server/handles/tgvio_mount.go`）。
 - 登录设备：每次登录是一台设备，存在 `data/tgvio/sessions.json`，重启不掉线；一直在用就一直有效，闲置超过设置 › 登录里的天数（默认 90 天）才要重新登录。账户资料里看自己的设备、退出某台或其他全部；管理员在用户编辑里看和退出任何人的设备。
 - 断点续传：32 MB 以上的文件先分块落到服务器 `data/tgvio/staged/`，关掉浏览器或服务器重启都不丢；再选同一个文件只补传缺的块，3 天没动静自动清理。传完由服务器任务推到网盘。
+- 已交给网盘上传任务的文件保留暂存内容与恢复记录，每次重试重新打开文件并核验当前权限，重启后恢复；只有网盘上传成功后才清理。正在运行的上传不能丢弃。进程恰好在远端成功、本地尚未记下成功时崩溃，允许覆盖的上传可能再执行一次；禁止覆盖的任务会保留源文件并报告目标已存在。
+- 自动整理保留普通笔记、说明和保存的网页，只清理明确广告与下载残留。手动整理、自动整理、清理与撤销对重叠目录互斥；手动批次结束即释放，中途断开的空闲批次保留 90 秒。撤销会先检查原名冲突，并支持从已完成的移动或改名处继续。
 - 多个根目录：用户的「根目录」可以一行一个，他的首页把它们并排列成文件夹（网页可用；WebDAV 仍只认单个根目录）。
 - 强制刷新：右键文件夹或 Dock 的刷新会重读网盘并提示结果；登录用户都能用，同一文件夹 5 秒最多一次。
 - 回收站清理：115 账户设了安全密钥时，清理前要输入 6 位安全密钥（只在本次浏览中记住）。
@@ -79,7 +81,11 @@ bash tgvio/build.sh                      # 默认嵌入 tgvio-web（先跑 tsc�
 OPENLIST_UI=official bash tgvio/build.sh    # 改嵌官方前端 v4.2.6
 ```
 
-需要 Go（/usr/local/go）、Node（/root/.local/bin）与干净的工作区。输出 `/root/build/openlist-tgvio/openlist-<commit>`；官方前端同时解压在 `/root/build/openlist-tgvio/web/official-v4.2.6/`，在 `data/config.json` 设 `"dist_dir"` 指向它并重启，即可不换二进制切回官方界面（清空 `dist_dir` 再重启切回）。
+需要 Go（/usr/local/go）、Node（/root/.local/bin）与干净的工作区。输出 `/root/build/openlist-tgvio/openlist-<commit>`。默认只构建自研前端，不下载官方前端；显式选择 `OPENLIST_UI=official` 时，官方前端同时解压在 `/root/build/openlist-tgvio/web/official-v4.2.6/`，在 `data/config.json` 设 `"dist_dir"` 指向它并重启，即可不换二进制切回官方界面（清空 `dist_dir` 再重启切回）。
+
+根目录 `build.sh`、GitHub 构建/发布与 Docker 构建也默认嵌入自研前端，先执行 `npm ci` 和 `npm run check`。它们保留 standard/lite 的产物命名，两者使用同一套 PPEE 前端；需要官方 standard/lite 前端时显式设置 `OPENLIST_UI=official`（Docker 使用 `--build-arg OPENLIST_UI=official`）。GitHub 的 PPEE Checks 在 main 推送与 PR 上执行前端检查、Go 测试和离线构建脚本回归测试。
+
+本地检查：`go test ./...`、`cd tgvio-web && npm run check`、`bash tgvio/build_test.sh`。aria2 RPC 的三个外部集成测试需专用 `localhost:6800` 服务与网络，显式执行 `go test -tags=integration ./pkg/aria2/rpc`；默认检查不依赖该服务。
 
 ## 升级（只换二进制）
 
