@@ -15,7 +15,6 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"syscall"
 	"time"
 
 	"github.com/OpenListTeam/OpenList/v4/cmd/flags"
@@ -30,6 +29,7 @@ import (
 	"github.com/OpenListTeam/OpenList/v4/server/common"
 	"github.com/OpenListTeam/tache"
 	"github.com/gin-gonic/gin"
+	"github.com/shirou/gopsutil/v4/disk"
 )
 
 // Staged uploads: resumable across closed browsers and server restarts.
@@ -199,11 +199,11 @@ func stagedFor(c *gin.Context, id string) (*stagedSession, bool) {
 }
 
 func freeBytes(dir string) int64 {
-	var st syscall.Statfs_t
-	if syscall.Statfs(dir, &st) != nil {
+	st, err := disk.Usage(dir)
+	if err != nil {
 		return -1
 	}
-	return int64(st.Bavail) * int64(st.Bsize)
+	return int64(st.Free)
 }
 
 // TgvioStagedInit: POST /api/fs/staged/init, headers like /fs/put (File-Path, X-File-Size, Overwrite, Last-Modified)

@@ -27,6 +27,16 @@ import (
 	"gorm.io/gorm"
 )
 
+func TestStagedFreeBytes(t *testing.T) {
+	dir := t.TempDir()
+	if free := freeBytes(dir); free <= 0 {
+		t.Fatalf("available bytes for temporary directory = %d", free)
+	}
+	if free := freeBytes(filepath.Join(dir, "missing")); free != -1 {
+		t.Fatalf("available bytes for missing directory = %d, want -1", free)
+	}
+}
+
 type stagedTestDriver struct {
 	local.Local
 	fail    bool

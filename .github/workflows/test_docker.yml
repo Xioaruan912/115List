@@ -14,8 +14,9 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  DOCKERHUB_ORG_NAME: ${{ vars.DOCKERHUB_ORG_NAME || 'openlistteam' }}
-  GHCR_ORG_NAME: ${{ vars.GHCR_ORG_NAME || 'openlistteam' }}
+  DOCKERHUB_ORG_NAME: ${{ vars.DOCKERHUB_ORG_NAME }}
+  DOCKERHUB_ENABLED: ${{ vars.DOCKERHUB_ORG_NAME != '' && secrets.DOCKERHUB_TOKEN != '' }}
+  GHCR_ORG_NAME: ${{ vars.GHCR_ORG_NAME || github.repository_owner }}
   IMAGE_NAME: openlist-git
   IMAGE_NAME_DOCKERHUB: openlist
   REGISTRY: ghcr.io
@@ -79,6 +80,7 @@ jobs:
     name: Release Docker image (Beta)
     runs-on: ubuntu-latest
     permissions:
+      contents: read
       packages: write
     strategy:
       matrix:
@@ -125,7 +127,7 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Login to DockerHub Container Registry
-        if: env.IMAGE_PUSH == 'true'
+        if: env.IMAGE_PUSH == 'true' && env.DOCKERHUB_ENABLED == 'true'
         uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4
         with:
           username: ${{ vars.DOCKERHUB_ORG_NAME_BACKUP || env.DOCKERHUB_ORG_NAME }}
@@ -137,7 +139,7 @@ jobs:
         with:
           images: |
             ${{ env.REGISTRY }}/${{ env.GHCR_ORG_NAME }}/${{ env.IMAGE_NAME }}
-            ${{ env.DOCKERHUB_ORG_NAME }}/${{ env.IMAGE_NAME_DOCKERHUB }}
+            ${{ env.DOCKERHUB_ORG_NAME }}/${{ env.IMAGE_NAME_DOCKERHUB }},enable=${{ env.DOCKERHUB_ENABLED }}
           tags: ${{ env.IMAGE_TAGS_BETA }}
           flavor: |
             ${{ matrix.tag_favor }}
