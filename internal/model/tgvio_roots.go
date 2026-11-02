@@ -1,6 +1,7 @@
 package model
 
 import (
+	"fmt"
 	stdpath "path"
 	"strings"
 
@@ -45,6 +46,20 @@ func CleanBasePath(raw string) string {
 	return strings.Join(roots, "\n")
 }
 
+// ValidateBasePath rejects roots that would share the same virtual entry.
+// Validate after cleaning so duplicate paths and a whole-drive root stay valid.
+func ValidateBasePath(raw string) error {
+	seen := map[string]string{}
+	for _, root := range strings.Split(CleanBasePath(raw), "\n") {
+		name := RootName(root)
+		if previous, ok := seen[name]; ok {
+			return fmt.Errorf("根目录名称重复：%s（%s 和 %s），请选择末级文件夹名称不同的根目录", name, previous, root)
+		}
+		seen[name] = root
+	}
+	return nil
+}
+
 // Roots lists the user's root folders (real paths).
 func (u *User) Roots() []string {
 	return strings.Split(CleanBasePath(u.BasePath), "\n")
@@ -62,6 +77,9 @@ func RootName(root string) string {
 }
 
 func (u *User) joinMulti(reqPath string) (string, error) {
+	if err := ValidateBasePath(u.BasePath); err != nil {
+		return "", errs.PermissionDenied
+	}
 	isRelative := strings.Contains(reqPath, "..")
 	clean := utils.FixAndCleanPath(reqPath)
 	if isRelative && !strings.Contains(clean, "..") {
@@ -81,6 +99,9 @@ func (u *User) joinMulti(reqPath string) (string, error) {
 
 // ShowPath turns a real path into the path this user sees, if they see it.
 func (u *User) ShowPath(real string) (string, bool) {
+	if err := ValidateBasePath(u.BasePath); err != nil {
+		return "", false
+	}
 	real = utils.FixAndCleanPath(real)
 	roots := u.Roots()
 	for _, root := range roots {

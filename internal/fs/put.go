@@ -24,6 +24,7 @@ type UploadTask struct {
 	storage          driver.Driver
 	dstDirActualPath string
 	file             model.FileStreamer
+	run              func(context.Context, driver.UpdateProgress) error
 }
 
 func (t *UploadTask) GetName() string {
@@ -38,7 +39,11 @@ func (t *UploadTask) Run() error {
 	t.ClearEndTime()
 	t.SetStartTime(time.Now())
 	defer func() { t.SetEndTime(time.Now()) }()
-	return op.Put(context.WithValue(t.Ctx(), conf.SkipHookKey, struct{}{}), t.storage, t.dstDirActualPath, t.file, t.SetProgress)
+	ctx := context.WithValue(t.Ctx(), conf.SkipHookKey, struct{}{})
+	if t.run != nil {
+		return t.run(ctx, t.SetProgress)
+	}
+	return op.Put(ctx, t.storage, t.dstDirActualPath, t.file, t.SetProgress)
 }
 
 func (t *UploadTask) OnSucceeded() {
@@ -61,6 +66,12 @@ var UploadTaskManager *tache.Manager[*UploadTask]
 
 // putAsTask add as a put task and return immediately
 func putAsTask(ctx context.Context, dstDirPath string, file model.FileStreamer) (task.TaskExtensionInfo, error) {
+	return PutAsTaskWithRunner(ctx, dstDirPath, file, nil)
+}
+
+// PutAsTaskWithRunner queues a durable source whose runner reopens and validates
+// its input on each attempt. file supplies task metadata, not the attempt reader.
+func PutAsTaskWithRunner(ctx context.Context, dstDirPath string, file model.FileStreamer, run func(context.Context, driver.UpdateProgress) error) (task.TaskExtensionInfo, error) {
 	storage, dstDirActualPath, err := op.GetStorageAndActualPath(dstDirPath)
 	if err != nil {
 		return nil, errors.WithMessage(err, "failed get storage")
@@ -68,7 +79,7 @@ func putAsTask(ctx context.Context, dstDirPath string, file model.FileStreamer) 
 	if storage.Config().NoUpload {
 		return nil, errors.WithStack(errs.UploadNotSupported)
 	}
-	if file.NeedStore() {
+	if run == nil && file.NeedStore() {
 		_, err := file.CacheFullAndWriter(nil, nil)
 		if err != nil {
 			return nil, errors.Wrapf(err, "failed to create temp file")
@@ -85,6 +96,7 @@ func putAsTask(ctx context.Context, dstDirPath string, file model.FileStreamer) 
 		storage:          storage,
 		dstDirActualPath: dstDirActualPath,
 		file:             file,
+		run:              run,
 	}
 	t.SetTotalBytes(file.GetSize())
 	task_group.TransferCoordinator.AddTask(stdpath.Join(storage.GetStorage().MountPath, dstDirActualPath), nil)

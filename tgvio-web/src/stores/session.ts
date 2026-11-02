@@ -6,6 +6,8 @@ import { queryClient } from "../lib/query";
 import type { Me, Settings } from "../lib/types";
 import { reason } from "../lib/errors";
 import { forgetPasswords } from "../hooks/useDir";
+import { syncProgress } from "../lib/progress";
+import { isGuest } from "../lib/perm";
 
 type Status = "loading" | "ready" | "login" | "error";
 
@@ -21,41 +23,59 @@ interface SessionState {
   browseAsGuest: () => Promise<void>;
 }
 
+let sessionGeneration = 0;
+
 export const useSession = create<SessionState>((set, getState) => ({
   status: "loading",
   me: null,
   settings: {},
   error: "",
   async boot() {
+    const generation = ++sessionGeneration;
     try {
       const settings = await auth.publicSettings().catch(() => ({} as Settings));
+      if (generation !== sessionGeneration) return;
       set({ settings });
       if (settings.site_title) document.title = settings.site_title;
       void applyTouchIcon(settings);
       const me = await auth.me();
+      if (generation !== sessionGeneration) return;
+      syncProgress(isGuest(me) ? null : `${me.id}:${me.username}`);
       set({ me, status: "ready", error: "" });
     } catch (error) {
+      if (generation !== sessionGeneration) return;
       const message = error instanceof Error ? error.message : String(error);
       if (getState().status === "login") return; // the 401 handler already moved us
       set({ status: "login", me: null, error: /401|登录|token/i.test(message) ? "" : reason(error) });
     }
   },
   async signIn(username, password, otp) {
+    const generation = ++sessionGeneration;
     const token = await auth.login(username, password, otp);
+    if (generation !== sessionGeneration) return;
+    syncProgress(null);
     setToken(token);
     // A guest's "/" is the guest's base folder: nothing seen before may be reused.
     queryClient.clear();
     const me = await auth.me();
+    if (generation !== sessionGeneration) return;
+    syncProgress(isGuest(me) ? null : `${me.id}:${me.username}`);
     set({ me, status: "ready", error: "" });
   },
   async browseAsGuest() {
+    const generation = ++sessionGeneration;
+    syncProgress(null);
     setToken("");
     queryClient.clear();
     const me = await auth.me();
+    if (generation !== sessionGeneration) return;
     set({ me, status: "ready", error: "" });
   },
   async signOut() {
+    const generation = ++sessionGeneration;
+    syncProgress(null);
     await auth.logout();
+    if (generation !== sessionGeneration) return;
     setToken("");
     forgetPasswords();
     queryClient.clear();
@@ -64,6 +84,8 @@ export const useSession = create<SessionState>((set, getState) => ({
 }));
 
 onUnauthorized(() => {
+  sessionGeneration++;
+  syncProgress(null);
   setToken("");
   useSession.setState({ status: "login", me: null });
 });

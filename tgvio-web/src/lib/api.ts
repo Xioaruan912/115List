@@ -43,7 +43,7 @@ function url(path: string, query?: Query): string {
   return text ? `${out}?${text}` : out;
 }
 
-async function parse<T>(response: Response): Promise<T> {
+async function parse<T>(response: Response, requestToken: string): Promise<T> {
   let body: ApiResponse<T>;
   try {
     body = await response.json() as ApiResponse<T>;
@@ -51,7 +51,7 @@ async function parse<T>(response: Response): Promise<T> {
     throw new ApiError(response.status, `服务器返回 ${response.status}`);
   }
   if (body.code === 401) {
-    unauthorized();
+    if (getToken() === requestToken) unauthorized();
     throw new ApiError(401, body.message || "请重新登录");
   }
   if (body.code !== 200) throw new ApiError(body.code, body.message || `请求失败 (${body.code})`);
@@ -59,16 +59,18 @@ async function parse<T>(response: Response): Promise<T> {
 }
 
 export async function get<T>(path: string, query?: Query, signal?: AbortSignal): Promise<T> {
-  return parse<T>(await fetch(url(path, query), { headers: authHeaders(), signal }));
+  const headers = authHeaders();
+  return parse<T>(await fetch(url(path, query), { headers, signal }), headers.Authorization ?? "");
 }
 
 export async function post<T>(path: string, body?: unknown, query?: Query, signal?: AbortSignal): Promise<T> {
+  const headers = authHeaders({ "Content-Type": "application/json" });
   return parse<T>(await fetch(url(path, query), {
     method: "POST",
-    headers: authHeaders({ "Content-Type": "application/json" }),
+    headers,
     body: body === undefined ? undefined : JSON.stringify(body),
     signal,
-  }));
+  }), headers.Authorization ?? "");
 }
 
 export { url as apiUrl };

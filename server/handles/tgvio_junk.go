@@ -101,6 +101,11 @@ func sweepFolder(job sweepJob) {
 			log.Errorf("tgvio junk sweep: %v", r)
 		}
 	}()
+	release, ok := acquireOrganize([]string{job.dir}, "", false)
+	if !ok {
+		return
+	}
+	defer release()
 	// A download still landing, or waiting for the organizer: the organizer deals with it.
 	if busyUnder(downloadingInto(), job.dir) {
 		return

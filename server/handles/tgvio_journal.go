@@ -71,7 +71,9 @@ func journalSaveLocked() {
 	}
 	if raw, err := json.Marshal(journal); err == nil {
 		_ = os.MkdirAll(filepath.Dir(journalFile()), 0o700)
-		_ = os.WriteFile(journalFile(), raw, 0o600)
+		if os.WriteFile(journalFile()+".tmp", raw, 0o600) == nil {
+			_ = os.Rename(journalFile()+".tmp", journalFile())
+		}
 	}
 }
 
@@ -167,14 +169,25 @@ func TgvioRenameUndo(c *gin.Context) {
 		return
 	}
 	total := len(b.Ops)
+	paths := make([]string, 0, total)
 	for _, op := range b.Ops {
 		if !user.Sees(op.Dir) {
 			journalMu.Unlock()
 			common.ErrorResp(c, errs.PermissionDenied, 403)
 			return
 		}
+		paths = append(paths, op.Dir)
+		if op.Op == "up" {
+			paths = append(paths, stdpath.Dir(op.Dir))
+		}
 	}
 	journalMu.Unlock()
+	release, ok := acquireOrganize(paths, manualOwner(user.ID, req.ID), false)
+	if !ok {
+		common.ErrorStrResp(c, "这个文件夹正在整理或撤销，等它做完再试", 409)
+		return
+	}
+	defer release()
 	ctx := context.WithoutCancel(c.Request.Context()) // put back to the end, as a run is done to its end
 	// Last change first. Each step is read again: putting a change back moves
 	// paths, and the journal follows (followPaths), so later steps see where things are now.
@@ -205,25 +218,9 @@ func TgvioRenameUndo(c *gin.Context) {
 func undoOp(ctx context.Context, op journalOp) error {
 	switch op.Op {
 	case "rename":
-		return renameIn(ctx, op.Dir, op.New, op.Old)
+		return undoRename(ctx, op.Dir, op.New, op.Old, false)
 	case "place":
-		folder := stdpath.Join(op.Dir, op.Into)
-		if res, _ := fs.Get(ctx, stdpath.Join(op.Dir, op.New), &fs.GetArgs{NoLog: true}); res != nil {
-			return fmt.Errorf("file [%s] exists", op.New)
-		}
-		if err := moveRetrying(ctx, stdpath.Join(folder, op.New), op.Dir); err != nil {
-			return err
-		}
-		posters().Moved(folder, op.Dir, op.New)
-		if op.Old != op.New {
-			if err := renameIn(ctx, op.Dir, op.New, op.Old); err != nil {
-				return err
-			}
-		}
-		if left, err := fs.List(ctx, folder, &fs.ListArgs{Refresh: true}); err == nil && len(left) == 0 {
-			_ = fs.Remove(ctx, folder)
-		}
-		return nil
+		return undoPlaced(ctx, op.Dir, op.Into, op.New, op.Old, false)
 	case "unwrap":
 		wrapper := stdpath.Join(op.Dir, op.Old)
 		if obj, _ := fs.Get(ctx, wrapper, &fs.GetArgs{NoLog: true}); obj == nil {
@@ -235,42 +232,117 @@ func undoOp(ctx context.Context, op journalOp) error {
 			if i > 0 {
 				time.Sleep(time.Second)
 			}
-			if err := moveRetrying(ctx, stdpath.Join(op.Dir, name), wrapper); err != nil {
+			if err := undoMove(ctx, stdpath.Join(op.Dir, name), wrapper); err != nil {
 				return err
 			}
-			posters().Moved(op.Dir, wrapper, name)
 		}
 		return nil
 	case "up":
 		// Moved up out of a season's folder: back in.
 		up := stdpath.Dir(op.Dir)
-		if err := moveRetrying(ctx, stdpath.Join(up, op.Old), op.Dir); err != nil {
-			return err
-		}
-		posters().Moved(up, op.Dir, op.Old)
-		return nil
+		return undoMove(ctx, stdpath.Join(up, op.Old), op.Dir)
 	case "folder":
 		if box, leaf, ok := strings.Cut(op.New, "/"); ok {
 			// Put into its series' folder: out again, its old name back, and the series' folder goes if empty.
-			folder := stdpath.Join(op.Dir, box)
-			if err := moveRetrying(ctx, stdpath.Join(folder, leaf), op.Dir); err != nil {
-				return err
-			}
-			posters().Moved(folder, op.Dir, leaf)
-			if leaf != op.Old {
-				if _, err := renameFolderTo(ctx, stdpath.Join(op.Dir, leaf), op.Old, nil); err != nil {
-					return err
-				}
-			}
-			if left, err := fs.List(ctx, folder, &fs.ListArgs{Refresh: true}); err == nil && len(left) == 0 {
-				_ = fs.Remove(ctx, folder)
-			}
-			return nil
+			return undoPlaced(ctx, op.Dir, box, leaf, op.Old, true)
 		}
-		_, err := renameFolderTo(ctx, stdpath.Join(op.Dir, op.New), op.Old, nil)
-		return err
+		return undoRename(ctx, op.Dir, op.New, op.Old, true)
 	}
 	return fmt.Errorf("unknown change %q", op.Op)
+}
+
+func undoExists(ctx context.Context, path string) (bool, error) {
+	_, err := fs.Get(ctx, path, &fs.GetArgs{NoLog: true})
+	if errs.IsObjectNotFound(err) {
+		return false, nil
+	}
+	return err == nil, err
+}
+
+// A request can stop after a drive write but before its journal entry is saved.
+// An absent source with its destination present is already restored; two
+// existing objects are always a conflict, never an invitation to overwrite.
+func undoMove(ctx context.Context, source, dir string) error {
+	from, err := undoExists(ctx, source)
+	if err != nil {
+		return err
+	}
+	to, err := undoExists(ctx, stdpath.Join(dir, stdpath.Base(source)))
+	if err != nil {
+		return err
+	}
+	if to {
+		if !from {
+			return nil
+		}
+		return fmt.Errorf("file [%s] exists", stdpath.Join(dir, stdpath.Base(source)))
+	}
+	if !from {
+		return errs.ObjectNotFound
+	}
+	if err := moveRetrying(ctx, source, dir); err != nil {
+		return err
+	}
+	posters().Moved(stdpath.Dir(source), dir, stdpath.Base(source))
+	return nil
+}
+
+func undoRename(ctx context.Context, dir, current, original string, folder bool) error {
+	if current == original {
+		return nil
+	}
+	from, err := undoExists(ctx, stdpath.Join(dir, current))
+	if err != nil {
+		return err
+	}
+	to, err := undoExists(ctx, stdpath.Join(dir, original))
+	if err != nil {
+		return err
+	}
+	if !from && to {
+		return nil
+	}
+	if folder {
+		_, err = renameFolderTo(ctx, stdpath.Join(dir, current), original, nil)
+		return err
+	}
+	return renameIn(ctx, dir, current, original)
+}
+
+func undoPlaced(ctx context.Context, dir, box, current, original string, folder bool) error {
+	wrapper := stdpath.Join(dir, box)
+	if current != original {
+		to, err := undoExists(ctx, stdpath.Join(dir, original))
+		if err != nil {
+			return err
+		}
+		if to {
+			from, err := undoExists(ctx, stdpath.Join(wrapper, current))
+			if err != nil {
+				return err
+			}
+			middle, err := undoExists(ctx, stdpath.Join(dir, current))
+			if err != nil {
+				return err
+			}
+			if from || middle {
+				return fmt.Errorf("file [%s] exists", original)
+			}
+		} else {
+			if err := undoMove(ctx, stdpath.Join(wrapper, current), dir); err != nil {
+				return err
+			}
+			if err := undoRename(ctx, dir, current, original, folder); err != nil {
+				return err
+			}
+		}
+	} else if err := undoMove(ctx, stdpath.Join(wrapper, current), dir); err != nil {
+		return err
+	}
+	if left, err := fs.List(ctx, wrapper, &fs.ListArgs{Refresh: true}); err == nil && len(left) == 0 {
+		_ = fs.Remove(ctx, wrapper)
+	}
+	return nil
 }
 
 // followPaths keeps 继续观看 and the journal right when a path changes (tgvio.PathMoved).

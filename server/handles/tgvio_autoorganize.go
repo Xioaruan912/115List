@@ -194,11 +194,12 @@ func autoOrganizeRound() {
 		if at, ok := autoLanding[dir]; ok && time.Since(at) < retry {
 			continue
 		}
-		if manualBusy(dir) {
-			continue // a person is organizing it right now: next round
-		}
 		setActive(dir, "organizing")
 		done, final, why, err := autoOrganize(ctx, dir)
+		if why.need == "busy" {
+			setActive(dir, "")
+			continue
+		}
 		if err != nil {
 			log.Warnf("tgvio auto organize %s: %v", dir, err)
 			noteAuto(autoNote{Path: final, At: time.Now(), Why: "error"})
@@ -242,7 +243,7 @@ func autoOrganizeRound() {
 func mergeIntoSeries(ctx context.Context, dir, final string) {
 	parent := stdpath.Dir(final)
 	made := stdpath.Dir(dir) != parent // put into its series' folder just now
-	if !made && !posters().IsSeriesFolder(parent) || isLibraryRoot(parent) || !posters().InLibrary(parent) || manualBusy(parent) {
+	if !made && !posters().IsSeriesFolder(parent) || isLibraryRoot(parent) || !posters().InLibrary(parent) {
 		return
 	}
 	setActive(parent, "organizing")
@@ -341,6 +342,11 @@ var lastAutoBatch string // the journal run autoOrganize used last (one round at
 type autoWhy struct{ need, folder string }
 
 func autoOrganize(ctx context.Context, root string) (done bool, final string, why autoWhy, err error) {
+	release, ok := acquireOrganize([]string{root, stdpath.Dir(root)}, "", false)
+	if !ok {
+		return false, root, autoWhy{need: "busy"}, nil
+	}
+	defer release()
 	tree, err := renameTreeOf(ctx, root, true)
 	if err != nil {
 		return false, root, why, err
@@ -513,55 +519,4 @@ func TgvioOrganizeRecent(c *gin.Context) {
 		}
 	}
 	common.SuccessResp(c, gin.H{"items": out, "active": active, "removed": removed})
-}
-
-// Two runs on one folder at once (the organizer and a person's 整理, or two
-// people) undo each other's moves and stack folders. A person's run holds the
-// folder while it goes (each request refreshes it); the organizer leaves it
-// alone meanwhile, and a person is told to wait while the organizer works.
-var (
-	manualMu   sync.Mutex
-	manualRuns = map[string]time.Time{} // real path -> last request of a person's run there
-)
-
-const manualHold = 90 * time.Second
-
-func overlaps(a, b string) bool {
-	return a == b || strings.HasPrefix(a, b+"/") || strings.HasPrefix(b, a+"/")
-}
-
-// holdManual notes a person's 整理 request on dir.
-func holdManual(dir string) {
-	manualMu.Lock()
-	defer manualMu.Unlock()
-	manualRuns[dir] = time.Now()
-	for p, at := range manualRuns {
-		if time.Since(at) > manualHold {
-			delete(manualRuns, p)
-		}
-	}
-}
-
-// manualBusy: a person is organizing dir or something in or above it.
-func manualBusy(dir string) bool {
-	manualMu.Lock()
-	defer manualMu.Unlock()
-	for p, at := range manualRuns {
-		if time.Since(at) < manualHold && overlaps(p, dir) {
-			return true
-		}
-	}
-	return false
-}
-
-// autoBusy: the organizer is working on dir or something in or above it.
-func autoBusy(dir string) bool {
-	autoMu.Lock()
-	defer autoMu.Unlock()
-	for p, state := range autoActive {
-		if state == "organizing" && overlaps(p, dir) {
-			return true
-		}
-	}
-	return false
 }

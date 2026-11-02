@@ -1,6 +1,11 @@
 package model
 
-import "testing"
+import (
+	"errors"
+	"testing"
+
+	"github.com/OpenListTeam/OpenList/v4/internal/errs"
+)
 
 func TestRoots(t *testing.T) {
 	one := &User{BasePath: "/115/读书"}
@@ -40,5 +45,36 @@ func TestRoots(t *testing.T) {
 	}
 	if CleanBasePath("/a\n/") != "/" {
 		t.Fatal("/ swallows the rest")
+	}
+}
+
+func TestAmbiguousRootsFailClosed(t *testing.T) {
+	u := &User{BasePath: "/disk-a/Movies\n/disk-b/Movies"}
+	if got, err := u.JoinPath("/Movies/demo.mkv"); !errors.Is(err, errs.PermissionDenied) || got != "" {
+		t.Errorf("ambiguous JoinPath = %q, %v; want permission denied", got, err)
+	}
+	for _, real := range []string{"/disk-a/Movies/demo.mkv", "/disk-b/Movies/demo.mkv"} {
+		if got, ok := u.ShowPath(real); ok || got != "" {
+			t.Errorf("ambiguous ShowPath(%q) = %q, %v", real, got, ok)
+		}
+		if u.Sees(real) {
+			t.Errorf("ambiguous roots must not expose %q", real)
+		}
+	}
+}
+
+func TestUniqueRootsRoundTrip(t *testing.T) {
+	u := &User{BasePath: "/disk-a/Movies\n/disk-b/Shows"}
+	for _, tt := range []struct{ real, shown string }{
+		{"/disk-a/Movies/demo.mkv", "/Movies/demo.mkv"},
+		{"/disk-b/Shows/demo.mkv", "/Shows/demo.mkv"},
+	} {
+		got, ok := u.ShowPath(tt.real)
+		if !ok || got != tt.shown {
+			t.Fatalf("ShowPath(%q) = %q, %v", tt.real, got, ok)
+		}
+		if real, err := u.JoinPath(got); err != nil || real != tt.real {
+			t.Errorf("JoinPath(%q) = %q, %v; want %q", got, real, err, tt.real)
+		}
 	}
 }

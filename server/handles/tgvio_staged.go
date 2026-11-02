@@ -1,9 +1,11 @@
 package handles
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/url"
@@ -18,6 +20,7 @@ import (
 
 	"github.com/OpenListTeam/OpenList/v4/cmd/flags"
 	"github.com/OpenListTeam/OpenList/v4/internal/conf"
+	"github.com/OpenListTeam/OpenList/v4/internal/driver"
 	"github.com/OpenListTeam/OpenList/v4/internal/errs"
 	"github.com/OpenListTeam/OpenList/v4/internal/fs"
 	"github.com/OpenListTeam/OpenList/v4/internal/model"
@@ -25,8 +28,8 @@ import (
 	"github.com/OpenListTeam/OpenList/v4/internal/stream"
 	"github.com/OpenListTeam/OpenList/v4/pkg/utils"
 	"github.com/OpenListTeam/OpenList/v4/server/common"
+	"github.com/OpenListTeam/tache"
 	"github.com/gin-gonic/gin"
-	log "github.com/sirupsen/logrus"
 )
 
 // Staged uploads: resumable across closed browsers and server restarts.
@@ -58,6 +61,11 @@ type stagedSession struct {
 	Created   time.Time `json:"created"`
 	Updated   time.Time `json:"updated"`
 	Done      bool      `json:"done"`
+	HandedOff bool      `json:"handed_off,omitempty"`
+
+	task      *fs.UploadTask
+	running   bool
+	abandoned bool
 
 	mu sync.Mutex
 }
@@ -112,6 +120,10 @@ func (s *stagedSession) snapshot() stagedSnapshot {
 	if start >= 0 {
 		snap.Received = append(snap.Received, [2]int{start, len(s.Have) - 1})
 	}
+	if s.task != nil {
+		info := getTaskInfo(s.task)
+		snap.Task = &info
+	}
 	return snap
 }
 
@@ -153,25 +165,22 @@ func loadStaged() {
 		if err != nil || json.Unmarshal(raw, &s) != nil || s.ID == "" {
 			continue
 		}
-		if s.Done || time.Since(s.Updated) > stagedTTL {
+		if entry.Name() != s.ID+".json" || filepath.Base(s.ID) != s.ID || s.Size <= 0 || s.ChunkSize <= 0 || s.ChunkSize > stagedChunk || len(s.Have) != s.total() {
+			continue
+		}
+		if s.Done || (!s.HandedOff && time.Since(s.Updated) > stagedTTL) {
 			s.remove()
+			continue
+		}
+		info, err := os.Stat(s.partPath())
+		if err != nil || !info.Mode().IsRegular() || info.Size() != s.Size {
 			continue
 		}
 		staged.byID[s.ID] = &s
 	}
 	go func() {
 		for range time.Tick(time.Hour) {
-			staged.Lock()
-			for id, s := range staged.byID {
-				s.mu.Lock()
-				expired := !s.Done && time.Since(s.Updated) > stagedTTL
-				s.mu.Unlock()
-				if expired {
-					s.remove()
-					delete(staged.byID, id)
-				}
-			}
-			staged.Unlock()
+			gcStaged(time.Now())
 		}
 	}()
 }
@@ -234,10 +243,9 @@ func TgvioStagedInit(c *gin.Context) {
 		return
 	}
 
-	staged.Lock()
-	for _, s := range staged.byID {
+	for _, s := range stagedSessions() {
 		s.mu.Lock()
-		same := s.UserID == user.ID && s.Path == path && s.Size == size && s.Modified == modified && !s.Done
+		same := s.UserID == user.ID && s.Path == path && s.Size == size && s.Modified == modified && !s.Done && !s.abandoned
 		var snap stagedSnapshot
 		if same {
 			s.Updated = time.Now()
@@ -245,12 +253,10 @@ func TgvioStagedInit(c *gin.Context) {
 		}
 		s.mu.Unlock()
 		if same {
-			staged.Unlock()
 			common.SuccessResp(c, gin.H{"resumed": true, "session": snap})
 			return
 		}
 	}
-	staged.Unlock()
 
 	if !overwrite {
 		if res, _ := fs.Get(c.Request.Context(), path, &fs.GetArgs{NoLog: true}); res != nil {
@@ -308,9 +314,18 @@ func TgvioStagedChunk(c *gin.Context) {
 		common.ErrorStrResp(c, fmt.Sprintf("chunk %d: expected %d bytes, got %d", index, want, n), 400)
 		return
 	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.Done || s.abandoned || s.HandedOff {
+		common.ErrorStrResp(c, "upload is already handed off", 409)
+		return
+	}
 	file, err := os.OpenFile(s.partPath(), os.O_WRONLY, 0o600)
 	if err == nil {
 		_, err = file.WriteAt(buf, int64(index)*s.ChunkSize)
+		if err == nil {
+			err = file.Sync()
+		}
 		if cerr := file.Close(); err == nil {
 			err = cerr
 		}
@@ -319,12 +334,10 @@ func TgvioStagedChunk(c *gin.Context) {
 		common.ErrorResp(c, err, 500)
 		return
 	}
-	s.mu.Lock()
 	s.Have[index] = 1
 	s.Updated = time.Now()
 	err = s.save()
 	snap := s.snapshot()
-	s.mu.Unlock()
 	if err != nil {
 		common.ErrorResp(c, err, 500)
 		return
@@ -349,15 +362,13 @@ func TgvioStagedList(c *gin.Context) {
 	loadStaged()
 	user := c.Request.Context().Value(conf.UserKey).(*model.User)
 	out := []stagedSnapshot{}
-	staged.Lock()
-	for _, s := range staged.byID {
+	for _, s := range stagedSessions() {
 		s.mu.Lock()
 		if s.UserID == user.ID && !s.Done {
 			out = append(out, s.snapshot())
 		}
 		s.mu.Unlock()
 	}
-	staged.Unlock()
 	common.SuccessResp(c, out)
 }
 
@@ -376,43 +387,16 @@ func TgvioStagedComplete(c *gin.Context) {
 			return
 		}
 	}
-	file, err := os.Open(s.partPath())
-	if err != nil {
+	if s.Done || s.abandoned {
+		common.ErrorStrResp(c, "upload session is finished", 409)
+		return
+	}
+	user := c.Request.Context().Value(conf.UserKey).(*model.User)
+	if err := queueStaged(c.Request.Context(), user, s); err != nil {
 		common.ErrorResp(c, err, 500)
 		return
 	}
-	dir, name := stdpath.Split(s.Path)
-	part := s.partPath()
-	fileStream := &stream.FileStream{
-		Obj:          &model.Object{Name: name, Size: s.Size, Modified: time.UnixMilli(s.Modified)},
-		Reader:       file, // an *os.File: the task uses it without copying it again
-		Mimetype:     s.Mimetype,
-		WebPutAsTask: true,
-	}
-	if s.Modified == 0 {
-		fileStream.Obj.(*model.Object).Modified = time.Now()
-	}
-	fileStream.Closers.Add(utils.CloseFunc(func() error {
-		_ = file.Close()
-		return os.Remove(part)
-	}))
-	t, err := fs.PutAsTask(c.Request.Context(), dir, fileStream)
-	if err != nil {
-		_ = file.Close()
-		common.ErrorResp(c, err, 500)
-		return
-	}
-	s.Done = true
-	_ = os.Remove(filepath.Join(stagedDir(), s.ID+".json"))
-	staged.Lock()
-	delete(staged.byID, s.ID)
-	staged.Unlock()
 	snap := s.snapshot()
-	if t != nil {
-		info := getTaskInfo(t)
-		snap.Task = &info
-	}
-	log.Infof("staged upload %s complete: %s (%d bytes)", s.ID, s.Path, s.Size)
 	common.SuccessResp(c, snap)
 }
 
@@ -423,10 +407,214 @@ func TgvioStagedAbort(c *gin.Context) {
 		return
 	}
 	s.mu.Lock()
+	if s.active() {
+		s.mu.Unlock()
+		common.ErrorStrResp(c, "upload task is still active", 409)
+		return
+	}
+	s.abandoned = true
 	s.remove()
 	s.mu.Unlock()
-	staged.Lock()
-	delete(staged.byID, s.ID)
-	staged.Unlock()
+	forgetStaged(s)
 	common.SuccessResp(c)
+}
+
+// Never wait for a session while holding the map lock. Completion, abort and
+// success callbacks can all take the session lock independently of listing.
+func stagedSessions() []*stagedSession {
+	staged.Lock()
+	defer staged.Unlock()
+	out := make([]*stagedSession, 0, len(staged.byID))
+	for _, s := range staged.byID {
+		out = append(out, s)
+	}
+	return out
+}
+
+func forgetStaged(s *stagedSession) {
+	staged.Lock()
+	if staged.byID[s.ID] == s {
+		delete(staged.byID, s.ID)
+	}
+	staged.Unlock()
+}
+
+// Called with s.mu held. Even cancellation cannot release the source until the
+// running attempt has returned; some drivers take time to notice cancellation.
+func (s *stagedSession) active() bool {
+	if s.running {
+		return true
+	}
+	if s.task == nil {
+		return false
+	}
+	switch s.task.GetState() {
+	case tache.StateSucceeded, tache.StateFailed, tache.StateCanceled:
+		return false
+	default:
+		return true
+	}
+}
+
+func gcStaged(now time.Time) {
+	for _, s := range stagedSessions() {
+		s.mu.Lock()
+		expired := !s.active() && now.Sub(s.Updated) > stagedTTL
+		if expired {
+			s.abandoned = true
+			s.remove()
+		}
+		s.mu.Unlock()
+		if expired {
+			forgetStaged(s)
+		}
+	}
+}
+
+// queueStaged requires the session lock. Persist intent before submitting to the
+// volatile manager, so a process restart cannot lose a handed-off file.
+func queueStaged(ctx context.Context, user *model.User, s *stagedSession) error {
+	if s.task != nil {
+		if _, exists := fs.UploadTaskManager.GetByID(s.task.GetID()); exists || s.active() {
+			return nil
+		}
+	}
+	s.HandedOff = true
+	s.Updated = time.Now()
+	if err := s.save(); err != nil {
+		return err
+	}
+	_, name := stdpath.Split(s.Path)
+	metadata := &stream.FileStream{Obj: &model.Object{Name: name, Size: s.Size, Modified: time.UnixMilli(s.Modified)}, Mimetype: s.Mimetype}
+	ctx = context.WithValue(ctx, conf.UserKey, user)
+	t, err := fs.PutAsTaskWithRunner(ctx, stdpath.Dir(s.Path), metadata, s.upload)
+	if err != nil {
+		return err
+	}
+	s.task = t.(*fs.UploadTask)
+	return nil
+}
+
+func stagedCanUpload(user *model.User, s *stagedSession) error {
+	if user == nil || user.ID != s.UserID || user.Disabled || user.IsGuest() {
+		return errs.PermissionDenied
+	}
+	current, err := user.JoinPath(s.Shown)
+	if err != nil || current != s.Path {
+		return errs.PermissionDenied
+	}
+	parent := stdpath.Dir(current)
+	meta, err := op.GetNearestMeta(parent)
+	if err != nil && !errors.Is(err, errs.MetaNotFound) {
+		return err
+	}
+	if (!user.CanWriteContent() && !common.CanWriteContentBypassUserPerms(meta, parent)) || !common.CanWrite(user, meta, parent) {
+		return errs.PermissionDenied
+	}
+	return nil
+}
+
+// Each invocation is a fresh attempt. op.Put closes readers even on errors;
+// source cleanup belongs exclusively to confirmed remote success.
+func (s *stagedSession) upload(ctx context.Context, up driver.UpdateProgress) error {
+	s.mu.Lock()
+	if s.abandoned || s.running {
+		s.mu.Unlock()
+		return errors.New("upload session is not available")
+	}
+	s.running = true
+	alreadyDone := s.Done
+	s.mu.Unlock()
+	defer func() { s.mu.Lock(); s.running = false; s.mu.Unlock() }()
+	if !alreadyDone {
+		user, err := op.GetUserById(s.UserID)
+		if err != nil {
+			return err
+		}
+		if err := stagedCanUpload(user, s); err != nil {
+			return err
+		}
+		ctx = context.WithValue(ctx, conf.UserKey, user)
+		storage, actual, err := op.GetStorageAndActualPath(stdpath.Dir(s.Path))
+		if err != nil {
+			return err
+		}
+		if storage.Config().NoUpload {
+			return errs.UploadNotSupported
+		}
+		if !s.Overwrite {
+			_, err := op.GetUnwrap(ctx, storage, stdpath.Join(actual, stdpath.Base(s.Path)))
+			if err == nil {
+				return errors.New("file exists")
+			}
+			if !errs.IsObjectNotFound(err) {
+				return err
+			}
+		}
+		file, err := os.Open(s.partPath())
+		if err != nil {
+			return err
+		}
+		modified := time.UnixMilli(s.Modified)
+		if s.Modified == 0 {
+			modified = s.Created
+		}
+		input := &stream.FileStream{Obj: &model.Object{Name: stdpath.Base(s.Path), Size: s.Size, Modified: modified}, Reader: file, Mimetype: s.Mimetype}
+		input.Closers.Add(file)
+		if err := op.Put(ctx, storage, actual, input, up); err != nil {
+			return err
+		}
+	}
+	s.mu.Lock()
+	s.Done = true
+	// If persisting success fails, retry only this local cleanup, never the PUT.
+	err := s.save()
+	if err == nil {
+		s.remove()
+	}
+	s.mu.Unlock()
+	if err != nil {
+		return err
+	}
+	forgetStaged(s)
+	return nil
+}
+
+var stagedRecoveryOnce sync.Once
+
+// StartTgvioStagedRecovery is called after task managers are initialized. Wait
+// until storage loading finishes before handing durable jobs back to them.
+func StartTgvioStagedRecovery() {
+	stagedRecoveryOnce.Do(func() {
+		go func() {
+			<-conf.StoragesLoadSignal()
+			recoverStaged()
+		}()
+	})
+}
+
+func recoverStaged() {
+	loadStaged()
+	for _, s := range stagedSessions() {
+		s.mu.Lock()
+		if s.HandedOff && !s.Done && !s.abandoned {
+			complete := true
+			for _, have := range s.Have {
+				if have != 1 {
+					complete = false
+					break
+				}
+			}
+			if complete {
+				user, err := op.GetUserById(s.UserID)
+				if err == nil {
+					err = stagedCanUpload(user, s)
+				}
+				if err == nil {
+					_ = queueStaged(context.Background(), user, s)
+				}
+			}
+		}
+		s.mu.Unlock()
+	}
 }

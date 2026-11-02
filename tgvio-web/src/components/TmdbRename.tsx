@@ -267,6 +267,7 @@ function TmdbRenameSheet({ targets: chosen, onClose }: { targets: RenameTarget[]
       // Gone through without a failure: no longer waiting to be organized (整理模式, the download nudge).
       if (failed === failedBefore && !target.only) organized.push(target.path, finalPath);
     }
+    await tmdbRename.finish(batch).catch(() => undefined); // an interrupted connection falls back to the idle lease
     if (organized.length) void organize.mark([...new Set(organized)], false).then(() => client.invalidateQueries({ queryKey: ["organize"] })).catch(() => undefined);
     void client.invalidateQueries({ queryKey: ["organize-check"] });
     setRunning(false);

@@ -65,6 +65,9 @@ func GetUsers(pageIndex, pageSize int) (users []model.User, count int64, err err
 }
 
 func CreateUser(u *model.User) error {
+	if err := model.ValidateBasePath(u.BasePath); err != nil {
+		return err
+	}
 	u.BasePath = model.CleanBasePath(u.BasePath)
 	return db.CreateUser(u)
 }
@@ -85,6 +88,9 @@ func DeleteUserById(id uint) error {
 }
 
 func UpdateUser(u *model.User) error {
+	if err := model.ValidateBasePath(u.BasePath); err != nil {
+		return err
+	}
 	old, err := db.GetUserById(u.ID)
 	if err != nil {
 		return err

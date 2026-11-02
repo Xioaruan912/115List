@@ -232,19 +232,24 @@ func TgvioRenameApply(c *gin.Context) {
 	if !ok {
 		return
 	}
-	if autoBusy(reqPath) {
-		common.ErrorStrResp(c, "正在自动整理这个文件夹，等它做完再整理", 409)
-		return
-	}
-	holdManual(reqPath)
-	// Once started, a run goes to its end: a page closed or a connection
-	// dropped halfway must not leave half a release moved up.
-	ctx := context.WithoutCancel(c.Request.Context())
 	user := c.Request.Context().Value(conf.UserKey).(*model.User)
 	if len(req.Remove) > 0 && !user.CanRemove() || len(req.Unwrap) > 0 && (!user.CanMove() || !user.CanRemove()) || len(req.Up) > 0 && !user.CanMove() {
 		common.ErrorResp(c, errs.PermissionDenied, 403)
 		return
 	}
+	paths := []string{reqPath}
+	if req.Folder != "" || len(req.Up) > 0 {
+		paths = append(paths, stdpath.Dir(reqPath))
+	}
+	release, ok := acquireOrganize(paths, manualOwner(user.ID, req.Batch), req.Batch != "")
+	if !ok {
+		common.ErrorStrResp(c, "这个文件夹正在整理或撤销，等它做完再试", 409)
+		return
+	}
+	defer release()
+	// Once started, a run goes to its end: a page closed or a connection
+	// dropped halfway must not leave half a release moved up.
+	ctx := context.WithoutCancel(c.Request.Context())
 	results := make([]renameResult, 0, len(req.Items)+len(req.Remove)+len(req.Unwrap)+1)
 	for _, name := range req.Remove {
 		result := renameResult{Old: name}

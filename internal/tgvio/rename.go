@@ -101,9 +101,9 @@ var (
 	// What downloads bring besides the film: a release site's ad (".txt",
 	// ".url", a page), a torrent client's padding file, a drive's half-uploaded
 	// leftover (".x.mkv.baiduyun.uploading.cfg").
-	junkSmall = regexp.MustCompile(`(?i)\.(?:txt|url|html?|mht|lnk|website)$`)
-	junkAny   = regexp.MustCompile(`(?i)^_{3,}padding_file|\.(?:uploading|downloading)\.cfg$|\.(?:!qb|bc!|aria2|torrent)$|^(?:thumbs\.db|desktop\.ini|\.ds_store)$`)
-	notEp     = regexp.MustCompile(`(?i)\b\d{3,4}p\b|[xh]\.?26[45]|\b(?:19|20)\d{2}\b|\b\d+bit\b|\bddp?\d\.\d\b|\b[257]\.1\b`)
+	knownAd = regexp.MustCompile(`(?i)^(?:rarbg|rartv)\.(?:txt|url)$`)
+	junkAny = regexp.MustCompile(`(?i)^_{3,}padding_file|\.(?:uploading|downloading)\.cfg$|\.(?:!qb|bc!|aria2|torrent)$|^(?:thumbs\.db|desktop\.ini|\.ds_store)$`)
+	notEp   = regexp.MustCompile(`(?i)\b\d{3,4}p\b|[xh]\.?26[45]|\b(?:19|20)\d{2}\b|\b\d+bit\b|\bddp?\d\.\d\b|\b[257]\.1\b`)
 )
 
 // A release site's own ad, by its name: "更多电视剧集下载请访问 高清剧集网官网（www.DDHDTV.com）.png",
@@ -122,8 +122,7 @@ const adMax = 20 << 20
 // part of the film. One rule for any kind of file: a small file whose name
 // advertises a site (subtitles excepted: their names often carry the
 // subtitle site's address), and what downloads leave behind (padding files,
-// unfinished uploads, torrents, Thumbs.db). Small notes and links without a
-// site's name go too.
+// unfinished uploads, torrents, Thumbs.db). Ordinary notes and saved pages stay.
 func IsJunk(e RenameEntry) bool {
 	if e.IsDir {
 		return false
@@ -138,7 +137,7 @@ func IsJunk(e RenameEntry) bool {
 	case adWords.MatchString(e.Name):
 		return e.Size < adMax
 	}
-	return junkSmall.MatchString(e.Name) && e.Size < 64<<10
+	return knownAd.MatchString(e.Name) && e.Size < 64<<10
 }
 
 // seriesFolder names a folder of films of one series: what their titles
@@ -338,7 +337,6 @@ func (t *TMDB) episodes(ctx context.Context, id, season int) *seasonEpisodes {
 func (t *TMDB) episodeTitles(ctx context.Context, id, season int) map[int]string {
 	return t.episodes(ctx, id, season).titles
 }
-
 
 // EpisodeStills finds TMDB's still image for the episode files of a folder that
 // is a series (or one season of it). Only the poster store and TMDB are asked.

@@ -1,5 +1,11 @@
 # Agent Instructions
 
+## Branches
+
+- Develop and push on `main`.
+- `cc` is the fixed backup from 2026-11-02 at `65fadd848ab981cbb299b1d88c7cbbe32ffe711f`; do not move, merge into, or push new work to it.
+- Preserve the existing runtime backup at `/root/backup/ppee-20261102-cc`; runtime credentials and databases must stay out of Git.
+
 ## Issues
 
 Before creating an issue, review the available issue templates in the `.github` directory.

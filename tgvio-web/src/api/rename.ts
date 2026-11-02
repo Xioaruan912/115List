@@ -54,6 +54,7 @@ export const tmdbRename = {
   apply: (path: string, password: string, items: { old: string; new: string; into?: string }[], folder = "", subject?: RenameInherit,
     extra?: { remove?: string[]; unwrap?: string[]; up?: string[]; batch?: string }) =>
     post<{ results: RenameResult[]; path: string }>("/tgvio/rename/apply", { path, password, items, folder, subject, ...extra }),
+  finish: (batch: string) => post<void>("/tgvio/rename/finish", { batch }),
   /** Recent 整理 runs, newest first; `undone` once put back. */
   journal: () => get<{ items: { id: string; at: string; root: string; changes: number; deleted: number; undone: boolean }[] }>("/tgvio/rename/journal"),
   /** Puts a 整理 run back, last change first (deleted ads stay deleted). */

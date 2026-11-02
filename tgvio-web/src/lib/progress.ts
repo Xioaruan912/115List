@@ -83,6 +83,7 @@ function started(progress: Progress): boolean {
  * back for an undo.
  */
 export function clearProgress(paths: string[]): () => void {
+  const generation = accountGeneration;
   const before: Store = {};
   const next: Store = { ...store };
   const now = Date.now();
@@ -95,6 +96,7 @@ export function clearProgress(paths: string[]): () => void {
   }
   commit(next);
   return () => {
+    if (generation !== accountGeneration) return;
     const restored: Store = { ...store };
     const at = Date.now();
     for (const [path, entry] of Object.entries(before)) {
@@ -121,6 +123,9 @@ export function formatClock(seconds: number): string {
 /* ---------------------------------------------------------------- sync */
 
 let syncing = false; // signed in as a real account; guests keep progress local
+let activeAccount: string | null = null;
+let accountGeneration = 0;
+let hasSynced = false;
 let pending: Store = {};
 let timer = 0;
 
@@ -148,11 +153,13 @@ async function flush(): Promise<void> {
   clearTimeout(timer);
   const items = pending;
   if (!syncing || !Object.keys(items).length) return;
+  const generation = accountGeneration;
   pending = {};
   try {
-    adopt((await post<{ items: Store }>("/tgvio/progress", { items })).items);
+    const reply = await post<{ items: Store }>("/tgvio/progress", { items });
+    if (generation === accountGeneration) adopt(reply.items);
   } catch {
-    pending = { ...items, ...pending }; // offline: try again with the next change
+    if (generation === accountGeneration) pending = { ...items, ...pending }; // offline: try again with the next change
   }
 }
 
@@ -170,7 +177,12 @@ function flushOnExit(): void {
 }
 
 async function pull(): Promise<void> {
-  try { adopt((await get<{ items: Store }>("/tgvio/progress")).items); } catch { /* offline: local copy stands */ }
+  if (!syncing) return;
+  const generation = accountGeneration;
+  try {
+    const reply = await get<{ items: Store }>("/tgvio/progress");
+    if (generation === accountGeneration) adopt(reply.items);
+  } catch { /* offline: local copy stands */ }
 }
 
 let wired = false;
@@ -181,13 +193,22 @@ let wired = false;
  * sync sends up what this browser recorded before syncing existed.
  */
 export function syncProgress(account: string | null): void {
+  if (account !== activeAccount) {
+    accountGeneration++;
+    clearTimeout(timer);
+    pending = {};
+    if (activeAccount || hasSynced) commit({});
+    activeAccount = account;
+  }
   syncing = !!account;
   if (!account) return;
   let owner = "";
   try { owner = localStorage.getItem(OWNER_KEY) ?? ""; localStorage.setItem(OWNER_KEY, account); } catch { /* ignore */ }
   if (owner && owner !== account) commit({});
-  else if (!owner) Object.assign(pending, store);
-  void flush().then(pull);
+  else if (!owner && !hasSynced) Object.assign(pending, store);
+  hasSynced = true;
+  const generation = accountGeneration;
+  void flush().then(() => { if (generation === accountGeneration) return pull(); });
   if (wired) return;
   wired = true;
   document.addEventListener("visibilitychange", () => {
