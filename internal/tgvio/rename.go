@@ -1243,6 +1243,18 @@ func freeingFirst(plan *RenamePlan) {
 // "season" under the old one (Frieren's second cour is S01E29-38), so a number
 // that does not fit the named season is read as counted from the first one.
 func placeEpisode(counts map[int]int, last, season, ep int, explicit bool) (int, int) {
+	// A release that says its season but numbers the episode from the series'
+	// first episode ("黑色五叶草 Season 2 - 171", the 171st overall): inside
+	// that season the number is the one counted on from the seasons before it.
+	if n, ok := counts[season]; ok && n > 0 && season > 1 && ep > n {
+		before := 0
+		for s := 1; s < season; s++ {
+			before += counts[s]
+		}
+		if ep > before && ep-before <= n {
+			return season, ep - before
+		}
+	}
 	// A name that says its season and episode ("Friends.S04E24") means them,
 	// even past the season's count on TMDB (which merges some two-part
 	// episodes): only bare numbers are read as counted from the first season.

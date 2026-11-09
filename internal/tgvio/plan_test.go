@@ -427,3 +427,30 @@ func TestSeriesKeepsItsOwnFilmInFolder(t *testing.T) {
 		}
 	}
 }
+
+func TestPlanAbsoluteEpisodeNumbers(t *testing.T) {
+	// "[ANi] … Season 2 - 171": the 171st episode overall is season 2's first
+	// (season 1 has 170), and it must take that episode's name, not stay 171.
+	tm := planTMDB(t, nil, nil)
+	tm.http.Transport = rawTMDB{
+		"tv/1": `{"id":1,"name":"黑色五叶草","first_air_date":"2017-10-03","seasons":[
+			{"season_number":1,"name":"第 1 季","episode_count":170,"air_date":"2017-10-03"},
+			{"season_number":2,"name":"第 2 季","episode_count":26,"air_date":"2026-10-03"}]}`,
+		"tv/1/season/2": `{"episodes":[{"episode_number":1,"name":"开战"},{"episode_number":2,"name":"地狱之门"}]}`,
+	}
+	folder := "黑色五叶草 第二季 (2026)"
+	tm.entries[Key(folder)] = &Poster{Kind: "tv", ID: 1, Title: "黑色五叶草", Year: 2017, Name: folder, Season: 2, Rev: cleanerRev}
+	name171 := "[ANi] 黑色五葉草 Season 2 - 171 [1080P][Baha][WEB-DL][AAC AVC][CHT].mp4"
+	name172 := "[ANi] 黑色五葉草 Season 2 - 172 [1080P][Baha][WEB-DL][AAC AVC][CHT].mp4"
+	plan, err := tm.PlanRenameIn(context.Background(), "/lib/"+folder,
+		[]RenameEntry{{Name: name171, Size: 1 << 30}, {Name: name172, Size: 1 << 30}}, 0, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := find(plan, name171); got.New != "黑色五叶草 - S02E01 - 开战.mp4" || got.Episode != 1 {
+		t.Fatalf("episode 171 -> %+v", got)
+	}
+	if got := find(plan, name172); got.New != "黑色五叶草 - S02E02 - 地狱之门.mp4" || got.Episode != 2 {
+		t.Fatalf("episode 172 -> %+v", got)
+	}
+}
