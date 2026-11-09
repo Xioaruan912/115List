@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 )
 
 // Renaming a folder's videos after TMDB, so a library reads the same way
@@ -167,6 +168,29 @@ func seriesFolder(titles []string, collection string) string {
 // collectionWord: a folder named as a collection of films.
 var collectionWord = regexp.MustCompile(`(?i)合集|系列|全集|电影集|作品集|三部曲|套装|collection|trilogy`)
 
+var bracketed = regexp.MustCompile(`[\[【（(]\s*([^\]】）)]+?)\s*[\]】）)]`)
+
+// bracketTitle: the title a release puts in brackets ("[DBD-Raws][黑色五叶草][001-170TV全集+特别篇]…").
+func bracketTitle(name string) string {
+	best, bestHan := "", 0
+	for _, m := range bracketed.FindAllStringSubmatch(name, -1) {
+		part := strings.TrimSpace(m[1])
+		if part == "" || strings.IndexFunc(part, func(r rune) bool { return unicode.IsDigit(r) }) >= 0 {
+			continue
+		}
+		han := 0
+		for _, r := range part {
+			if unicode.Is(unicode.Han, r) {
+				han++
+			}
+		}
+		if han >= 2 && han > bestHan {
+			best, bestHan = part, han
+		}
+	}
+	return best
+}
+
 // releaseFolder: only files, a video or two (a release's own folder, not a shelf).
 func releaseFolder(entries []RenameEntry) bool {
 	videos := 0
@@ -206,6 +230,9 @@ func (t *TMDB) isRoot(dir string) bool {
 }
 
 var collectionSuffix = regexp.MustCompile(`(?i)\s*(?:[（(]?系列[）)]?|collection)\s*$`)
+
+// extrasFolder: a release's bonus folders, no episodes of the series.
+var extrasFolder = regexp.MustCompile(`(?i)^(?:pv|pvs|sp|specials?|extras?|bonus|featurettes?|ncop|nced|ncop[&+ ]?nced|menu|menus|cds?|scans?|artwork|trailers?|previews?|samples?|特典|映像特典|花絮|预告|菜单|音楽|音乐)$`)
 
 // ParseEpisode reads a season and an episode number from a video name (season 0
 // when the name does not say). It ignores resolutions, codecs and years.
@@ -433,6 +460,13 @@ func (t *TMDB) subjectOf(ctx context.Context, dir string, entries []RenameEntry)
 	if !p.None {
 		return p, nil
 	}
+	// A release's own folder ("[DBD-Raws][黑色五叶草][001-170TV全集+特别篇][1080P]…"):
+	// the title sits in one of its brackets.
+	if q := bracketTitle(folder); q != "" && Key(q) != Key(look) {
+		if qp, qerr := t.resolve(ctx, q, stdpath.Dir(dir)); qerr == nil && !qp.None {
+			return qp, nil
+		}
+	}
 	// The folder found nothing: ask its videos (a few at most).
 	var found *Poster
 	asked := 0
@@ -486,6 +520,11 @@ func (t *TMDB) PlanRenameIn(ctx context.Context, dir string, entries []RenameEnt
 	subject, err := t.subjectOf(ctx, dir, entries)
 	if err != nil {
 		return nil, err
+	}
+	// A release's extras ("PV", "menu", "NCOP&NCED", "CDs", "SP") are no
+	// episodes: they stay as they are, beside the episodes.
+	if extrasFolder.MatchString(pathBase(dir)) && !t.isRoot(dir) {
+		return &RenamePlan{Items: []RenameItem{}}, nil
 	}
 	plan := &RenamePlan{Items: []RenameItem{}}
 	// A folder named like no film ("[DBD-Raws][潜伏3][1080P]…", a release's own
@@ -635,9 +674,11 @@ func (t *TMDB) PlanRenameIn(ctx context.Context, dir string, entries []RenameEnt
 		}
 		// Nothing names the season, the files do not either, and their numbers
 		// fit inside the first season (so they are not counted on from it): with
-		// several seasons this could be any of them. Wait for the person.
+		// several seasons this could be any of them. Wait for the person —
+		// unless the folder holds the whole first season ("001-170全集").
 		if folderSeason == 0 && seasonsWithEpisodes(counts) > 1 {
 			named, top := false, 0
+			seen := map[int]bool{}
 			for _, v := range videos {
 				s, ep := ParseEpisode(v)
 				if s > 0 {
@@ -646,8 +687,13 @@ func (t *TMDB) PlanRenameIn(ctx context.Context, dir string, entries []RenameEnt
 				if ep > top {
 					top = ep
 				}
+				if ep > 0 && ep <= counts[1] {
+					seen[ep] = true
+				}
 			}
-			if !named && top > 0 && top <= counts[1] {
+			if !named && counts[1] > 0 && top == counts[1] && len(seen)*10 >= counts[1]*9 {
+				folderSeason = 1
+			} else if !named && top > 0 && top <= counts[1] {
 				plan.Need = "season"
 				for _, v := range videos {
 					plan.Items = append(plan.Items, RenameItem{Old: v, Kind: "video", Reason: "pick-season"})
@@ -669,9 +715,18 @@ func (t *TMDB) PlanRenameIn(ctx context.Context, dir string, entries []RenameEnt
 		}
 		var found []*episodeFile
 		byEpisode := map[[2]int][]*episodeFile{}
+		numbered := 0
+		for _, v := range videos {
+			if _, ep := ParseEpisode(v); ep > 0 {
+				numbered++
+			}
+		}
 		for _, v := range videos {
 			s, ep := ParseEpisode(v)
 			if ep == 0 {
+				if numbered > 0 {
+					continue // a bonus beside the episodes ("…[特别篇]…"): it stays as it is
+				}
 				add(RenameItem{Old: v, Kind: "video", Reason: "no-episode"})
 				continue
 			}

@@ -3,6 +3,7 @@ package tgvio
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -452,5 +453,90 @@ func TestPlanAbsoluteEpisodeNumbers(t *testing.T) {
 	}
 	if got := find(plan, name172); got.New != "黑色五叶草 - S02E02 - 地狱之门.mp4" || got.Episode != 2 {
 		t.Fatalf("episode 172 -> %+v", got)
+	}
+}
+
+func TestPlanExtrasFolderLeftAlone(t *testing.T) {
+	// A release's "PV" folder: previews are no episodes of the series.
+	tm := planTMDB(t, nil, nil)
+	tm.http.Transport = rawTMDB{
+		"tv/1": `{"id":1,"name":"黑色五叶草","first_air_date":"2017-10-03","seasons":[
+			{"season_number":1,"name":"第 1 季","episode_count":170,"air_date":"2017-10-03"}]}`,
+	}
+	tm.entries[Key("黑色五叶草 (2017)")] = &Poster{Kind: "tv", ID: 1, Title: "黑色五叶草", Year: 2017, Name: "黑色五叶草 (2017)", Rev: cleanerRev}
+	plan, err := tm.PlanRenameIn(context.Background(), "/lib/黑色五叶草 (2017)/PV",
+		[]RenameEntry{{Name: "PV01.mkv", Size: 1 << 20}, {Name: "PV02.mkv", Size: 1 << 20}}, 0,
+		&RenameInherit{Kind: "tv", ID: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(plan.Items) != 0 || plan.Need != "" || plan.Reason != "" {
+		t.Fatalf("extras -> %+v", plan)
+	}
+}
+
+func TestPlanWholeFirstSeasonIsSeasonOne(t *testing.T) {
+	// "001-012 全集" of a two-season series: the whole first season is no guess.
+	tm := planTMDB(t, nil, nil)
+	tm.http.Transport = rawTMDB{
+		"tv/7": `{"id":7,"name":"某剧","first_air_date":"2020-01-01","seasons":[
+			{"season_number":1,"name":"第 1 季","episode_count":12,"air_date":"2020-01-01"},
+			{"season_number":2,"name":"第 2 季","episode_count":12,"air_date":"2022-01-01"}]}`,
+		"tv/7/season/1": `{"episodes":[{"episode_number":1,"name":"第一集"}]}`,
+	}
+	folder := "某剧 (2020)"
+	tm.entries[Key(folder)] = &Poster{Kind: "tv", ID: 7, Title: "某剧", Year: 2020, Name: folder, Rev: cleanerRev}
+	entries := []RenameEntry{}
+	for i := 1; i <= 12; i++ {
+		entries = append(entries, RenameEntry{Name: fmt.Sprintf("[Group] 某剧 - %02d [1080p].mkv", i), Size: 1 << 30})
+	}
+	plan, err := tm.PlanRenameIn(context.Background(), "/lib/"+folder, entries, 0, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if plan.Need == "season" {
+		t.Fatalf("whole first season -> %+v", plan)
+	}
+	if got := find(plan, "[Group] 某剧 - 01 [1080p].mkv"); got.Season != 1 || got.Episode != 1 {
+		t.Fatalf("episode 01 -> %+v", got)
+	}
+}
+
+func TestPlanReleasePackFolder(t *testing.T) {
+	// "[DBD-Raws][黑色五叶草][001-012全集+特别篇]…": the title is in a bracket,
+	// the whole first season is here, and the special is no episode to name.
+	tm := planTMDB(t, nil, nil)
+	tm.http.Transport = rawTMDB{
+		"tv/1": `{"id":1,"name":"黑色五叶草","first_air_date":"2017-10-03","seasons":[
+			{"season_number":1,"name":"第 1 季","episode_count":12,"air_date":"2017-10-03"},
+			{"season_number":2,"name":"第 2 季","episode_count":12,"air_date":"2026-01-01"}]}`,
+		"tv/1/season/1": `{"episodes":[{"episode_number":1,"name":"开战"}]}`,
+	}
+	tm.entries[Key("黑色五叶草")] = &Poster{Kind: "tv", ID: 1, Title: "黑色五叶草", Year: 2017, Name: "黑色五叶草", Rev: cleanerRev}
+	folder := "[DBD-Raws][黑色五叶草][001-012TV全集+特别篇][1080P][BDRip][HEVC-10bit][简繁外挂][FLAC][MKV]"
+	entries := []RenameEntry{}
+	for i := 1; i <= 12; i++ {
+		entries = append(entries, RenameEntry{Name: fmt.Sprintf("[DBD-Raws][黑色五叶草][%03d][1080P][BDRip][HEVC-10bit][FLAC].mkv", i), Size: 1 << 30})
+	}
+	special := "[DBD-Raws][黑色五叶草][特别篇][1080P][BDRip][HEVC-10bit][FLAC].mkv"
+	entries = append(entries, RenameEntry{Name: special, Size: 1 << 30})
+	plan, err := tm.PlanRenameIn(context.Background(), "/lib/"+folder, entries, 0, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if plan.Subject == nil || plan.Subject.ID != 1 {
+		t.Fatalf("subject -> %+v", plan.Subject)
+	}
+	if plan.Need != "" || plan.Reason != "" {
+		t.Fatalf("need %q reason %q", plan.Need, plan.Reason)
+	}
+	if got := find(plan, "[DBD-Raws][黑色五叶草][001][1080P][BDRip][HEVC-10bit][FLAC].mkv"); got.New != "黑色五叶草 - S01E01 - 开战.mkv" || got.Episode != 1 {
+		t.Fatalf("episode 001 -> %+v", got)
+	}
+	if got := find(plan, special); got.New != "" || got.Reason == "no-episode" {
+		t.Fatalf("special -> %+v", got)
+	}
+	if got := find(plan, folder); got.New != "黑色五叶草 第一季 (2017)" && got.New != "黑色五叶草 (2017)/黑色五叶草 第一季 (2017)" {
+		t.Fatalf("folder -> %+v", got)
 	}
 }
