@@ -424,6 +424,11 @@ func autoOrganize(ctx context.Context, root string) (done bool, final string, wh
 	for _, f := range tree {
 		objs, err := fs.List(ctx, f.Path, &fs.ListArgs{})
 		if err != nil {
+			// The tree was listed a moment ago; a folder moved or renamed since
+			// (by the round before, or by hand) is skipped, not run over again.
+			if strings.Contains(err.Error(), "not found") || strings.Contains(err.Error(), "does not exist") {
+				continue
+			}
 			return false, root, why, err
 		}
 		entries := make([]tgvio.RenameEntry, 0, len(objs))
