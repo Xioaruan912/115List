@@ -194,6 +194,9 @@ func admin(g *gin.RouterGroup) {
 	tgvioAdmin.POST("/subtitles/test", handles.TgvioSubtitlesTest)
 	tgvioAdmin.Any("/resources", handles.TgvioResourcesAdmin)
 	tgvioAdmin.POST("/resources/probe", handles.TgvioResourcesProbe)
+	// 115 keeps finished/failed cloud download records and refuses the same
+	// link again (任务已存在); this clears them without touching the files.
+	tgvioAdmin.POST("/offline/clean", handles.TgvioOfflineClean)
 
 	meta := g.Group("/meta")
 	meta.GET("/list", handles.ListMetas)

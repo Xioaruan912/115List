@@ -49,6 +49,10 @@ export const TASK_TYPES = [
 
 export type TaskType = typeof TASK_TYPES[number][0];
 
+/** 115 keeps finished/failed cloud download records and refuses the same link again. */
+export const offlineClean = (all = false) =>
+  post<{ removed: number; drives: number; failed: number }>("/admin/tgvio/offline/clean", { all });
+
 export const tasks = {
   undone: (type: TaskType) => get<TaskInfo[] | null>(`/task/${type}/undone`),
   done: (type: TaskType) => get<TaskInfo[] | null>(`/task/${type}/done`),

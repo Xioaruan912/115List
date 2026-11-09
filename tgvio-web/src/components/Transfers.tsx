@@ -3,7 +3,7 @@ import { useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { tasks, TASK_TYPES, type TaskType } from "../api/admin";
+import { offlineClean, tasks, TASK_TYPES, type TaskType } from "../api/admin";
 import { useIsMobile } from "../hooks/useMedia";
 import { formatBytes, formatDate, formatDuration, formatRate } from "../lib/format";
 import type { StagedSnapshot } from "../lib/upload";
@@ -12,6 +12,8 @@ import { spring } from "../lib/motion";
 import type { TaskInfo } from "../lib/types";
 import { toast } from "../stores/toast";
 import { useUi } from "../stores/ui";
+import { useSession } from "../stores/session";
+import { isAdmin } from "../lib/perm";
 import { useUploads, type UploadJob } from "../stores/uploads";
 import { KindIcon } from "./KindIcon";
 import { reason } from "../lib/errors";
@@ -176,6 +178,7 @@ function OwnTaskList() {
 
 /** Downloads 找资源 made, as the server's organizer left them: organized, or waiting for a person. */
 function AutoOrganized() {
+  const me = useSession(state => state.me);
   const recent = useQuery({ queryKey: ["organize-recent"], queryFn: organize.recent, retry: false,
     refetchInterval: q => (q.state.data?.active.length ? 3000 : 15_000) });
   const items = recent.data?.items ?? [];
@@ -183,9 +186,25 @@ function AutoOrganized() {
   const removed = recent.data?.removed ?? [];
   if (!items.length && !active.length && !removed.length) return null;
   const open = (path: string): void => { useUi.getState().setTasks(false); navigate(encodePath(path)); };
+  // 115 refuses a link it already has a record of ("任务已存在"): clearing the
+  // finished and failed records lets a re-download run.
+  const clean = async (): Promise<void> => {
+    try {
+      const out = await offlineClean(false);
+      toast.success("已清理云下载记录", out.removed ? `${out.removed} 条（文件没动）` : "没有要清理的记录");
+    } catch (error) {
+      toast.error("没有清理成功", error);
+    }
+  };
   return (
     <section>
-      <h3 className="px-2 pb-1 text-[12px] font-medium text-muted">自动整理</h3>
+      <div className="flex items-center justify-between px-2 pb-1">
+        <h3 className="text-[12px] font-medium text-muted">自动整理</h3>
+        {me && isAdmin(me) && (
+          <button className="rounded-lg px-2 py-1 text-[12px] text-muted transition-colors hover:bg-[var(--hover)] hover:text-ink"
+            onClick={() => void clean()}>清理云下载记录</button>
+        )}
+      </div>
       <ul>
         {active.map(item => (
           <li key={`now-${item.path}`}>
