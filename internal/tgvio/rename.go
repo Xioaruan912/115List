@@ -1057,6 +1057,11 @@ func (t *TMDB) PlanRenameIn(ctx context.Context, dir string, entries []RenameEnt
 				}
 			}
 		}
+	} else if stdpath.Base(stdpath.Dir(dir)) == folderName && dir != "/" && !multi {
+		// The folder above already bears this name: a folder of episodes inside
+		// the season's own folder ("… 第二季 (2026)/[ANi] … - 171 ….mp4/"). It is
+		// a wrapper, not a title: its videos move up beside the others.
+		plan.Items = append(plan.Items, RenameItem{Old: folder, Kind: "unwrap", Action: "unwrap"})
 	} else if plan.Inherited && SeasonOf(folder) == 0 && season == 0 {
 		// "Subs", "Featurettes": a part of the folder above keeps its name
 		// (a season picked by hand says what it is, and it is named for it).

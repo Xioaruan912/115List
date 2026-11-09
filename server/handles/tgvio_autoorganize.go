@@ -529,6 +529,20 @@ func autoOrganize(ctx context.Context, root string) (done bool, final string, wh
 			if item.Kind != "folder" || item.New == "" {
 				continue
 			}
+			// A folder of an episode ("[ANi] … - 171 ….mp4/") would take the
+			// title's own name, which its parent already has: instead of failing
+			// every round, its contents move up beside the others.
+			target := stdpath.Join(stdpath.Dir(f.path), item.New)
+			if target != f.path {
+				if obj, _ := fs.Get(ctx, target, &fs.GetArgs{NoLog: true}); obj != nil {
+					if moved, uerr := unwrapFolder(ctx, stdpath.Dir(f.path), item.Old); uerr == nil {
+						if len(moved) > 0 {
+							record(batch, admin, &journalOp{Op: "unwrap", Dir: stdpath.Dir(f.path), Old: item.Old, Moved: moved}, 0)
+						}
+						continue
+					}
+				}
+			}
 			var subject *tgvio.RenameInherit
 			if f.plan.SeriesFirst > 0 {
 				subject = &tgvio.RenameInherit{Kind: "movie", ID: f.plan.SeriesFirst}
