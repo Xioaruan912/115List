@@ -1137,7 +1137,13 @@ func (t *TMDB) PlanRenameIn(ctx context.Context, dir string, entries []RenameEnt
 			case box != "" && box != folder:
 				folderName = box + "/" + folderName
 			case t.regularSeasons(ctx, subject.ID) > 1:
-				folderName = titleYear(title, base.Year) + "/" + folderName
+				// A season's folder lying in the library root goes into its series'
+				// folder; the series' own folder already is that one, and stays.
+				if series := titleYear(title, base.Year); series != folder {
+					folderName = series + "/" + folderName
+				} else {
+					folderName = series
+				}
 			default:
 				folderName = titleYear(title, base.Year)
 			}

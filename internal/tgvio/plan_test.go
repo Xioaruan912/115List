@@ -599,3 +599,30 @@ func TestPlanSeriesFolderGathersEpisodesIntoSeason(t *testing.T) {
 		t.Fatalf("series folder -> %+v", got)
 	}
 }
+
+func TestPlanSeriesFolderOfTwoSeasonsKeepsItsName(t *testing.T) {
+	// The series' own folder (two regular seasons on TMDB) holding one season's
+	// episodes: it keeps its name and the season folder goes inside it, never
+	// "某剧 (2020)/某剧 (2020)/…".
+	tm := filmsTMDB(t, nil, nil)
+	tm.http.Transport = rawTMDB{
+		"tv/11": `{"id":11,"name":"某剧","first_air_date":"2020-01-01","seasons":[
+			{"season_number":1,"name":"第 1 季","episode_count":2,"air_date":"2020-01-01"},
+			{"season_number":2,"name":"第 2 季","episode_count":2,"air_date":"2022-01-01"}]}`,
+		"tv/11/season/1": `{"episodes":[{"episode_number":1,"name":"第一集"}]}`,
+	}
+	folder := "某剧 (2020)"
+	tm.entries[Key(folder)] = &Poster{Kind: "tv", ID: 11, Title: "某剧", Year: 2020, Name: folder, Dir: "/lib", Rev: cleanerRev}
+	ep := "某剧 - S01E01 - 第一集.mkv"
+	plan, err := tm.PlanRenameIn(context.Background(), "/lib/"+folder,
+		[]RenameEntry{{Name: ep, Size: 1 << 30}, {Name: "某剧 - S01E02 - 第二集.mkv", Size: 1 << 30}}, 0, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := find(plan, folder); got.New != "" {
+		t.Fatalf("series folder -> %+v", got)
+	}
+	if got := find(plan, ep); got.Into != "某剧 第一季 (2020)" {
+		t.Fatalf("episode -> %+v", got)
+	}
+}
