@@ -49,7 +49,7 @@ type autoNote struct {
 	Path string    `json:"path"` // real path, afterwards
 	At   time.Time `json:"at"`
 	Done bool      `json:"done"`
-	Why  string    `json:"why,omitempty"` // "person": something needs a person; "error": it failed
+	Why  string    `json:"why,omitempty"` // "person": something needs a person; "error": it failed; "giveup": the download never finished
 	// Batch: the journal's run, to put it back (rename/undo).
 	Batch string `json:"batch,omitempty"`
 	// Need: why a person has to look ("no-match", "pick-season", "no-episode",
@@ -182,6 +182,22 @@ func autoOrganizeRound() {
 		if !posters().InLibrary(dir) {
 			continue
 		}
+		// A download that has not landed within the window is given up: 115's
+		// cloud download can hang for good, and the folder would wait forever.
+		if _, ok := autoLandingSince[dir]; !ok {
+			autoLandingSince[dir] = time.Now()
+		}
+		if giveUpDue(autoLandingSince[dir], time.Now()) {
+			cancelDownloadsUnder(dir)
+			noteAuto(autoNote{Path: dir, At: time.Now(), Why: "giveup"})
+			_ = organizeStore().Mark(dir, false) // out of the queue: discarded, the files stay
+			delete(autoLanding, dir)
+			delete(autoLandingSince, dir)
+			delete(autoTried, dir)
+			setActive(dir, "")
+			log.Warnf("tgvio auto organize: %s gave up after %s", dir, autoGiveUp)
+			continue
+		}
 		if busyUnder(busy, dir) {
 			setActive(dir, "downloading")
 			continue
@@ -201,6 +217,15 @@ func autoOrganizeRound() {
 			continue
 		}
 		if err != nil {
+			if strings.Contains(err.Error(), "exists") {
+				// Two folders want the same name: merging them is a person's call.
+				noteAuto(autoNote{Path: final, At: time.Now(), Why: "person", Need: "exists"})
+				autoTried[dir] = time.Now()
+				delete(autoLanding, dir)
+				delete(autoLandingSince, dir)
+				setActive(dir, "")
+				continue
+			}
 			log.Warnf("tgvio auto organize %s: %v", dir, err)
 			noteAuto(autoNote{Path: final, At: time.Now(), Why: "error"})
 			autoTried[dir] = time.Now()
@@ -288,6 +313,48 @@ func scanLibraryRoots(ctx context.Context) {
 			if !busyUnder(downloadingInto(), p) {
 				_ = organizeStore().Mark(p, true)
 				log.Infof("tgvio auto organize: new folder %s", p)
+			}
+		}
+	}
+}
+
+// autoGiveUp: how long a folder waits for its download before the organizer
+// gives up on it. 115's cloud download sometimes never finishes, and nothing
+// else would ever clear the queue. OPENLIST_AUTO_ORGANIZE_GIVE_UP_MINUTES
+// changes it (0 waits forever).
+var autoGiveUp = func() time.Duration {
+	raw := strings.TrimSpace(tgvio.Env("OPENLIST_AUTO_ORGANIZE_GIVE_UP_MINUTES", "TGVIO_AUTO_ORGANIZE_GIVE_UP_MINUTES"))
+	if raw == "" {
+		return 10 * time.Minute
+	}
+	if n, err := strconv.Atoi(raw); err == nil {
+		return time.Duration(n) * time.Minute
+	}
+	return 10 * time.Minute
+}()
+
+// giveUpDue: has a folder waited past the window? 0 waits forever.
+func giveUpDue(since, now time.Time) bool {
+	return autoGiveUp > 0 && now.Sub(since) > autoGiveUp
+}
+
+// cancelDownloadsUnder stops the offline downloads (and transfers) still working
+// on a folder the organizer has given up on.
+func cancelDownloadsUnder(dir string) {
+	finished := func(s tache.State) bool {
+		return s == tache.StateSucceeded || s == tache.StateCanceled || s == tache.StateFailed
+	}
+	if tool.DownloadTaskManager != nil {
+		for _, t := range tool.DownloadTaskManager.GetAll() {
+			if !finished(t.GetState()) && busyUnder([]string{t.DstDirPath}, dir) {
+				tool.DownloadTaskManager.Cancel(t.GetID())
+			}
+		}
+	}
+	if tool.TransferTaskManager != nil {
+		for _, t := range tool.TransferTaskManager.GetAll() {
+			if !finished(t.GetState()) && busyUnder([]string{stdpath.Join(t.DstStorageMp, t.DstActualPath)}, dir) {
+				tool.TransferTaskManager.Cancel(t.GetID())
 			}
 		}
 	}

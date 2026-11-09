@@ -21,7 +21,8 @@ export interface AutoNote {
   path: string;
   at: string;
   done: boolean;
-  why?: "person" | "error";
+  /** giveup: the download never finished and the organizer let it go. */
+  why?: "person" | "error" | "giveup";
   batch?: string;
   /** Why a person has to look; folder: where, below path. */
   need?: string;
@@ -37,6 +38,7 @@ export const AUTO_STATE: Record<AutoState, string> = {
 
 /** Why the organizer left a folder to a person. */
 export function needText(note: AutoNote): string {
+  if (note.why === "giveup") return "下载超过 10 分钟没有完成，已放弃；可以打开「整理」自己处理";
   if (note.why === "error") return "整理时出错了，可以打开「整理」再试一次";
   const what: Record<string, string> = {
     "no-match": "没认出这是哪部片或哪部剧",
@@ -46,6 +48,7 @@ export function needText(note: AutoNote): string {
     version: "同一部（同一集）有几个版本，要你选留哪个",
     several: "一个文件夹里有好几部，要你确认",
     unknown: "有视频认不出是哪部",
+    exists: "已经有同名的文件夹，需要手动合并",
   };
   const text = what[note.need ?? ""] ?? "有拿不准的地方";
   return note.folder ? `${text}（${note.folder.replace(/^\//, "")}）` : text;
