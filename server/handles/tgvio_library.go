@@ -37,7 +37,7 @@ type libraryItem struct {
 const libraryLimit = 5000
 
 // Folders of extras, never a title of their own ("Subs" once matched a film called Subs).
-var libraryExtras = regexp.MustCompile(`(?i)^(subs?|subtitles?|字幕|花絮|特典|幕后花絮|extras?|featurettes?|behind the scenes|bonus|samples?|预告片?|trailers?|sp|ova|oad|scans?|cd\d*|disc\s*\d*|fonts?|artwork|booklet|menus?|covers?|proof|liner|posters?|screens?|storyboards?)$`)
+var libraryExtras = regexp.MustCompile(`(?i)^(subs?|subtitles?|字幕|花絮|特典|幕后花絮|extras?|featurettes?|behind the scenes|bonus|samples?|预告片?|trailers?|sp|ova|oad|pv|pvs|ncop|nced|ncop[&+ ]?nced|scans?|cds?|cd\d*|disc\s*\d*|fonts?|artwork|booklet|menus?|covers?|proof|liner|posters?|screens?|storyboards?)$`)
 
 // extrasPath reports whether a path goes through an extras folder (Scans,
 // Fonts, Subs…): what is inside is a part of a title, never a title. The
@@ -226,9 +226,9 @@ func TgvioLibrary(c *gin.Context) {
 		if libraryExtras.MatchString(strings.TrimSpace(entry.Name)) {
 			continue
 		}
-		// Anything inside an extras folder (Scans/Fonts/Discs) belongs to the
-		// title above it, so a share of that title lists one card, not its scans.
-		if share != nil && extrasPath(shown) {
+		// Anything inside an extras folder (PV/Scans/Fonts/Discs) belongs to
+		// the title above it: one card for the title, never one for its PVs.
+		if extrasPath(shown) {
 			continue
 		}
 		file := tgvio.IsMediaFile(entry.Name) // a file shares its folder's access
