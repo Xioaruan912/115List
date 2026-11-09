@@ -55,6 +55,17 @@ export interface LibraryItem extends Poster {
 export const library = () => get<{ items: LibraryItem[]; blur: boolean }>("/tgvio/library");
 
 /**
+ * The same library, of what a share holds: paths relative to the share, no
+ * account needed (the share route works even where guest access is off).
+ */
+export const shareLibrary = (sid: string, pwd: string) =>
+  get<{ items: LibraryItem[]; blur: boolean }>("/tgvio/share/library", { share: sid, share_pwd: pwd || undefined });
+
+/** Where the library features apply inside a share: "/" when it holds films. */
+export const shareLibraryScope = (sid: string, pwd: string) =>
+  get<{ enabled: boolean; paths: string[] }>("/tgvio/share/scope", { share: sid, share_pwd: pwd || undefined });
+
+/**
  * 追剧与新片. season: a season aired after the last one here; episode: the next
  * episode of a season being followed; upcoming: a season or a film of a series
  * here comes soon; missing: films of a series here are out but not here.

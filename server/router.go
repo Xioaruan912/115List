@@ -118,6 +118,12 @@ func Init(e *gin.Engine) {
 	// TGVIO cloud playback: the drive's own transcodes. Share visitors use it too,
 	// so it lives beside /fs with disabled guests allowed; the handler checks access.
 	api.POST("/tgvio/video", middlewares.Auth(true), handles.TgvioVideo)
+	// A share's 片库, for visitors without an account: the same handlers as the
+	// signed-in library, but the share is required, and guest access may be off.
+	shareView := api.Group("/tgvio/share", middlewares.Auth(true))
+	shareView.GET("/library", handles.TgvioShareLibrary)
+	shareView.GET("/scope", handles.TgvioShareScope)
+	shareView.POST("/series", handles.TgvioShareSeries)
 	g.GET("/tgvio/hls/:ticket/:quality/:file", handles.TgvioHLS)
 	// TGVIO posters from TMDB: lookups for signed-in users, images for anyone (they are public art).
 	auth.POST("/tgvio/posters", middlewares.AuthNotGuest, handles.TgvioPosters)

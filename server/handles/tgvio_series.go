@@ -7,6 +7,7 @@ import (
 	"github.com/OpenListTeam/OpenList/v4/internal/model"
 	"github.com/OpenListTeam/OpenList/v4/internal/op"
 	"github.com/OpenListTeam/OpenList/v4/internal/tgvio"
+	"github.com/OpenListTeam/OpenList/v4/pkg/utils"
 	"github.com/OpenListTeam/OpenList/v4/server/common"
 	"github.com/gin-gonic/gin"
 	"github.com/pkg/errors"
@@ -28,30 +29,65 @@ type seriesSeasonOut struct {
 type seriesReq struct {
 	Path     string `json:"path"`
 	Password string `json:"password"`
+	Share    string `json:"share"`     // a share's series page: the folder inside it
+	SharePwd string `json:"share_pwd"` // that share's code
 }
 
-// TgvioSeries: POST /api/tgvio/series {path, password} → {series: null} when
-// the folder is no TV series.
+// TgvioSeries: POST /api/tgvio/series {path, password} or {share, share_pwd,
+// path} → {series: null} when the folder is no TV series. A share's path is
+// relative to the share, and the root it reports is inside the share.
 func TgvioSeries(c *gin.Context) {
 	var req seriesReq
 	if err := c.ShouldBindJSON(&req); err != nil {
 		common.ErrorResp(c, err, 400)
 		return
 	}
+	seriesFor(c, &req)
+}
+
+// seriesFor answers TgvioSeries for a request already read: the share route
+// must not read the body a second time.
+func seriesFor(c *gin.Context, req *seriesReq) {
 	user := c.Request.Context().Value(conf.UserKey).(*model.User)
-	reqPath, err := user.JoinPath(req.Path)
-	if err != nil {
-		common.ErrorResp(c, err, 403)
-		return
-	}
-	meta, err := op.GetNearestMeta(reqPath)
-	if err != nil && !errors.Is(errors.Cause(err), errs.MetaNotFound) {
-		common.ErrorResp(c, err, 500, true)
-		return
-	}
-	if !webCanAccess(user, meta, reqPath, req.Password) {
-		common.ErrorStrResp(c, "password is incorrect or you have no permission", 403)
-		return
+	var reqPath string
+	var share *shareScope
+	if req.Share != "" {
+		s, err := op.GetSharingById(req.Share)
+		if err != nil {
+			common.ErrorResp(c, errs.SharingNotFound, 404)
+			return
+		}
+		if !s.Valid() {
+			common.ErrorResp(c, errs.InvalidSharing, 410)
+			return
+		}
+		if !s.Verify(req.SharePwd) {
+			common.ErrorResp(c, errs.WrongShareCode, 403)
+			return
+		}
+		share = &shareScope{sharing: s, pwd: req.SharePwd}
+		real, err := op.GetSharingUnwrapPath(s, utils.FixAndCleanPath(req.Path))
+		if err != nil || !share.mayOpen(real) {
+			common.ErrorStrResp(c, "password is incorrect or you have no permission", 403)
+			return
+		}
+		reqPath = real
+	} else {
+		p, err := user.JoinPath(req.Path)
+		if err != nil {
+			common.ErrorResp(c, err, 403)
+			return
+		}
+		meta, err := op.GetNearestMeta(p)
+		if err != nil && !errors.Is(errors.Cause(err), errs.MetaNotFound) {
+			common.ErrorResp(c, err, 500, true)
+			return
+		}
+		if !webCanAccess(user, meta, p, req.Password) {
+			common.ErrorStrResp(c, "password is incorrect or you have no permission", 403)
+			return
+		}
+		reqPath = p
 	}
 	objs, err := fs.List(c.Request.Context(), reqPath, &fs.ListArgs{})
 	if err != nil {
@@ -95,7 +131,11 @@ func TgvioSeries(c *gin.Context) {
 	}
 	root := ""
 	if real := posters().SeriesRoot(reqPath, view); real != "" {
-		root, _ = user.ShowPath(real)
+		if share != nil {
+			root, _ = share.shown(real)
+		} else {
+			root, _ = user.ShowPath(real)
+		}
 	}
 	common.SuccessResp(c, gin.H{"series": gin.H{
 		"base": toPosterOut(view.Base), "subject": toPosterOut(view.Subject), "season": view.Season,

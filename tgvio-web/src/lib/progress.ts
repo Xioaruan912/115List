@@ -130,7 +130,9 @@ let pending: Store = {};
 let timer = 0;
 
 function queue(path: string, entry: Progress): void {
-  if (!syncing) return;
+  // A share's videos keep their place in this browser only: a visitor may have
+  // no account, and a signed-in visitor's own progress should stay their own.
+  if (!syncing || path.startsWith("share:")) return;
   pending[path] = entry;
   clearTimeout(timer);
   timer = window.setTimeout(() => void flush(), 5000);

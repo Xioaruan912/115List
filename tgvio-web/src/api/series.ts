@@ -67,3 +67,7 @@ export interface Films {
 
 /** The series page of a folder: a TV series, or the film collection its films belong to; both null when neither. */
 export const series = (path: string, password: string) => post<{ series: Series | null; films?: Films | null }>("/tgvio/series", { path, password });
+
+/** The same page for a folder inside a share: no account needed, paths relative to the share. */
+export const seriesInShare = (sid: string, pwd: string, path: string) =>
+  post<{ series: Series | null; films?: Films | null }>("/tgvio/share/series", { share: sid, share_pwd: pwd, path });

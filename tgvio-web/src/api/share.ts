@@ -52,6 +52,13 @@ export function shareFileUrl(id: string, path: string, pwd: string): string {
   return `${apiBase}/sd/${encodeURIComponent(id)}${encodePath(path)}${pwd ? `?pwd=${encodeURIComponent(pwd)}` : ""}`;
 }
 
+/**
+ * Where a video inside a share keeps its place: the same key the share's
+ * player writes, so 继续观看 and the library's progress marks agree with it.
+ * A share's progress stays in this browser: a visitor may have no account.
+ */
+export const shareProgressKey = (id: string, path: string): string => `share:${id}${path}`;
+
 /** A short code without look-alike characters (no 0/O, 1/l/I). */
 export function randomCode(length = 4): string {
   const alphabet = "23456789abcdefghjkmnpqrstuvwxyz";

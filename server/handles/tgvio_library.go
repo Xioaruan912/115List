@@ -39,9 +39,105 @@ const libraryLimit = 5000
 // Folders of extras, never a title of their own ("Subs" once matched a film called Subs).
 var libraryExtras = regexp.MustCompile(`(?i)^(subs?|subtitles?|字幕|花絮|特典|幕后花絮|extras?|featurettes?|behind the scenes|bonus|samples?|预告片?|trailers?|sp|ova|oad|scans?|cd\d*|disc\s*\d*)$`)
 
-// TgvioLibrary: GET /api/tgvio/library
+// shareScope is a share looked at by someone who may not be signed in: the
+// library is then built from the shared paths only, and every path it reports
+// is relative to the share (as the share's own visitor sees it).
+type shareScope struct {
+	sharing *model.Sharing
+	pwd     string
+}
+
+// shareOf reads the share a request asks for: ?share=<id>&share_pwd=<code>.
+// A share that is gone, expired or locked with another code is an error, the
+// same one the share's own pages give.
+func shareOf(c *gin.Context) (*shareScope, error) {
+	id := c.Query("share")
+	if id == "" {
+		return nil, nil
+	}
+	s, err := op.GetSharingById(id)
+	if err != nil {
+		return nil, errs.SharingNotFound
+	}
+	if !s.Valid() {
+		return nil, errs.InvalidSharing
+	}
+	if !s.Verify(c.Query("share_pwd")) {
+		return nil, errs.WrongShareCode
+	}
+	return &shareScope{sharing: s, pwd: c.Query("share_pwd")}, nil
+}
+
+// holds reports whether a real path is in the share: one of its roots, or
+// something under one (a share of a single file holds that file and nothing else).
+func (s *shareScope) holds(real string) bool {
+	for _, f := range s.sharing.Files {
+		if real == f || utils.IsSubPath(f, real) {
+			return true
+		}
+	}
+	return false
+}
+
+// under reports whether a real folder can be listed through the share: the
+// folder itself, an ancestor above it that is a root, or a root under it.
+func (s *shareScope) under(real string) bool {
+	return s.holds(real) || s.holds(stdpath.Dir(real))
+}
+
+// shown is a real path as this share's visitor sees it. A share of one folder
+// opens on that folder, so it is "/" and its contents are under it; a share of
+// several lists them by name, so each is "/<name>".
+func (s *shareScope) shown(real string) (string, bool) {
+	if len(s.sharing.Files) == 1 {
+		f := s.sharing.Files[0]
+		switch {
+		case real == f:
+			return "/", true
+		case utils.IsSubPath(f, real):
+			return strings.TrimPrefix(real, f), true
+		}
+		return "", false
+	}
+	for _, f := range s.sharing.Files {
+		switch {
+		case real == f:
+			return "/" + stdpath.Base(f), true
+		case utils.IsSubPath(f, real):
+			return "/" + stdpath.Base(f) + strings.TrimPrefix(real, f), true
+		}
+	}
+	return "", false
+}
+
+// roots are the real folders the share offers, for "is this in the library".
+func (s *shareScope) roots() []string { return s.sharing.Files }
+
+// mayOpen reports whether the share lets a visitor into a real folder. The
+// share is the permission: its own paths, no folder password asked again.
+func (s *shareScope) mayOpen(real string) bool { return s.under(real) }
+
+// shareErrorResp writes the errors shareOf returns, as the share pages report them.
+func shareErrorResp(c *gin.Context, err error) {
+	switch {
+	case errors.Is(err, errs.SharingNotFound):
+		common.ErrorStrResp(c, "the share does not exist", 500)
+	case errors.Is(err, errs.InvalidSharing):
+		common.ErrorStrResp(c, "the share has expired or is no longer valid", 500)
+	default:
+		common.ErrorResp(c, err, 403)
+	}
+}
+
+// TgvioLibrary: GET /api/tgvio/library — the caller's library, or with
+// ?share=<id>&share_pwd=<code> the library of what that share holds.
 func TgvioLibrary(c *gin.Context) {
 	user := c.Request.Context().Value(conf.UserKey).(*model.User)
+	share, err := shareOf(c)
+	if err != nil {
+		shareErrorResp(c, err)
+		return
+	}
 	type pick struct {
 		entry   tgvio.Poster
 		path    string
@@ -64,8 +160,14 @@ func TgvioLibrary(c *gin.Context) {
 		if ok, seen := allowed[dir]; seen {
 			return ok
 		}
-		meta, err := op.GetNearestMeta(dir)
-		ok := (err == nil || errors.Is(errors.Cause(err), errs.MetaNotFound)) && webCanAccess(user, meta, dir, "")
+		var ok bool
+		if share != nil {
+			// The share is the permission: its own paths, whatever the folder's password.
+			ok = share.mayOpen(dir)
+		} else {
+			meta, err := op.GetNearestMeta(dir)
+			ok = (err == nil || errors.Is(errors.Cause(err), errs.MetaNotFound)) && webCanAccess(user, meta, dir, "")
+		}
 		allowed[dir] = ok
 		return ok
 	}
@@ -80,22 +182,35 @@ func TgvioLibrary(c *gin.Context) {
 		return strings.Count(path, "/") < strings.Count(cur.path, "/")
 	}
 	for _, entry := range posters().Library() {
-		if !posters().InLibrary(entry.Dir) {
-			continue // outside the library paths (or the library is off)
+		real := stdpath.Join(entry.Dir, entry.Name)
+		var shown string
+		var ok bool
+		if share != nil {
+			// The share is the boundary: the title may sit above the shared
+			// folder (a share of one season), so the path that counts is the
+			// title's own, not the folder it was looked up in.
+			if !posters().Enabled() {
+				continue
+			}
+			if shown, ok = share.shown(real); !ok {
+				continue
+			}
+		} else {
+			if !posters().InLibrary(entry.Dir) {
+				continue // outside the library paths (or the library is off)
+			}
+			if !mayOpen(entry.Dir) {
+				continue
+			}
+			if shown, ok = user.ShowPath(real); !ok {
+				continue
+			}
 		}
 		// Names looked up as "series + season folder" do not name a real object.
 		if prefix := stdpath.Base(entry.Dir) + " "; entry.Season > 0 && strings.HasPrefix(entry.Name, prefix) && entry.Dir != "/" {
 			continue
 		}
 		if libraryExtras.MatchString(strings.TrimSpace(entry.Name)) {
-			continue
-		}
-		real := stdpath.Join(entry.Dir, entry.Name)
-		if !mayOpen(entry.Dir) {
-			continue
-		}
-		shown, ok := user.ShowPath(real)
-		if !ok {
 			continue
 		}
 		file := tgvio.IsMediaFile(entry.Name) // a file shares its folder's access
@@ -131,6 +246,16 @@ func TgvioLibrary(c *gin.Context) {
 		}
 		return false
 	}
+	// A share's own root is the title the share is about: other things found
+	// inside it do not turn it into a shelf.
+	shareRoots := map[string]bool{}
+	if share != nil {
+		for _, root := range share.roots() {
+			if shown, ok := share.shown(root); ok {
+				shareRoots[shown] = true
+			}
+		}
+	}
 	items := make([]libraryItem, 0, len(picks))
 	for key, p := range picks {
 		// The card goes to the best place that is no shelf: a series' folder named
@@ -138,7 +263,7 @@ func TgvioLibrary(c *gin.Context) {
 		var best *cand
 		for i := range cands[key] {
 			c := &cands[key][i]
-			if !c.file && shelf(c.path, key) {
+			if !c.file && shelf(c.path, key) && !shareRoots[c.path] {
 				continue
 			}
 			if best == nil || better(&pick{entry: best.entry, path: best.path, file: best.file}, c.file, c.entry, c.path) {
@@ -172,24 +297,39 @@ func TgvioLibrary(c *gin.Context) {
 // user can see (as they see them).
 func TgvioLibraryScope(c *gin.Context) {
 	user := c.Request.Context().Value(conf.UserKey).(*model.User)
+	share, err := shareOf(c)
+	if err != nil {
+		shareErrorResp(c, err)
+		return
+	}
 	p := posters()
 	enabled := p.Enabled() && p.Config().Enabled
 	paths := []string{}
 	if enabled {
 		seen := map[string]bool{}
-		add := func(real string) {
-			if shown, ok := user.ShowPath(real); ok && !seen[shown] {
+		add := func(shown string) {
+			if !seen[shown] {
 				seen[shown] = true
 				paths = append(paths, shown)
 			}
 		}
-		for _, lib := range p.Config().Paths {
-			for _, root := range user.Roots() {
-				switch {
-				case utils.IsSubPath(root, lib): // a library folder inside the user's space
-					add(lib)
-				case utils.IsSubPath(lib, root): // the user's whole root lies in the library
-					add(root)
+		if share != nil {
+			// A share visitor's library is the share itself: the page under
+			// /@s never goes above it, so the scope is the share root.
+			for _, root := range share.roots() {
+				for _, lib := range p.Config().Paths {
+					if utils.IsSubPath(lib, root) || utils.IsSubPath(root, lib) {
+						add("/")
+						break
+					}
+				}
+			}
+		} else {
+			for _, lib := range p.Config().Paths {
+				for _, root := range user.Roots() {
+					if shown, ok := user.ShowPath(lib); ok && (utils.IsSubPath(root, lib) || utils.IsSubPath(lib, root)) {
+						add(shown)
+					}
 				}
 			}
 		}
@@ -230,4 +370,36 @@ func TgvioLibraryNews(c *gin.Context) {
 		out = append(out, item)
 	}
 	common.SuccessResp(c, gin.H{"items": out, "computing": computing, "at": at})
+}
+
+// --- a share's 片库, reachable without signing in -------------------------
+
+// TgvioShareLibrary: GET /api/tgvio/share/library?share=<id>&share_pwd=<code>
+// The share's own library on the route guests may use (a site with guest
+// access off still lets the people a share was sent to see it).
+func TgvioShareLibrary(c *gin.Context) {
+	if c.Query("share") == "" {
+		common.ErrorStrResp(c, "share is required", 400)
+		return
+	}
+	TgvioLibrary(c)
+}
+
+// TgvioShareScope: the same for /api/tgvio/share/scope.
+func TgvioShareScope(c *gin.Context) {
+	if c.Query("share") == "" {
+		common.ErrorStrResp(c, "share is required", 400)
+		return
+	}
+	TgvioLibraryScope(c)
+}
+
+// TgvioShareSeries: POST /api/tgvio/share/series {share, share_pwd, path}.
+func TgvioShareSeries(c *gin.Context) {
+	var req seriesReq
+	if err := c.ShouldBindJSON(&req); err != nil || req.Share == "" {
+		common.ErrorStrResp(c, "share is required", 400)
+		return
+	}
+	seriesFor(c, &req)
 }

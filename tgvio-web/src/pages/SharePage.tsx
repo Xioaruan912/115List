@@ -5,6 +5,8 @@ import { lazy, Suspense, useEffect, useMemo, useState, type CSSProperties, type 
 import { Link, useLocation, useSearch } from "wouter";
 import { cloudVideoInShare } from "../api/fs";
 import { shareFileUrl, visit } from "../api/share";
+import { shareLibraryScope } from "../api/posters";
+import { ShareLibrary } from "../components/ShareLibrary";
 import { VideoPlayer } from "../components/VideoPlayer";
 import { copyText } from "../lib/links";
 import { KindIcon } from "../components/KindIcon";
@@ -15,7 +17,7 @@ import { ApiError } from "../lib/api";
 import { formatBytes, formatDate } from "../lib/format";
 import { kindOf } from "../lib/kind";
 import { spring } from "../lib/motion";
-import { decodePath, encodePath, join, segments } from "../lib/path";
+import { basename, decodePath, encodePath, join, segments } from "../lib/path";
 import { sortObjs } from "../lib/sort";
 import type { Obj } from "../lib/types";
 import { useSession } from "../stores/session";
@@ -164,11 +166,21 @@ export function SharePage() {
   const [failures, setFailures] = useState(0);
   const [gate, setGate] = useState(false);
   const [open, setOpen] = useState<Obj | null>(null);
+  // A file picked in 片库: it is not in the folder the page has open.
+  const [playing, setPlaying] = useState<string | null>(null);
+  const [mode, setMode] = useState<"library" | "files" | null>(null);
 
   const info = useQuery({ queryKey: ["share-get", sid, path, code], queryFn: () => visit.get(sid, path, code), retry: false, staleTime: 60_000 });
   const isDir = info.data?.is_dir;
   const list = useQuery({ queryKey: ["share-list", sid, path, code], queryFn: ({ signal }) => visit.list(sid, path, code, signal), enabled: !!isDir, retry: false, staleTime: 60_000 });
   const items = useMemo(() => sortObjs(list.data?.content ?? [], "name", false), [list.data]);
+  // 片库 or 文件: the share's films listed like the library when it holds any.
+  const scope = useQuery({ queryKey: ["share-scope", sid, code], queryFn: () => shareLibraryScope(sid, code), enabled: !!info.data, retry: false, staleTime: 5 * 60_000 });
+  const modeKey = `tgvio-web:share-mode:${sid}`;
+  const view = (mode ?? sessionStorage.getItem(modeKey) ?? (scope.data?.enabled ? "library" : "files")) as "library" | "files";
+  const choose = (next: "library" | "files"): void => { sessionStorage.setItem(modeKey, next); setMode(next); };
+  const showLibrary = isDir && view === "library" && !!scope.data?.enabled;
+  const asObj = (file: string): Obj => ({ name: basename(file), size: 0, is_dir: false, modified: "", created: "", sign: "", thumb: "", type: 0, hashinfo: "" });
 
   useEffect(() => {
     if (info.isSuccess && code) sessionStorage.setItem(codeKey(sid), code);
@@ -240,23 +252,46 @@ export function SharePage() {
                     ))}
                   </nav>
                 )}
-                <h1 className="break-words text-[clamp(26px,4.4vw,46px)] font-semibold leading-[1.05] tracking-[-0.04em] text-white">
-                  <SplitText key={`${path}-${title}`} text={title || "分享"} />
-                </h1>
+                <div className="flex flex-wrap items-end justify-between gap-x-5 gap-y-3">
+                  <h1 className="break-words text-[clamp(26px,4.4vw,46px)] font-semibold leading-[1.05] tracking-[-0.04em] text-white">
+                    <SplitText key={`${path}-${title}`} text={title || "分享"} />
+                  </h1>
+                  {/* 片库 / 文件: the same share, as films or as folders. */}
+                  {isDir && scope.data?.enabled && (
+                    <div className="flex shrink-0 items-center rounded-full bg-white/[0.06] p-0.5" role="group" aria-label="视图">
+                      {(["library", "files"] as const).map(key => (
+                        <button key={key} aria-pressed={view === key} onClick={() => choose(key)}
+                          className={`relative h-8 rounded-full px-3.5 text-[13px] transition-colors ${view === key ? "text-void" : "text-white/60 hover:text-white"}`}>
+                          {view === key && <motion.span layoutId={`share-mode-${sid}`} className="absolute inset-0 rounded-full bg-accent" transition={spring.snappy} />}
+                          <span className="relative">{key === "library" ? "片库" : "文件"}</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
                 {isDir && list.data && (
-                  <p className="mt-2 text-[13px] text-white/50 tabular">{items.length} 项{totalBytes ? `，${formatBytes(totalBytes)}` : ""}</p>
+                  <p className="mt-2 text-[13px] text-white/50 tabular">
+                    {showLibrary ? "按海报浏览这个分享里的影视" : `${items.length} 项${totalBytes ? `，${formatBytes(totalBytes)}` : ""}`}
+                  </p>
                 )}
               </div>
               <div className="px-3 pb-6 sm:px-6 sm:pb-8">
                 {!isDir && <div className="px-2"><Single obj={info.data} url={info.data.raw_url || shareFileUrl(sid, path, code)} share={{ sid, code, path }} /></div>}
-                {isDir && list.isPending && (
+                {showLibrary && (
+                  <div className="px-2 sm:px-3">
+                    <ShareLibrary sid={sid} code={code}
+                      onOpenDir={next => { choose("files"); go(next); }}
+                      onPlay={next => setPlaying(next)} />
+                  </div>
+                )}
+                {isDir && !showLibrary && list.isPending && (
                   <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-5">
                     {Array.from({ length: 10 }, (_, i) => <div key={i} className="enter p-1.5" style={{ "--i": i } as CSSProperties}><div className="aspect-[4/3] rounded-[12px] bg-white/[0.05]" /><div className="mt-2 h-3.5 w-2/3 rounded bg-white/[0.06]" /></div>)}
                   </div>
                 )}
-                {isDir && list.isError && <ErrorState className="mx-2" error={list.error} onRetry={() => list.refetch()} />}
-                {isDir && list.data && items.length === 0 && <p className="px-2 text-white/55">这个文件夹是空的。</p>}
-                {isDir && items.length > 0 && (
+                {isDir && !showLibrary && list.isError && <ErrorState className="mx-2" error={list.error} onRetry={() => list.refetch()} />}
+                {isDir && !showLibrary && list.data && items.length === 0 && <p className="px-2 text-white/55">这个文件夹是空的。</p>}
+                {isDir && !showLibrary && items.length > 0 && (
                   <LayoutGroup>
                     <div className="grid grid-cols-2 gap-1 sm:grid-cols-4 lg:grid-cols-5">
                       {items.map((obj, index) => {
@@ -269,6 +304,10 @@ export function SharePage() {
                     </AnimatePresence>
                   </LayoutGroup>
                 )}
+                {/* A video played from 片库: same player, same place remembered. */}
+                <AnimatePresence>
+                  {playing && <Lightbox key={playing} obj={asObj(playing)} url={shareFileUrl(sid, playing, code)} share={{ sid, code, path: playing }} onClose={() => setPlaying(null)} />}
+                </AnimatePresence>
                 {readme && (
                   <div className="mx-2 mt-6 rounded-[16px] bg-white/[0.03] px-5 py-4" style={{ boxShadow: "inset 0 0 0 1px rgb(255 255 255 / 0.06)" }}>
                     <Suspense fallback={null}><Markdown source={readme} /></Suspense>
