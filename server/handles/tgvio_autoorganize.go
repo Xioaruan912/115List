@@ -78,6 +78,69 @@ func noteAuto(n autoNote) {
 
 func autoRecentFile() string { return filepath.Join(flags.DataDir, "tgvio", "organize-recent.json") }
 
+// forgetNotes: a folder that was renamed takes the notes about its old paths
+// with it — they describe folders that are no longer there, beside the note of
+// what it is now.
+func forgetNotes(dir string) {
+	autoMu.Lock()
+	defer autoMu.Unlock()
+	kept := autoRecent[:0]
+	for _, n := range autoRecent {
+		if n.Path == dir || strings.HasPrefix(n.Path, dir+"/") {
+			continue
+		}
+		kept = append(kept, n)
+	}
+	if len(kept) == len(autoRecent) {
+		return
+	}
+	autoRecent = kept
+	if raw, err := json.Marshal(autoRecent); err == nil {
+		_ = os.WriteFile(autoRecentFile(), raw, 0o600)
+	}
+}
+
+var notesPrunedAt time.Time // guarded by autoMu; the rounds touch it on their own goroutine
+
+// pruneGoneNotes: a note about a folder that was deleted describes nothing
+// either. Every ten minutes the drive is asked; only a folder the drive says is
+// gone is dropped (a slow or failed listing keeps its note).
+func pruneGoneNotes(ctx context.Context) {
+	autoMu.Lock()
+	if time.Since(notesPrunedAt) < 10*time.Minute {
+		autoMu.Unlock()
+		return
+	}
+	notesPrunedAt = time.Now()
+	notes := append([]autoNote(nil), autoRecent...)
+	autoMu.Unlock()
+	gone := map[string]bool{}
+	for _, n := range notes {
+		if _, err := fs.Get(ctx, n.Path, &fs.GetArgs{NoLog: true}); err != nil {
+			msg := strings.ToLower(err.Error())
+			if strings.Contains(msg, "not found") || strings.Contains(msg, "does not exist") {
+				gone[n.Path] = true
+			}
+		}
+	}
+	if len(gone) == 0 {
+		return
+	}
+	autoMu.Lock()
+	kept := autoRecent[:0]
+	for _, n := range autoRecent {
+		if !gone[n.Path] {
+			kept = append(kept, n)
+		}
+	}
+	autoRecent = kept
+	raw, err := json.Marshal(autoRecent)
+	autoMu.Unlock()
+	if err == nil {
+		_ = os.WriteFile(autoRecentFile(), raw, 0o600)
+	}
+}
+
 // A download is organized as soon as it has landed: the organizer looks every
 // 15 seconds (at once when 找资源 marks a folder), waits while the download
 // runs, and looks again every 30 seconds until its videos are there.
@@ -150,6 +213,7 @@ func autoOrganizeRound() {
 		return
 	}
 	ctx := context.WithValue(context.Background(), conf.UserKey, admin)
+	pruneGoneNotes(ctx)
 	scanLibraryRoots(ctx)
 	autoMu.Lock()
 	for _, dir := range autoForget {
@@ -252,6 +316,7 @@ func autoOrganizeRound() {
 		_ = organizeStore().Mark(dir, false)
 		if final != dir {
 			_ = organizeStore().Mark(final, false)
+			forgetNotes(dir)
 		}
 		log.Infof("tgvio auto organize: %s -> %s", dir, final)
 		mergeIntoSeries(ctx, dir, final)
