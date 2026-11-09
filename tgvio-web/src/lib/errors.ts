@@ -41,6 +41,7 @@ const RULES: Rule[] = [
   [/object not found|not found|no such file|does not exist|not exist|404/, "找不到这个文件", "它可能被移动、改名或删除了，刷新一下看看。", true],
   [/\b405\b|waf|too many|rate limit|\b429\b|频繁/, "网盘有点忙", "请求太频繁，网盘暂时限流了。过一两分钟再试。", true],
   [/quota|no space|insufficient|capacity|空间不足/, "空间不够了", "清理一些文件后再试。", false],
+  [/射手网|assrt|subtitle/, "射手网这边没有取到", "换一个字幕包，或过一会儿再试。", true],
   [/timeout|timed out|deadline|tls|\beof\b|connection (reset|refused|closed)|no such host|i\/o|broken pipe|bad gateway|502|503|504/, "网盘连接不稳定", "这次没连上网盘，重试一般就好。", true],
   [/failed to fetch|networkerror|load failed|network/, "网络断开了", "检查一下网络再重试。", true],
 ];

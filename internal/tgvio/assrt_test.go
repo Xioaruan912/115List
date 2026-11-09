@@ -24,7 +24,8 @@ func TestAssrt(t *testing.T) {
 		}
 		switch r.URL.Path {
 		case "/v1/sub/search":
-			if r.URL.Query().Get("is_file") != "1" || r.URL.Query().Get("q") != "Friends.S04E24.1080p" {
+			// The title alone (not assrt's fuzzy whole-file match) finds the packs.
+			if r.URL.Query().Get("is_file") != "" || r.URL.Query().Get("q") != "Friends" {
 				t.Errorf("search query %v", r.URL.Query())
 			}
 			w.Write([]byte(`{"status":0,"sub":{"subs":[{"id":601234,"native_name":"老友记 第四季","videoname":"Friends.S04E24","subtype":"ASS","lang":{"desc":"简英"},"vote_score":9}]}}`))
@@ -63,5 +64,28 @@ func TestAssrt(t *testing.T) {
 		if got := SubtitleName(c[0], c[1], c[2]); got != c[3] {
 			t.Errorf("SubtitleName(%q,%q,%q) = %q, want %q", c[0], c[1], c[2], got, c[3])
 		}
+	}
+}
+
+// assrt answers some searches in its older shape (fileid / m_title / m_lang):
+// read as an empty result, the sheet listed entries with no id and every
+// download failed with "id is required".
+func TestAssrtOldShape(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "Bearer tok" {
+			w.Write([]byte(`{"status":20001}`))
+			return
+		}
+		w.Write([]byte(`{"status":0,"sub":{"subs":[{"fileid":"649119","m_title":"瞬息全宇宙/Everything.Everywhere","m_lang":"简&nbsp;英","m_subtype":"Subrip(srt)","score":"79","uploadtime":"2022-06-22 13:22:14","videoname":"","subtype":"2"}]}}`))
+	}))
+	defer srv.Close()
+	a := &Assrt{base: srv.URL + "/v1/", token: "tok", http: srv.Client(), limiter: rate.NewLimiter(rate.Every(time.Millisecond), 10)}
+	results, err := a.Search(context.Background(), "瞬息全宇宙 (2022).mkv", "瞬息全宇宙")
+	if err != nil || len(results) != 1 {
+		t.Fatalf("search: %+v %v", results, err)
+	}
+	got := results[0]
+	if got.ID != 649119 || got.Name != "瞬息全宇宙/Everything.Everywhere" || got.Lang != "简 英" || got.Type != "Subrip(srt)" || got.Score != 79 || got.Uploaded != "2022-06-22 13:22:14" {
+		t.Fatalf("old shape read as %+v", got)
 	}
 }
