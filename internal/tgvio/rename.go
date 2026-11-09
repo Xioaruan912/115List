@@ -631,6 +631,26 @@ func (t *TMDB) PlanRenameIn(ctx context.Context, dir string, entries []RenameEnt
 		case inherit != nil && inherit.Season > 0:
 			folderSeason = inherit.Season
 		}
+		// The videos themselves name one season ("… S01E170 …"): the folder is
+		// that season, whatever its own name says.
+		if folderSeason == 0 {
+			one := 0
+			for _, v := range videos {
+				s, _ := ParseEpisode(v)
+				if s == 0 {
+					continue
+				}
+				if one == 0 {
+					one = s
+				} else if one != s {
+					one = -1
+					break
+				}
+			}
+			if one > 0 {
+				folderSeason = one
+			}
+		}
 		// A folder that is one season decides the season, even over "S01E05" in
 		// a file name: names given under a wrong season must be fixable.
 		anthology := false // set below: TMDB has one season, the release counts another

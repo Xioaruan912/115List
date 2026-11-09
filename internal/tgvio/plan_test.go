@@ -540,3 +540,31 @@ func TestPlanReleasePackFolder(t *testing.T) {
 		t.Fatalf("folder -> %+v", got)
 	}
 }
+
+func TestPlanFolderOfNamedEpisodesIsThatSeason(t *testing.T) {
+	// A folder whose videos already say S01E… is that season's folder, whatever
+	// its own name says: it is named and filed as one, not as the series' folder.
+	tm := planTMDB(t, nil, nil)
+	tm.http.Transport = rawTMDB{
+		"tv/8": `{"id":8,"name":"某剧","first_air_date":"2020-01-01","seasons":[
+			{"season_number":1,"name":"第 1 季","episode_count":2,"air_date":"2020-01-01"},
+			{"season_number":2,"name":"第 2 季","episode_count":2,"air_date":"2022-01-01"}]}`,
+		"tv/8/season/1": `{"episodes":[{"episode_number":1,"name":"第一集"}]}`,
+	}
+	folder := "某剧 全集"
+	tm.entries[Key(folder)] = &Poster{Kind: "tv", ID: 8, Title: "某剧", Year: 2020, Name: folder, Rev: cleanerRev}
+	entries := []RenameEntry{
+		{Name: "某剧 - S01E01 - 第一集.mkv", Size: 1 << 30},
+		{Name: "某剧 - S01E02 - 第二集.mkv", Size: 1 << 30},
+	}
+	plan, err := tm.PlanRenameIn(context.Background(), "/lib/"+folder, entries, 0, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if plan.Season != 1 {
+		t.Fatalf("season -> %d", plan.Season)
+	}
+	if got := find(plan, folder); got.New != "某剧 第一季 (2020)" {
+		t.Fatalf("folder -> %+v", got)
+	}
+}
