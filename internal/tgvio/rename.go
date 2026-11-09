@@ -960,6 +960,26 @@ func (t *TMDB) PlanRenameIn(ctx context.Context, dir string, entries []RenameEnt
 		}
 		kept = append(kept, e)
 	}
+	// A folder named exactly like the one holding it is a download's own wrapper
+	// ("… 第二季 (2026)/… 第二季 (2026)/"): its contents move up. It cannot be
+	// another title's folder, so this runs whatever else the folder holds.
+	if base := stdpath.Base(dir); dir != "/" && base != "" && base != "." {
+		for _, e := range kept {
+			if !e.IsDir || e.Name != base || Skip(e.Name) {
+				continue
+			}
+			taken := false
+			for _, item := range plan.Items {
+				if item.Old == e.Name {
+					taken = true
+					break
+				}
+			}
+			if !taken {
+				plan.Items = append(plan.Items, RenameItem{Old: e.Name, Kind: "unwrap", Action: "unwrap"})
+			}
+		}
+	}
 	// A download lands as its release's folder ("片名 (年份)/【某某发布】片名[全8集].2160p…/"):
 	// a film's, a series' or a show's folder holding only that opens up, so the
 	// videos sit in the title's own folder. A season's folder ("第二季",

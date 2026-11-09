@@ -186,13 +186,15 @@ func TestPlanSeriesFolderKeepsSeriesName(t *testing.T) {
 func TestPlanShelfOfFoldersKeepsName(t *testing.T) {
 	// Only folders, of films of different series: a shelf, named by its owner.
 	tm := planTMDB(t, []tmdbItem{film(1, "蜘蛛侠", "2002-05-01", 1, "蜘蛛侠（系列）"), film(2, "超凡蜘蛛侠", "2012-07-03", 2, "超凡蜘蛛侠（系列）")},
-		map[string]int{"蜘蛛侠 (2002)": 1, "超凡蜘蛛侠 (2012)": 2})
-	plan, err := tm.PlanRenameIn(context.Background(), "/lib/蜘蛛侠 (2002)", []RenameEntry{
+		map[string]int{"蜘蛛侠 2002": 1, "超凡蜘蛛侠 (2012)": 2})
+	plan, err := tm.PlanRenameIn(context.Background(), "/lib/蜘蛛侠 2002", []RenameEntry{
 		{Name: "原盘ISO", IsDir: true}, {Name: "蜘蛛侠 (2002)", IsDir: true}, {Name: "超凡蜘蛛侠 (2012)", IsDir: true}}, 0, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := find(plan, "蜘蛛侠 (2002)"); got.Kind != "folder" || got.New != "" || got.Reason != "several" {
+	// The folder that shares its parent's name is that download's wrapper and
+	// opens up; the other films of the shelf stay folders to pick from.
+	if got := find(plan, "蜘蛛侠 2002"); got.Kind != "folder" || got.New != "" || got.Reason != "several" {
 		t.Fatalf("shelf folder -> %+v", got)
 	}
 }
@@ -373,5 +375,23 @@ func TestPlanSequelIsNoSecondDisc(t *testing.T) {
 	}
 	if got := find(plan, "灵魂战车1.iso"); strings.Contains(got.New, "CD") {
 		t.Fatalf("sequel taken for a disc -> %+v", got)
+	}
+}
+
+// A folder named exactly like its parent is the download's own wrapper: its
+// contents move up, whatever else the folder holds.
+func TestPlanUnwrapSameName(t *testing.T) {
+	tm := planTMDB(t, []tmdbItem{film(9, "瘴气营地的青春性事与死亡", "2026-01-01", 0, "")},
+		map[string]int{"瘴气营地的青春性事与死亡 (2026)": 9})
+	plan, err := tm.PlanRenameIn(context.Background(), "/lib/瘴气营地的青春性事与死亡 (2026)", []RenameEntry{
+		{Name: "瘴气营地的青春性事与死亡 (2026)", IsDir: true},
+		{Name: "瘴气营地的青春性事与死亡.2026.1080p.mkv", Size: 800 << 20},
+	}, 0, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := find(plan, "瘴气营地的青春性事与死亡 (2026)")
+	if got.Action != "unwrap" {
+		t.Fatalf("same-named wrapper -> %+v", got)
 	}
 }
