@@ -463,7 +463,16 @@ func (t *TMDB) subjectOf(ctx context.Context, dir string, entries []RenameEntry)
 	// A release's own folder ("[DBD-Raws][黑色五叶草][001-170TV全集+特别篇][1080P]…"):
 	// the title sits in one of its brackets.
 	if q := bracketTitle(folder); q != "" && Key(q) != Key(look) {
-		if qp, qerr := t.resolve(ctx, q, stdpath.Dir(dir)); qerr == nil && !qp.None {
+		if qp, qerr := t.lookup(ctx, q); qerr == nil && !qp.None {
+			// Kept as this folder's own record: one named by the bare title would
+			// be taken for the series' own folder in the library.
+			qp.Name, qp.Dir = folder, stdpath.Dir(dir)
+			t.mu.Lock()
+			if cur := t.entries[Key(folder)]; cur == nil || cur.None {
+				t.entries[Key(folder)] = qp
+			}
+			t.mu.Unlock()
+			t.save()
 			return qp, nil
 		}
 	}
@@ -1384,6 +1393,16 @@ func (t *TMDB) RenamedAs(ctx context.Context, dir, oldName, newName, newDir stri
 	p.Name, p.Dir, p.At = newName, newDir, time.Now().Unix()
 	t.mu.Lock()
 	delete(t.entries, Key(oldName))
+	// A record of the same title left at this folder under its old name
+	// ("黑色五叶草" beside the new "黑色五叶草 (2017)") would be taken for the
+	// series' folder: the one just renamed is it.
+	if as.Kind == "tv" && as.Season == 0 {
+		for k, e := range t.entries {
+			if k != Key(newName) && !e.Manual && !e.None && e.Kind == p.Kind && e.ID == p.ID && e.Dir == newDir && SeasonOf(e.Name) == 0 {
+				delete(t.entries, k)
+			}
+		}
+	}
 	t.entries[Key(newName)] = p
 	t.mu.Unlock()
 	t.save()

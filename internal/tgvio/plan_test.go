@@ -511,8 +511,8 @@ func TestPlanReleasePackFolder(t *testing.T) {
 			{"season_number":1,"name":"第 1 季","episode_count":12,"air_date":"2017-10-03"},
 			{"season_number":2,"name":"第 2 季","episode_count":12,"air_date":"2026-01-01"}]}`,
 		"tv/1/season/1": `{"episodes":[{"episode_number":1,"name":"开战"}]}`,
+		"search/multi":  `{"results":[{"id":1,"media_type":"tv","name":"黑色五叶草","original_name":"ブラッククローバー","first_air_date":"2017-10-03","poster_path":"/p.jpg"}]}`,
 	}
-	tm.entries[Key("黑色五叶草")] = &Poster{Kind: "tv", ID: 1, Title: "黑色五叶草", Year: 2017, Name: "黑色五叶草", Rev: cleanerRev}
 	folder := "[DBD-Raws][黑色五叶草][001-012TV全集+特别篇][1080P][BDRip][HEVC-10bit][简繁外挂][FLAC][MKV]"
 	entries := []RenameEntry{}
 	for i := 1; i <= 12; i++ {
