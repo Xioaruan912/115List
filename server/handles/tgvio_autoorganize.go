@@ -182,22 +182,6 @@ func autoOrganizeRound() {
 		if !posters().InLibrary(dir) {
 			continue
 		}
-		// A download that has not landed within the window is given up: 115's
-		// cloud download can hang for good, and the folder would wait forever.
-		if _, ok := autoLandingSince[dir]; !ok {
-			autoLandingSince[dir] = time.Now()
-		}
-		if giveUpDue(autoLandingSince[dir], time.Now()) {
-			cancelDownloadsUnder(dir)
-			noteAuto(autoNote{Path: dir, At: time.Now(), Why: "giveup"})
-			_ = organizeStore().Mark(dir, false) // out of the queue: discarded, the files stay
-			delete(autoLanding, dir)
-			delete(autoLandingSince, dir)
-			delete(autoTried, dir)
-			setActive(dir, "")
-			log.Warnf("tgvio auto organize: %s gave up after %s", dir, autoGiveUp)
-			continue
-		}
 		if busyUnder(busy, dir) {
 			setActive(dir, "downloading")
 			continue
@@ -241,6 +225,20 @@ func autoOrganizeRound() {
 				autoLanding[dir] = time.Now() // not landed yet: soon again
 				if _, ok := autoLandingSince[dir]; !ok {
 					autoLandingSince[dir] = time.Now()
+				}
+				// A download that has not landed within the window is given up:
+				// 115's cloud download can hang for good and the folder would
+				// wait forever.
+				if giveUpDue(autoLandingSince[dir], time.Now()) {
+					cancelDownloadsUnder(dir)
+					noteAuto(autoNote{Path: dir, At: time.Now(), Why: "giveup"})
+					_ = organizeStore().Mark(dir, false) // out of the queue: discarded, the files stay
+					delete(autoLanding, dir)
+					delete(autoLandingSince, dir)
+					delete(autoTried, dir)
+					setActive(dir, "")
+					log.Warnf("tgvio auto organize: %s gave up after %s", dir, autoGiveUp)
+					continue
 				}
 				setActive(dir, "waiting")
 			}
@@ -333,6 +331,15 @@ var autoGiveUp = func() time.Duration {
 	return 10 * time.Minute
 }()
 
+// transientList: a listing that ran into a folder moved a moment ago (115
+// answers "object not found") or a dropped connection.
+func transientList(err error) bool {
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "not found") || strings.Contains(msg, "does not exist") ||
+		strings.Contains(msg, "deadline exceeded") || strings.Contains(msg, "timeout") ||
+		strings.Contains(msg, "connection")
+}
+
 // giveUpDue: has a folder waited past the window? 0 waits forever.
 func giveUpDue(since, now time.Time) bool {
 	return autoGiveUp > 0 && now.Sub(since) > autoGiveUp
@@ -416,6 +423,9 @@ func autoOrganize(ctx context.Context, root string) (done bool, final string, wh
 	defer release()
 	tree, err := renameTreeOf(ctx, root, true)
 	if err != nil {
+		if transientList(err) {
+			return false, root, autoWhy{need: "busy"}, nil
+		}
 		return false, root, why, err
 	}
 	store := posters()
