@@ -81,7 +81,7 @@ var (
 	parenYear = regexp.MustCompile(`[(（]((?:19|20)\d{2})[)）]`)
 	// orderPrefix: "01_", "02、" before the parts of a box (a number with a space stays: "1917 xxx").
 	orderPrefix = regexp.MustCompile(`^\d{1,2}[_、]\s*`)
-	halfTag   = regexp.MustCompile(`(?:[(（]([上下])[)）]|\d([上下]))$`)
+	halfTag     = regexp.MustCompile(`(?:[(（]([上下])[)）]|\d([上下]))$`)
 	// A folder of several films ("[周星驰] [原盘电影集 国粤语]") names no one film.
 	collection = regexp.MustCompile(`电影集|作品集|合集|全集|系列|collection`)
 )
@@ -909,6 +909,11 @@ func (t *TMDB) Lookup(dir string, names []string) (map[string]*Poster, int) {
 	}
 	for _, name := range names {
 		if Skip(name) || notTitle.MatchString(name) {
+			continue
+		}
+		// A release's extras folder ("PV", "menu", "NCOP&NCED", "CDs", "SP") is
+		// no title: the folder view shows it as a folder, never as a film.
+		if extrasFolder.MatchString(strings.TrimSpace(name)) {
 			continue
 		}
 		look := name

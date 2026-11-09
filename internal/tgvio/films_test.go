@@ -92,3 +92,18 @@ func TestLookupLeavesOutArtworkAndNotes(t *testing.T) {
 		t.Fatalf("pending %d entries %v", pending, tm.entries)
 	}
 }
+
+func TestLookupSkipsExtrasFolders(t *testing.T) {
+	// The folders a release packs beside its episodes get no poster (and their
+	// stale records go), so the folder view shows them as folders.
+	tm := filmsTMDB(t, []tmdbItem{film(30, "Menu", "1933-01-01", 0, "")}, map[string]int{"menu": 30})
+	dir := "/lib/黑色五叶草 (2017)/黑色五叶草 第一季 (2017)"
+	tm.entries[Key("menu")].Dir = dir
+	got, _ := tm.Lookup(dir, []string{"menu", "PV", "NCOP&NCED", "CDs", "SP", "黑色五叶草 - S01E01 - 开战.mkv"})
+	if _, ok := got["menu"]; ok {
+		t.Fatalf("extras folder -> %+v", got)
+	}
+	if _, ok := tm.entries[Key("menu")]; ok {
+		t.Fatalf("extras record kept")
+	}
+}
