@@ -100,11 +100,15 @@ func forgetNotes(dir string) {
 	}
 }
 
-var notesPrunedAt time.Time // guarded by autoMu; the rounds touch it on their own goroutine
+var (
+	notesPrunedAt time.Time           // guarded by autoMu; the rounds touch it on their own goroutine
+	noteGoneAt    = map[string]bool{} // guarded by autoMu: paths the last prune found gone
+)
 
 // pruneGoneNotes: a note about a folder that was deleted describes nothing
-// either. Every ten minutes the drive is asked; only a folder the drive says is
-// gone is dropped (a slow or failed listing keeps its note).
+// either. Every ten minutes the drive is asked, and a note goes only when two
+// looks in a row say the folder is gone: one busy or stale listing must not
+// empty the panel.
 func pruneGoneNotes(ctx context.Context) {
 	autoMu.Lock()
 	if time.Since(notesPrunedAt) < 10*time.Minute {
@@ -113,20 +117,30 @@ func pruneGoneNotes(ctx context.Context) {
 	}
 	notesPrunedAt = time.Now()
 	notes := append([]autoNote(nil), autoRecent...)
+	before := make(map[string]bool, len(noteGoneAt))
+	for path := range noteGoneAt {
+		before[path] = true
+	}
 	autoMu.Unlock()
-	gone := map[string]bool{}
+	gone, missing := map[string]bool{}, map[string]bool{}
 	for _, n := range notes {
-		if _, err := fs.Get(ctx, n.Path, &fs.GetArgs{NoLog: true}); err != nil {
-			msg := strings.ToLower(err.Error())
-			if strings.Contains(msg, "not found") || strings.Contains(msg, "does not exist") {
+		_, err := fs.Get(ctx, n.Path, &fs.GetArgs{NoLog: true})
+		switch {
+		case err == nil:
+			// there: no strike
+		case isNotFound(err):
+			missing[n.Path] = true
+			if before[n.Path] {
 				gone[n.Path] = true
 			}
 		}
 	}
+	autoMu.Lock()
+	noteGoneAt = missing
 	if len(gone) == 0 {
+		autoMu.Unlock()
 		return
 	}
-	autoMu.Lock()
 	kept := autoRecent[:0]
 	for _, n := range autoRecent {
 		if !gone[n.Path] {
@@ -136,9 +150,15 @@ func pruneGoneNotes(ctx context.Context) {
 	autoRecent = kept
 	raw, err := json.Marshal(autoRecent)
 	autoMu.Unlock()
+	log.Infof("tgvio auto organize: %d notes forgotten (their folders are gone)", len(gone))
 	if err == nil {
 		_ = os.WriteFile(autoRecentFile(), raw, 0o600)
 	}
+}
+
+func isNotFound(err error) bool {
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "not found") || strings.Contains(msg, "does not exist")
 }
 
 // A download is organized as soon as it has landed: the organizer looks every
