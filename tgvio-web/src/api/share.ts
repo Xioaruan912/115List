@@ -71,3 +71,30 @@ export function randomCode(length = 4): string {
   const bytes = crypto.getRandomValues(new Uint8Array(length));
   return [...bytes].map(byte => alphabet[byte % alphabet.length]).join("");
 }
+
+/* ------------------------------------------------------------- subtitles */
+
+/** A subtitle found by the share's online search (射手网). */
+export interface ShareSubtitleResult { id: number; name: string; video?: string; lang?: string; type?: string; score?: number; uploaded?: string }
+export interface ShareSubtitleFile { name: string; size?: string }
+
+/**
+ * Subtitles inside a share, for a visitor without an account: the files beside
+ * the video are read by the server, and 射手网 can be searched — a chosen one
+ * comes back as text to play from memory, never written into the share.
+ */
+export const shareSubtitles = {
+  search: (id: string, pwd: string, path: string, q = "") =>
+    post<{ items: ShareSubtitleResult[] }>("/tgvio/share/subtitles/search", { share: id, share_pwd: pwd, path, q }),
+  files: (id: string, pwd: string, path: string, sub: number) =>
+    post<{ items: ShareSubtitleFile[] | null }>("/tgvio/share/subtitles/files", { share: id, share_pwd: pwd, path, id: sub }),
+  text: (id: string, pwd: string, path: string, sub: number, file: string, lang = "") =>
+    post<{ name: string; text: string }>("/tgvio/share/subtitles/text", { share: id, share_pwd: pwd, path, id: sub, file, lang }),
+};
+
+/** A subtitle file inside a share, read by the server (small text, no proxy needed). */
+export function shareSubtitleUrl(id: string, pwd: string, path: string): string {
+  const query = new URLSearchParams({ share: id, path });
+  if (pwd) query.set("share_pwd", pwd);
+  return `${apiBase}/api/tgvio/share/subtitle?${query.toString()}`;
+}

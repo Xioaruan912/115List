@@ -124,6 +124,11 @@ func Init(e *gin.Engine) {
 	shareView.GET("/library", handles.TgvioShareLibrary)
 	shareView.GET("/scope", handles.TgvioShareScope)
 	shareView.POST("/series", handles.TgvioShareSeries)
+	// A share's subtitles: the files beside the video, and 射手网's for a visitor.
+	shareView.GET("/subtitle", handles.TgvioShareSubtitle)
+	shareView.POST("/subtitles/search", handles.TgvioShareSubtitlesSearch)
+	shareView.POST("/subtitles/files", handles.TgvioShareSubtitlesFiles)
+	shareView.POST("/subtitles/text", handles.TgvioShareSubtitlesText)
 	g.GET("/tgvio/hls/:ticket/:quality/:file", handles.TgvioHLS)
 	// TGVIO posters from TMDB: lookups for signed-in users, images for anyone (they are public art).
 	auth.POST("/tgvio/posters", middlewares.AuthNotGuest, handles.TgvioPosters)

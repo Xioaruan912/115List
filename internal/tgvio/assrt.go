@@ -167,16 +167,28 @@ func (a *Assrt) call(ctx context.Context, endpoint string, query url.Values, out
 	return json.Unmarshal(raw, out)
 }
 
+// assrt answers a search in one of two shapes, and which one comes back has
+// changed between calls: the plain one (id/native_name/lang.desc) and the
+// older m_-prefixed one (fileid/sub_name/m_title/m_lang). Both are read here.
 type assrtSub struct {
-	ID         int     `json:"id"`
-	NativeName string  `json:"native_name"`
-	VideoName  string  `json:"videoname"`
-	Subtype    string  `json:"subtype"`
-	UploadTime string  `json:"upload_time"`
-	VoteScore  float64 `json:"vote_score"`
-	Lang       struct {
+	ID          int     `json:"id"`
+	FileID      string  `json:"fileid"`
+	NativeName  string  `json:"native_name"`
+	MTitle      string  `json:"m_title"`
+	Chinese     string  `json:"video_chinese_name"`
+	SubName     string  `json:"sub_name"`
+	VideoName   string  `json:"videoname"`
+	MVideoName  string  `json:"m_videoname"`
+	Subtype     string  `json:"subtype"`
+	MSubtype    string  `json:"m_subtype"`
+	UploadTime  string  `json:"upload_time"`
+	UploadTime2 string  `json:"uploadtime"`
+	VoteScore   float64 `json:"vote_score"`
+	Score       string  `json:"score"`
+	Lang        struct {
 		Desc string `json:"desc"`
 	} `json:"lang"`
+	MLang    string `json:"m_lang"`
 	Filename string `json:"filename"`
 	Size     any    `json:"size"`
 	URL      string `json:"url"`
@@ -185,6 +197,52 @@ type assrtSub struct {
 		F   string `json:"f"`
 		S   string `json:"s"`
 	} `json:"filelist"`
+}
+
+// result turns either shape into what the page shows.
+func (s assrtSub) result() (SubtitleResult, bool) {
+	id := s.ID
+	if id <= 0 {
+		if n, err := strconv.Atoi(strings.TrimSpace(s.FileID)); err == nil {
+			id = n
+		}
+	}
+	if id <= 0 {
+		return SubtitleResult{}, false
+	}
+	name := s.NativeName
+	if name == "" {
+		name = s.MTitle
+	}
+	if name == "" {
+		name = s.Chinese
+	}
+	if name == "" {
+		name = strings.TrimSuffix(s.SubName, filepath.Ext(s.SubName))
+	}
+	video := s.VideoName
+	if video == "" {
+		video = s.MVideoName
+	}
+	kind := s.Subtype
+	if len(kind) < 3 { // "2", "5" and the like are codes, not a format
+		kind = s.MSubtype
+	}
+	lang := s.Lang.Desc
+	if lang == "" {
+		lang = strings.NewReplacer("&nbsp;", " ", "&amp;", "&").Replace(s.MLang)
+	}
+	score := s.VoteScore
+	if score == 0 {
+		if n, err := strconv.ParseFloat(strings.TrimSpace(s.Score), 64); err == nil {
+			score = n
+		}
+	}
+	uploaded := s.UploadTime
+	if uploaded == "" {
+		uploaded = s.UploadTime2
+	}
+	return SubtitleResult{ID: id, Name: name, Video: video, Lang: strings.TrimSpace(lang), Type: kind, Score: score, Uploaded: uploaded}, true
 }
 
 type assrtAnswer struct {
@@ -214,11 +272,9 @@ func (a *Assrt) Search(ctx context.Context, fileName, query string) ([]SubtitleR
 	}
 	out := make([]SubtitleResult, 0, len(answer.Sub.Subs))
 	for _, s := range answer.Sub.Subs {
-		name := s.NativeName
-		if name == "" {
-			name = s.VideoName
+		if item, ok := s.result(); ok {
+			out = append(out, item)
 		}
-		out = append(out, SubtitleResult{ID: s.ID, Name: name, Video: s.VideoName, Lang: s.Lang.Desc, Type: s.Subtype, Score: s.VoteScore, Uploaded: s.UploadTime})
 	}
 	return out, nil
 }
@@ -268,6 +324,11 @@ func (a *Assrt) Download(ctx context.Context, id int, name string) ([]byte, erro
 		}
 		defer resp.Body.Close()
 		if resp.StatusCode != http.StatusOK {
+			// assrt answers 49x with its own error page when a file cannot be
+			// served (a bad mirror, a transient fault): say so plainly.
+			if resp.StatusCode >= 490 && resp.StatusCode < 500 {
+				return nil, errors.New("这个字幕文件射手网暂时取不到，换一个试试")
+			}
 			return nil, fmt.Errorf("assrt download: HTTP %d", resp.StatusCode)
 		}
 		data, err := io.ReadAll(io.LimitReader(resp.Body, 8<<20+1))

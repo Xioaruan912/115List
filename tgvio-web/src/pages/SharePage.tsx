@@ -4,9 +4,10 @@ import { AnimatePresence, LayoutGroup, motion, useAnimate } from "motion/react";
 import { lazy, Suspense, useEffect, useMemo, useState, type CSSProperties, type FormEvent } from "react";
 import { Link, useLocation, useSearch } from "wouter";
 import { cloudVideoInShare } from "../api/fs";
-import { shareFileUrl, visit } from "../api/share";
+import { shareFileUrl, shareSubtitleUrl, visit } from "../api/share";
 import { shareLibraryScope } from "../api/posters";
 import { ShareLibrary } from "../components/ShareLibrary";
+import { ShareSubtitleSearch } from "../components/ShareSubtitleSearch";
 import { hasTitlePanel, SeriesPanel, SharePanelProvider, useTitlePanel } from "../components/SeriesPanel";
 import { VideoPlayer } from "../components/VideoPlayer";
 import { copyText } from "../lib/links";
@@ -19,8 +20,9 @@ import { SplitText } from "../components/SplitText";
 import { ApiError } from "../lib/api";
 import { formatBytes, formatDate } from "../lib/format";
 import { kindOf } from "../lib/kind";
+import { preferSubtitle, subtitlesFor, type SubtitleTrack } from "../lib/subtitles";
 import { spring } from "../lib/motion";
-import { basename, decodePath, encodePath, join, segments } from "../lib/path";
+import { basename, decodePath, encodePath, join, parent, segments } from "../lib/path";
 import { sortObjs } from "../lib/sort";
 import type { Obj } from "../lib/types";
 import { useSession } from "../stores/session";
@@ -103,16 +105,46 @@ function Gate({ title, initial, failures, busy, onSubmit }: { title: string; ini
 
 /* -------------------------------------------------------------- lightbox */
 
+/** A subtitle picked online: the text stays in this browser, tied to one video. */
+interface OnlineSub { path: string; track: SubtitleTrack; url: string }
+
+/**
+ * Subtitles for a video in a share: the files beside it, read by the server
+ * (a share's storage may not allow the web proxy), plus any picked online.
+ */
+function useShareSubtitles(share: { sid: string; code: string; path: string }, online: OnlineSub[]) {
+  const dir = parent(share.path);
+  const list = useQuery({
+    queryKey: ["share-subs", share.sid, dir, share.code],
+    queryFn: () => visit.list(share.sid, dir, share.code),
+    staleTime: 60_000,
+    retry: false,
+  });
+  return useMemo(() => {
+    const mine = online.filter(item => item.path === share.path);
+    const local = subtitlesFor(basename(share.path), list.data?.content ?? []);
+    const tracks = [...mine.map(item => item.track), ...local];
+    if (!tracks.length) return undefined;
+    const urlOf = (name: string) =>
+      mine.find(item => item.track.name === name)?.url ?? shareSubtitleUrl(share.sid, share.code, join(dir, name));
+    return { tracks, urlOf };
+  }, [online, share.sid, share.code, share.path, dir, list.data]);
+}
+
 /** A video in a share: the same player as inside the drive, cloud versions included. */
-function ShareVideo({ obj, url, share }: { obj: Obj; url: string; share: { sid: string; code: string; path: string } }) {
+function ShareVideo({ obj, url, share, online, onSearchSubtitles }: {
+  obj: Obj; url: string; share: { sid: string; code: string; path: string }; online: OnlineSub[]; onSearchSubtitles?: () => void;
+}) {
+  const subtitles = useShareSubtitles(share, online);
   return (
     <VideoPlayer path={`share:${share.sid}${share.path}`} src={url} fallback={url} thumb={obj.thumb}
+      subtitles={subtitles} onSearchSubtitles={onSearchSubtitles}
       cloud={() => cloudVideoInShare(share.sid, share.code, share.path)}
       onDownload={() => { location.href = url; }} onCopy={() => void copyText(new URL(url, location.href).href)} />
   );
 }
 
-function Lightbox({ obj, url, share, onClose }: { obj: Obj; url: string; share: { sid: string; code: string; path: string }; onClose: () => void }) {
+function Lightbox({ obj, url, share, online, onSearchSubtitles, onClose }: { obj: Obj; url: string; share: { sid: string; code: string; path: string }; online: OnlineSub[]; onSearchSubtitles?: () => void; onClose: () => void }) {
   const kind = kindOf(obj);
   useEffect(() => {
     const onKey = (event: KeyboardEvent): void => { if (event.key === "Escape") onClose(); };
@@ -124,7 +156,7 @@ function Lightbox({ obj, url, share, onClose }: { obj: Obj; url: string; share: 
       <motion.div className="absolute inset-0 bg-black/85 backdrop-blur-xl" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={onClose} />
       <motion.div layoutId={`share-${obj.name}`} className="relative max-h-full w-full max-w-5xl overflow-hidden rounded-[18px] bg-black" transition={spring.soft}>
         {kind === "image" && <img src={url} alt={obj.name} referrerPolicy="no-referrer" className="mx-auto max-h-[80dvh] object-contain" />}
-        {kind === "video" && <div className="relative aspect-video max-h-[80dvh] w-full"><ShareVideo obj={obj} url={url} share={share} /></div>}
+        {kind === "video" && <div className="relative aspect-video max-h-[80dvh] w-full"><ShareVideo obj={obj} url={url} share={share} online={online} onSearchSubtitles={onSearchSubtitles} /></div>}
         {kind === "audio" && <div className="p-8"><p className="mb-4 truncate text-white">{obj.name}</p><audio src={url} controls autoPlay className="w-full" /></div>}
       </motion.div>
       <motion.div className="relative mt-3 flex items-center gap-2" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0, transition: { delay: 0.15 } }} exit={{ opacity: 0 }}>
@@ -158,12 +190,12 @@ function Tile({ obj, index, url, onOpen }: { obj: Obj; index: number; url: strin
   return <a className={className} style={style} href={url} download={obj.name}>{body}</a>;
 }
 
-function Single({ obj, url, share }: { obj: Obj; url: string; share: { sid: string; code: string; path: string } }) {
+function Single({ obj, url, share, online, onSearchSubtitles }: { obj: Obj; url: string; share: { sid: string; code: string; path: string }; online: OnlineSub[]; onSearchSubtitles?: () => void }) {
   const kind = kindOf(obj);
   return (
     <div className="flex flex-col gap-5">
       {kind === "image" && <img src={url} alt={obj.name} referrerPolicy="no-referrer" className="max-h-[62dvh] w-full rounded-[14px] bg-black object-contain" />}
-      {kind === "video" && <div className="relative aspect-video w-full overflow-hidden rounded-[14px]"><ShareVideo obj={obj} url={url} share={share} /></div>}
+      {kind === "video" && <div className="relative aspect-video w-full overflow-hidden rounded-[14px]"><ShareVideo obj={obj} url={url} share={share} online={online} onSearchSubtitles={onSearchSubtitles} /></div>}
       {kind === "audio" && <audio src={url} controls className="w-full" />}
       {kind !== "image" && kind !== "video" && kind !== "audio" && (
         <motion.span className="grid size-24 place-items-center self-start rounded-[22px] bg-[var(--hover)] text-accent-text" initial={{ rotate: -14, scale: 0.6 }} animate={{ rotate: 0, scale: 1 }} transition={{ ...spring.pop, delay: 0.5 }}>
@@ -196,6 +228,9 @@ export function SharePage() {
   const [playing, setPlaying] = useState<string | null>(null);
   const [mode, setMode] = useState<"library" | "files" | null>(null);
   const [theme, setTheme] = useState<ShareTheme>(savedTheme);
+  // An online subtitle picked for one video in this browser (never written into the share).
+  const [online, setOnline] = useState<OnlineSub[]>([]);
+  const [subFor, setSubFor] = useState<string | null>(null);
 
   // The page brings its own palette (light unless chosen otherwise); leaving it
   // gives the site's own theme back.
@@ -220,6 +255,16 @@ export function SharePage() {
   const choose = (next: "library" | "files"): void => { sessionStorage.setItem(modeKey, next); setMode(next); };
   const showLibrary = isDir && view === "library" && !!scope.data?.enabled && !isTitle;
   const asObj = (file: string): Obj => ({ name: basename(file), size: 0, is_dir: false, modified: "", created: "", sign: "", thumb: "", type: 0, hashinfo: "" });
+
+  const addOnline = (file: string, picked: { name: string; text: string; lang: string }): void => {
+    const ext = (picked.name.split(".").pop() ?? "srt").toLowerCase();
+    const format = (ext === "ssa" ? "ass" : ext === "ass" || ext === "vtt" ? ext : "srt") as SubtitleTrack["format"];
+    const label = picked.lang ? `在线 · ${picked.lang}` : `在线 · ${basename(picked.name)}`;
+    const track: SubtitleTrack = { name: label, format, label, rank: 99 };
+    const url = URL.createObjectURL(new Blob([picked.text], { type: "text/plain;charset=utf-8" }));
+    preferSubtitle(track.name);
+    setOnline(items => [...items.filter(item => item.path !== file), { path: file, track, url }]);
+  };
 
   useEffect(() => {
     if (info.isSuccess && code) {
@@ -325,7 +370,7 @@ export function SharePage() {
                 )}
               </div>
               <div className="px-3 pb-6 sm:px-6 sm:pb-8">
-                {!isDir && <div className="px-2"><Single obj={info.data} url={info.data.raw_url || shareFileUrl(sid, path, code)} share={{ sid, code, path }} /></div>}
+                {!isDir && <div className="px-2"><Single obj={info.data} url={info.data.raw_url || shareFileUrl(sid, path, code)} share={{ sid, code, path }} online={online} onSearchSubtitles={() => setSubFor(path)} /></div>}
                 {/* A folder that is a film or a series: its page, as in the drive. */}
                 {isTitle && (
                   <div className="mb-5 mt-1 px-2 sm:px-3">
@@ -357,13 +402,13 @@ export function SharePage() {
                       })}
                     </div>
                     <AnimatePresence>
-                      {open && <Lightbox key={open.name} obj={open} url={shareFileUrl(sid, join(path, open.name), code)} share={{ sid, code, path: join(path, open.name) }} onClose={() => setOpen(null)} />}
+                      {open && <Lightbox key={open.name} obj={open} url={shareFileUrl(sid, join(path, open.name), code)} share={{ sid, code, path: join(path, open.name) }} online={online} onSearchSubtitles={() => setSubFor(join(path, open.name))} onClose={() => setOpen(null)} />}
                     </AnimatePresence>
                   </LayoutGroup>
                 )}
                 {/* A video played from 片库: same player, same place remembered. */}
                 <AnimatePresence>
-                  {playing && <Lightbox key={playing} obj={asObj(playing)} url={shareFileUrl(sid, playing, code)} share={{ sid, code, path: playing }} onClose={() => setPlaying(null)} />}
+                  {playing && <Lightbox key={playing} obj={asObj(playing)} url={shareFileUrl(sid, playing, code)} share={{ sid, code, path: playing }} online={online} onSearchSubtitles={() => setSubFor(playing)} onClose={() => setPlaying(null)} />}
                 </AnimatePresence>
                 {readme && (
                   <div className="hairline mx-2 mt-6 rounded-[16px] bg-[var(--hover)] px-5 py-4">
@@ -375,6 +420,10 @@ export function SharePage() {
           )}
         </AnimatePresence>
       </main>
+      {subFor && (
+        <ShareSubtitleSearch share={{ sid, code, path: subFor }} onClose={() => setSubFor(null)}
+          onUse={picked => addOnline(subFor, picked)} />
+      )}
     </div>
   );
 }

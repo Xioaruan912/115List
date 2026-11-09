@@ -67,9 +67,9 @@ export function SubtitleSearch({ path, onClose }: { path: string; onClose: () =>
         <div className="mt-4">
           {results.isPending && <div className="space-y-2">{Array.from({ length: 4 }, (_, i) => <div key={i} className="skeleton h-14 rounded-[12px]" />)}</div>}
           {results.isError && <ErrorState compact error={results.error} onRetry={() => results.refetch()} />}
-          {results.data && !results.data.items.length && <p className="py-10 text-center text-[13.5px] text-muted">没有找到，换个关键词试试</p>}
+          {results.data && !results.data.items.some(result => result.id > 0) && <p className="py-10 text-center text-[13.5px] text-muted">没有找到，换个关键词试试</p>}
           <ul className="divide-y divide-line">
-            {results.data?.items.map(result => (
+            {results.data?.items.filter(result => result.id > 0).map(result => (
               <li key={result.id}>
                 <button className="flex w-full items-start gap-3 py-3 text-left hover:bg-[var(--hover)] max-sm:-mx-1 max-sm:px-1 sm:rounded-[10px] sm:px-2" onClick={() => setChosen(result)}>
                   <SubtitlesIcon size={18} className="mt-0.5 shrink-0 text-muted" />
