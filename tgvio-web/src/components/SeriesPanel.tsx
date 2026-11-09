@@ -1,10 +1,10 @@
 import { CaretLeftIcon, CaretRightIcon, CheckIcon, MagnetIcon, PlayIcon, StarIcon } from "@phosphor-icons/react";
 import { useQuery } from "@tanstack/react-query";
 import { motion } from "motion/react";
-import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { useLocation } from "wouter";
 import { posterSrc } from "../api/posters";
-import { series, type Films, type SeriesEpisode } from "../api/series";
+import { series, seriesInShare, type Films, type SeriesEpisode } from "../api/series";
 import { useResourceRoot } from "../hooks/useResourceRoot";
 import { isFilm } from "../lib/kind";
 import { passwordFor } from "../hooks/useDir";
@@ -21,6 +21,33 @@ import { useUi } from "../stores/ui";
  * stills, names and what was watched. Episodes not in the folder are dimmed.
  * The file grid below stays as it is.
  */
+
+/**
+ * A share can show the same panel: a visitor has no drive to browse, so a
+ * play and a folder both go back through the share page, and progress is kept
+ * under the share's own keys.
+ */
+export interface SharePanel {
+  sid: string;
+  code: string;
+  play: (path: string) => void;
+  openDir: (path: string) => void;
+}
+
+const SharePanelContext = createContext<SharePanel | null>(null);
+
+export function SharePanelProvider({ share, children }: { share: SharePanel; children: ReactNode }) {
+  return <SharePanelContext.Provider value={share}>{children}</SharePanelContext.Provider>;
+}
+
+export function useSharePanel(): SharePanel | null {
+  return useContext(SharePanelContext);
+}
+
+/** Where a video keeps its place: the drive's path, or the share's own key. */
+function progressKey(share: SharePanel | null, full: string): string {
+  return share ? `share:${share.sid}${full}` : full;
+}
 
 const CN = ["零", "一", "二", "三", "四", "五", "六", "七", "八", "九"];
 /** 1..99 as season folders are named: 二, 十二, 二十 (the server's cnNumeral). */
@@ -50,12 +77,12 @@ function clock(minutes?: number): string {
 }
 
 /** The episode to offer: the one in progress, else the one after the last finished, else the first. */
-function nextUp(path: string, episodes: SeriesEpisode[]): { episode: SeriesEpisode; resume: boolean } | null {
+function nextUp(path: string, episodes: SeriesEpisode[], share: SharePanel | null): { episode: SeriesEpisode; resume: boolean } | null {
   const withFiles = episodes.filter(e => e.file);
   if (!withFiles.length) return null;
   let last: { index: number; at: number; done: boolean } | null = null;
   withFiles.forEach((e, index) => {
-    const full = join(path, e.file!);
+    const full = progressKey(share, join(path, e.file!));
     const progress = getProgress(full);
     const seen = watched(full);
     if (!seen) return;
@@ -73,13 +100,17 @@ function nextUp(path: string, episodes: SeriesEpisode[]): { episode: SeriesEpiso
  * series, or a shelf of titles. Shared by the panel and the cinema view (one
  * request: the same query). A folder of neither folders nor videos is nothing.
  */
-export function useTitlePanel(path: string, items: Obj[]) {
+export function useTitlePanel(path: string, items: Obj[], shareArg?: SharePanel | null) {
   const library = useLibraryScope();
+  const fromContext = useSharePanel();
+  // A page can ask for itself (a share decides its first view before the panel
+  // renders), so an explicit share wins over the provider.
+  const share = shareArg !== undefined ? shareArg : fromContext;
   const media = useMemo(() => items.some(item => item.is_dir || isFilm(item)), [items]);
   return useQuery({
-    queryKey: ["series", path, items.length],
-    queryFn: () => series(path, passwordFor(path)),
-    enabled: media && library.has(path),
+    queryKey: ["series", path, items.length, share?.sid ?? ""],
+    queryFn: () => share ? seriesInShare(share.sid, share.code, path) : series(path, passwordFor(path)),
+    enabled: media && (share ? true : library.has(path)),
     staleTime: 5 * 60_000,
     retry: false,
   });
@@ -152,15 +183,20 @@ export function Strip({ className, children }: { className: string; children: Re
 export function SeriesPanel({ path, items }: { path: string; items: Obj[] }) {
   const [, navigate] = useLocation();
   const finder = useResourceRoot();
+  const share = useSharePanel();
   const query = useTitlePanel(path, items);
   useSyncExternalStore(subscribeProgress, () => tick);
   const data = query.data?.series;
-  if (!data && query.data?.films) return <FilmsPanel path={path} films={query.data.films} items={items} canFind={finder.enabled} />;
+  if (!data && query.data?.films) return <FilmsPanel path={path} films={query.data.films} items={items} canFind={finder.enabled && !share} />;
   if (!data) return null;
   const { base, subject } = data;
   const backdrop = base.backdrop || subject.backdrop;
-  const up = nextUp(path, data.episodes);
-  const play = (episode: SeriesEpisode): void => { if (episode.file) useUi.getState().openViewer(path, episode.file, null); };
+  const up = nextUp(path, data.episodes, share);
+  const play = (episode: SeriesEpisode): void => {
+    if (!episode.file) return;
+    if (share) share.play(join(path, episode.file));
+    else useUi.getState().openViewer(path, episode.file, null);
+  };
   const have = data.episodes.filter(e => e.file).length;
   // Missing: out already, not here. Not out yet is not missing.
   const missingEpisodes = data.season ? data.episodes.filter(e => !e.file && aired(e.air)) : [];
@@ -205,7 +241,7 @@ export function SeriesPanel({ path, items }: { path: string; items: Obj[] }) {
                   <MagnetIcon size={15} />找第 {missingSeasons[0].season} 季
                 </button>
               )}
-              {data.root && (
+              {data.root && !share && (
                 <button className="btn h-10 bg-white/12 px-4 text-white backdrop-blur-md hover:bg-white/20" onClick={() => navigate(encodePath(data.root))}>
                   全部季<CaretRightIcon size={14} />
                 </button>
@@ -217,11 +253,13 @@ export function SeriesPanel({ path, items }: { path: string; items: Obj[] }) {
         {!data.season && data.seasons.length > 0 && (
           <Strip className="mt-6 flex gap-3 overflow-x-auto pb-1 [scrollbar-width:none]">
             {data.seasons.map(s => (
-              <button key={s.season} disabled={!s.folder && !(finder.enabled && aired(s.air) && s.season > 0)}
-                title={!s.folder && finder.enabled && aired(s.air) ? `找第 ${s.season} 季的资源` : undefined}
+              <button key={s.season} disabled={!s.folder && !(finder.enabled && !share && aired(s.air) && s.season > 0)}
+                title={!s.folder && finder.enabled && !share && aired(s.air) ? `找第 ${s.season} 季的资源` : undefined}
                 onClick={() => {
-                  if (s.folder) navigate(encodePath(join(path, s.folder)));
-                  else if (finder.enabled && aired(s.air) && s.season > 0) openFinder(base.title, path, seasonFolder(s.season, s.year));
+                  if (s.folder) {
+                    if (share) share.openDir(join(path, s.folder));
+                    else navigate(encodePath(join(path, s.folder)));
+                  } else if (finder.enabled && !share && aired(s.air) && s.season > 0) openFinder(base.title, path, seasonFolder(s.season, s.year));
                 }}
                 className={`group/season w-[104px] shrink-0 text-left ${s.folder ? "" : "opacity-45 enabled:hover:opacity-80"}`}>
                 <div className="aspect-[2/3] overflow-hidden rounded-[10px] bg-white/10 transition-transform duration-300 ease-[var(--ease-expo)] group-enabled/season:group-hover/season:-translate-y-1">
@@ -237,7 +275,7 @@ export function SeriesPanel({ path, items }: { path: string; items: Obj[] }) {
         {data.episodes.length > 0 && (
           <Strip className="-mx-5 mt-6 flex snap-x gap-3 overflow-x-auto px-5 pb-1 [scrollbar-width:none] sm:-mx-8 sm:px-8">
             {data.episodes.map(e => {
-              const seen = e.file ? watched(join(path, e.file)) : 0;
+              const seen = e.file ? watched(progressKey(share, join(path, e.file))) : 0;
               return (
                 <button key={e.episode} disabled={!e.file} onClick={() => play(e)} title={e.file ?? "这一集不在文件夹里"}
                   className={`group/ep w-[min(70vw,248px)] shrink-0 snap-start text-left ${e.file ? "" : "opacity-40"}`}>
@@ -291,6 +329,7 @@ function filmVideo(items: Obj[]): Obj | undefined {
  */
 function FilmsPanel({ path, films, items, canFind }: { path: string; films: Films; items: Obj[]; canFind: boolean }) {
   const [, navigate] = useLocation();
+  const share = useSharePanel();
   const own = films.film;
   const shelf = films.kind === "shelf";
   // The folder is one film: its series' other films go beside it.
@@ -301,10 +340,13 @@ function FilmsPanel({ path, films, items, canFind }: { path: string; films: Film
   const backdrop = own?.backdrop || films.backdrop || parts.find(part => part.place)?.backdrop;
   const plain = films.name.replace(/[（(]系列[）)]$|系列$|\s*Collection$/i, "").trim();
   const video = own ? filmVideo(items) : undefined;
-  const seen = video ? watched(join(path, video.name)) : 0;
+  const seen = video ? watched(progressKey(share, join(path, video.name))) : 0;
   const open = (place: string): void => {
     if (place === ".") return;
-    if (/\.[a-z0-9]{2,4}$/i.test(place)) useUi.getState().openViewer(path, place, null);
+    if (/\.[a-z0-9]{2,4}$/i.test(place)) {
+      if (share) share.play(join(path, place));
+      else useUi.getState().openViewer(path, place, null);
+    } else if (share) share.openDir(join(path, place));
     else navigate(encodePath(join(path, place)));
   };
   const title = own?.title ?? films.name;
@@ -334,7 +376,10 @@ function FilmsPanel({ path, films, items, canFind }: { path: string; films: Film
             {(video || canFind && missing.length > 0) && (
               <div className="mt-4 flex flex-wrap gap-2">
                 {video && (
-                  <button className="btn btn-primary h-10 px-4" onClick={() => useUi.getState().openViewer(path, video.name, null)}>
+                  <button className="btn btn-primary h-10 px-4" onClick={() => {
+                    if (share) share.play(join(path, video.name));
+                    else useUi.getState().openViewer(path, video.name, null);
+                  }}>
                     <PlayIcon size={15} weight="fill" />{seen > 0 && seen < 1 ? "继续看" : seen >= 1 ? "再看一遍" : "播放"}
                   </button>
                 )}

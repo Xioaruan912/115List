@@ -43,8 +43,14 @@ export const visit = {
   get: (id: string, path: string, pwd: string) => post<FsGet>("/fs/get", { path: sharePath(id, path), password: pwd }),
 };
 
-export function shareUrl(id: string): string {
-  return `${location.origin}${basePath}/@s/${encodeURIComponent(id)}`;
+/**
+ * A share's link. With a code the code rides in the address as ?pw=, so one
+ * line is the whole share: no "提取码" to paste after it, and a phone can open
+ * what a QR code holds. ?pwd= is still read, for links made before this.
+ */
+export function shareUrl(id: string, pwd = ""): string {
+  const url = `${location.origin}${basePath}/@s/${encodeURIComponent(id)}`;
+  return pwd ? `${url}?pw=${encodeURIComponent(pwd)}` : url;
 }
 
 /** Download link for a file inside a share. */

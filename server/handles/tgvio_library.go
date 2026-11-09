@@ -37,7 +37,20 @@ type libraryItem struct {
 const libraryLimit = 5000
 
 // Folders of extras, never a title of their own ("Subs" once matched a film called Subs).
-var libraryExtras = regexp.MustCompile(`(?i)^(subs?|subtitles?|字幕|花絮|特典|幕后花絮|extras?|featurettes?|behind the scenes|bonus|samples?|预告片?|trailers?|sp|ova|oad|scans?|cd\d*|disc\s*\d*)$`)
+var libraryExtras = regexp.MustCompile(`(?i)^(subs?|subtitles?|字幕|花絮|特典|幕后花絮|extras?|featurettes?|behind the scenes|bonus|samples?|预告片?|trailers?|sp|ova|oad|scans?|cd\d*|disc\s*\d*|fonts?|artwork|booklet|menus?|covers?|proof|liner|posters?|screens?|storyboards?)$`)
+
+// extrasPath reports whether a path goes through an extras folder (Scans,
+// Fonts, Subs…): what is inside is a part of a title, never a title. The
+// library keeps the title and drops those, as the drive page shows them only
+// once one opens the title itself.
+func extrasPath(path string) bool {
+	for _, seg := range strings.Split(strings.Trim(path, "/"), "/") {
+		if seg != "" && libraryExtras.MatchString(strings.TrimSpace(seg)) {
+			return true
+		}
+	}
+	return false
+}
 
 // shareScope is a share looked at by someone who may not be signed in: the
 // library is then built from the shared paths only, and every path it reports
@@ -211,6 +224,11 @@ func TgvioLibrary(c *gin.Context) {
 			continue
 		}
 		if libraryExtras.MatchString(strings.TrimSpace(entry.Name)) {
+			continue
+		}
+		// Anything inside an extras folder (Scans/Fonts/Discs) belongs to the
+		// title above it, so a share of that title lists one card, not its scans.
+		if share != nil && extrasPath(shown) {
 			continue
 		}
 		file := tgvio.IsMediaFile(entry.Name) // a file shares its folder's access

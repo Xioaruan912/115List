@@ -7,6 +7,7 @@ import { cloudVideoInShare } from "../api/fs";
 import { shareFileUrl, visit } from "../api/share";
 import { shareLibraryScope } from "../api/posters";
 import { ShareLibrary } from "../components/ShareLibrary";
+import { hasTitlePanel, SeriesPanel, SharePanelProvider, useTitlePanel } from "../components/SeriesPanel";
 import { VideoPlayer } from "../components/VideoPlayer";
 import { copyText } from "../lib/links";
 import { KindIcon } from "../components/KindIcon";
@@ -162,7 +163,12 @@ export function SharePage() {
   const search = useSearch();
   const siteTitle = useSession(state => state.settings.site_title) || "OpenList";
   const signedIn = useSession(state => state.status === "ready");
-  const [code, setCode] = useState(() => new URLSearchParams(search).get("pwd") ?? sessionStorage.getItem(codeKey(sid)) ?? "");
+  // The code comes from the link (?pw=, or ?pwd= from older links) or from what
+  // this device already typed: once a code is known here, the page opens itself.
+  const [code, setCode] = useState(() => {
+    const link = new URLSearchParams(search);
+    return link.get("pw") ?? link.get("pwd") ?? localStorage.getItem(codeKey(sid)) ?? sessionStorage.getItem(codeKey(sid)) ?? "";
+  });
   const [failures, setFailures] = useState(0);
   const [gate, setGate] = useState(false);
   const [open, setOpen] = useState<Obj | null>(null);
@@ -177,13 +183,21 @@ export function SharePage() {
   // 片库 or 文件: the share's films listed like the library when it holds any.
   const scope = useQuery({ queryKey: ["share-scope", sid, code], queryFn: () => shareLibraryScope(sid, code), enabled: !!info.data, retry: false, staleTime: 5 * 60_000 });
   const modeKey = `tgvio-web:share-mode:${sid}`;
-  const view = (mode ?? sessionStorage.getItem(modeKey) ?? (scope.data?.enabled ? "library" : "files")) as "library" | "files";
+  // A share of one film or one series opens on its own page (backdrop, poster,
+  // 播放); a share of many shows them as 片库. Deciding needs the title lookup.
+  const panel = useMemo(() => ({ sid, code, play: (p: string) => setPlaying(p), openDir: (p: string) => go(p) }), [sid, code, go]);
+  const titleQuery = useTitlePanel(isDir ? path : "/", items, panel);
+  const isTitle = isDir && hasTitlePanel(titleQuery.data);
+  const view = (mode ?? sessionStorage.getItem(modeKey) ?? (isTitle || !scope.data?.enabled ? "files" : "library")) as "library" | "files";
   const choose = (next: "library" | "files"): void => { sessionStorage.setItem(modeKey, next); setMode(next); };
-  const showLibrary = isDir && view === "library" && !!scope.data?.enabled;
+  const showLibrary = isDir && view === "library" && !!scope.data?.enabled && !isTitle;
   const asObj = (file: string): Obj => ({ name: basename(file), size: 0, is_dir: false, modified: "", created: "", sign: "", thumb: "", type: 0, hashinfo: "" });
 
   useEffect(() => {
-    if (info.isSuccess && code) sessionStorage.setItem(codeKey(sid), code);
+    if (info.isSuccess && code) {
+      localStorage.setItem(codeKey(sid), code);
+      sessionStorage.setItem(codeKey(sid), code);
+    }
   }, [info.isSuccess, code, sid]);
   useEffect(() => {
     document.title = `${info.data && !info.data.is_dir ? info.data.name : "分享"} - ${siteTitle}`;
@@ -252,12 +266,13 @@ export function SharePage() {
                     ))}
                   </nav>
                 )}
-                <div className="flex flex-wrap items-end justify-between gap-x-5 gap-y-3">
+                <div className={`flex flex-wrap items-end justify-between gap-x-5 gap-y-3 ${isTitle ? "hidden" : ""}`}>
                   <h1 className="break-words text-[clamp(26px,4.4vw,46px)] font-semibold leading-[1.05] tracking-[-0.04em] text-white">
                     <SplitText key={`${path}-${title}`} text={title || "分享"} />
                   </h1>
-                  {/* 片库 / 文件: the same share, as films or as folders. */}
-                  {isDir && scope.data?.enabled && (
+                  {/* 片库 / 文件: the same share, as films or as folders. A share
+                      of one title has nothing to switch: it opens on its page. */}
+                  {isDir && scope.data?.enabled && !isTitle && (
                     <div className="flex shrink-0 items-center rounded-full bg-white/[0.06] p-0.5" role="group" aria-label="视图">
                       {(["library", "files"] as const).map(key => (
                         <button key={key} aria-pressed={view === key} onClick={() => choose(key)}
@@ -269,7 +284,7 @@ export function SharePage() {
                     </div>
                   )}
                 </div>
-                {isDir && list.data && (
+                {isDir && list.data && !isTitle && (
                   <p className="mt-2 text-[13px] text-white/50 tabular">
                     {showLibrary ? "按海报浏览这个分享里的影视" : `${items.length} 项${totalBytes ? `，${formatBytes(totalBytes)}` : ""}`}
                   </p>
@@ -277,6 +292,14 @@ export function SharePage() {
               </div>
               <div className="px-3 pb-6 sm:px-6 sm:pb-8">
                 {!isDir && <div className="px-2"><Single obj={info.data} url={info.data.raw_url || shareFileUrl(sid, path, code)} share={{ sid, code, path }} /></div>}
+                {/* A folder that is a film or a series: its page, as in the drive. */}
+                {isTitle && (
+                  <div className="mb-5 mt-1 px-2 sm:px-3">
+                    <SharePanelProvider share={panel}>
+                      <SeriesPanel path={path} items={items} />
+                    </SharePanelProvider>
+                  </div>
+                )}
                 {showLibrary && (
                   <div className="px-2 sm:px-3">
                     <ShareLibrary sid={sid} code={code}

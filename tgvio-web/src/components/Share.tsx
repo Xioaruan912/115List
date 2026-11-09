@@ -98,8 +98,16 @@ function shareTitle(files: string[]): string {
   return files.length > 1 ? `${first} 等 ${files.length} 项` : first;
 }
 
-function clipboardText(share: Pick<Share, "id" | "pwd" | "files">): string {
-  return `${shareTitle(share.files)}\n${shareUrl(share.id)}${share.pwd ? `\n提取码：${share.pwd}` : ""}`;
+/** The link alone by default: one line that opens the share, code included. */
+function clipboardText(share: Pick<Share, "id" | "pwd" | "files">, withName: boolean): string {
+  const url = shareUrl(share.id, share.pwd);
+  return withName ? `${shareTitle(share.files)} ${url}` : url;
+}
+
+/** Whether a copied share carries the title in front of the link (remembered on this device). */
+const NAME_KEY = "tgvio-web:share-copy-name";
+function savedNameOption(): boolean {
+  try { return localStorage.getItem(NAME_KEY) === "1"; } catch { return false; }
 }
 
 /** Each character drops into its slot, like a split-flap board. */
@@ -130,6 +138,7 @@ export function ShareDialog({ dir, names, onClose }: { dir: string; names: strin
   const [busy, setBusy] = useState(false);
   const [made, setMade] = useState<Share | null>(null);
   const [copied, setCopied] = useState(false);
+  const [withName, setWithName] = useState(savedNameOption);
   const files = useMemo(() => names.map(name => join(dir, name)), [dir, names]);
 
   const create = async (): Promise<void> => {
@@ -150,12 +159,12 @@ export function ShareDialog({ dir, names, onClose }: { dir: string; names: strin
 
   const copy = async (): Promise<void> => {
     if (!made) return;
-    await copyText(clipboardText(made));
+    await copyText(clipboardText(made, withName));
     setCopied(true);
     window.setTimeout(() => setCopied(false), 1600);
   };
   const native = made && typeof navigator.share === "function"
-    ? () => void navigator.share({ title: shareTitle(made.files), text: made.pwd ? `提取码：${made.pwd}` : undefined, url: shareUrl(made.id) }).catch(() => undefined)
+    ? () => void navigator.share({ title: withName ? shareTitle(made.files) : undefined, url: shareUrl(made.id, made.pwd) }).catch(() => undefined)
     : null;
 
   const footer = made ? (
@@ -164,7 +173,7 @@ export function ShareDialog({ dir, names, onClose }: { dir: string; names: strin
       <button className="btn btn-primary" onClick={() => void copy()}>
         <AnimatePresence mode="popLayout" initial={false}>
           <motion.span key={copied ? "done" : "copy"} className="inline-flex items-center gap-1.5" initial={{ y: 12, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: -12, opacity: 0 }} transition={spring.snappy}>
-            {copied ? <><CheckIcon size={16} weight="bold" />已复制</> : <><CopyIcon size={16} />复制链接{made.pwd ? "和提取码" : ""}</>}
+            {copied ? <><CheckIcon size={16} weight="bold" />已复制</> : <><CopyIcon size={16} />复制链接</>}
           </motion.span>
         </AnimatePresence>
       </button>
@@ -219,16 +228,23 @@ export function ShareDialog({ dir, names, onClose }: { dir: string; names: strin
               <div className="ticket relative overflow-hidden rounded-[18px] bg-surface hairline">
                 <div className="flex flex-col items-center gap-4 px-5 pb-6 pt-6">
                   <div className="rounded-[16px] bg-white p-3" style={{ boxShadow: "0 18px 40px -20px rgb(0 0 0 / 0.5)" }}>
-                    <QrCode text={shareUrl(made.id)} size={184} />
+                    <QrCode text={shareUrl(made.id, made.pwd)} size={184} />
                   </div>
                   {made.pwd && <Code value={made.pwd} />}
                 </div>
                 <div className="ticket-cut" aria-hidden />
                 <div className="space-y-2 px-5 pb-5 pt-4">
                   <button className="group flex w-full items-center gap-2 rounded-[10px] bg-bg px-3 py-2.5 text-left hairline" onClick={() => void copy()}>
-                    <span className="min-w-0 flex-1 truncate font-mono text-[12.5px] text-muted group-hover:text-ink">{shareUrl(made.id)}</span>
+                    <span className="min-w-0 flex-1 truncate font-mono text-[12.5px] text-muted group-hover:text-ink">{shareUrl(made.id, made.pwd)}</span>
                     <CopyIcon size={15} className="shrink-0 text-faint group-hover:text-ink" />
                   </button>
+                  <label className="flex items-center gap-2 px-0.5 text-[12.5px] text-muted">
+                    <input type="checkbox" className="size-4 accent-[var(--accent)]" checked={withName} onChange={event => {
+                      setWithName(event.target.checked);
+                      try { localStorage.setItem(NAME_KEY, event.target.checked ? "1" : "0"); } catch { /* private mode */ }
+                    }} />
+                    复制时带上文件名
+                  </label>
                   <p className="text-[12.5px] text-muted">
                     {describeExpiry(made.expires).text}{made.max_accessed ? `，最多 ${made.max_accessed} 人访问` : ""}。在 账户 › 我的分享 里随时停用。
                   </p>
@@ -272,7 +288,7 @@ function ShareRow({ share, index }: { share: Share; index: number }) {
           {meta.join("，")}{share.pwd && <><LockSimpleIcon size={11} className="mb-0.5 ml-1.5 mr-0.5 inline" />{share.pwd}</>}
         </p>
       </div>
-      <button className="icon-btn" aria-label="复制链接" onClick={() => void copyText(clipboardText(share)).then(() => toast.success("已复制链接"))}><CopyIcon size={17} /></button>
+      <button className="icon-btn" aria-label="复制链接" onClick={() => void copyText(clipboardText(share, false)).then(() => toast.success("已复制链接"))}><CopyIcon size={17} /></button>
       <button type="button" role="switch" aria-checked={!share.disabled} aria-label={share.disabled ? "启用" : "停用"} className="switch"
         onClick={() => void action(() => shares.setEnabled(share.id, share.disabled), share.disabled ? "已启用分享" : "已停用分享")} />
       <AnimatePresence mode="popLayout" initial={false}>
