@@ -1,4 +1,4 @@
-import { ArrowLeftIcon, CaretRightIcon, DownloadSimpleIcon, LinkBreakIcon, LockKeyIcon, XIcon } from "@phosphor-icons/react";
+import { ArrowLeftIcon, CaretRightIcon, DownloadSimpleIcon, LinkBreakIcon, LockKeyIcon, MoonIcon, SunIcon, XIcon } from "@phosphor-icons/react";
 import { useQuery } from "@tanstack/react-query";
 import { AnimatePresence, LayoutGroup, motion, useAnimate } from "motion/react";
 import { lazy, Suspense, useEffect, useMemo, useState, type CSSProperties, type FormEvent } from "react";
@@ -12,6 +12,8 @@ import { VideoPlayer } from "../components/VideoPlayer";
 import { copyText } from "../lib/links";
 import { KindIcon } from "../components/KindIcon";
 import { Mark } from "../components/Mark";
+import { applyTheme } from "../components/theme";
+import { usePrefs } from "../stores/prefs";
 import { PosterWall } from "../components/PosterWall";
 import { SplitText } from "../components/SplitText";
 import { ApiError } from "../lib/api";
@@ -28,6 +30,24 @@ import { explain } from "../lib/errors";
 const Markdown = lazy(() => import("../components/Markdown"));
 
 const codeKey = (sid: string): string => `tgvio-web:share:${sid}`;
+
+/**
+ * A share opens bright: the page, its cards and the code gate follow the light
+ * palette, and the film's own panel stays as dark as it is in the drive. Dark
+ * is one tap away, and the choice is remembered on this device.
+ */
+const THEME_KEY = "tgvio-web:share-theme";
+type ShareTheme = "light" | "dark";
+
+function savedTheme(): ShareTheme {
+  try { return localStorage.getItem(THEME_KEY) === "dark" ? "dark" : "light"; } catch { return "light"; }
+}
+
+function chooseTheme(next: ShareTheme, set: (theme: ShareTheme) => void): void {
+  try { localStorage.setItem(THEME_KEY, next); } catch { /* private mode: this visit only */ }
+  applyTheme(next);
+  set(next);
+}
 
 function wrongCode(error: unknown): boolean {
   return error instanceof ApiError && error.code === 403;
@@ -58,22 +78,22 @@ function Gate({ title, initial, failures, busy, onSubmit }: { title: string; ini
       exit={{ opacity: 0, transition: { duration: 0.01, delay: 0.6 } }}
       transition={{ ...spring.soft, delay: 0.35 }} style={{ transformPerspective: 1000 }}>
       {/* The ticket tears along the dashed line when the code is right. */}
-      <motion.div className="rounded-t-[22px] bg-surface/90 px-6 pb-6 pt-7 backdrop-blur-2xl" style={{ boxShadow: "inset 0 1px 0 rgb(255 255 255 / 0.08), inset 0 0 0 1px rgb(255 255 255 / 0.07)" }}
+      <motion.div className="hairline rounded-t-[22px] bg-surface px-6 pb-6 pt-7" style={{ boxShadow: "var(--shadow-lift)" }}
         exit={{ y: -50, rotate: -5, opacity: 0, transition: { duration: 0.55, ease: [0.5, 0, 0.75, 0] } }}>
         <span className="grid size-12 place-items-center rounded-2xl bg-accent text-accent-ink"><LockKeyIcon size={22} weight="fill" /></span>
-        <h1 className="mt-5 text-[22px] font-semibold tracking-tight text-white">{title}</h1>
-        <p className="mt-1 text-[13.5px] text-white/60">这是一个私密分享，输入提取码就能看到。</p>
+        <h1 className="mt-5 text-[22px] font-semibold tracking-tight text-ink">{title}</h1>
+        <p className="mt-1 text-[13.5px] text-muted">这是一个私密分享，输入提取码就能看到。</p>
         <label className="mt-5 block">
           <span className="label">提取码</span>
-          <input className="field font-mono text-[18px] tracking-[0.3em]" value={code} autoFocus autoComplete="off" spellCheck={false}
+          <input className="field bg-[var(--bg)] font-mono text-[18px] tracking-[0.3em]" value={code} autoFocus autoComplete="off" spellCheck={false}
             onChange={event => setCode(event.target.value.replace(/\s/g, ""))} aria-invalid={error} />
         </label>
         <AnimatePresence>
           {error && <motion.p className="mt-2 text-[13px] text-danger" initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>提取码不对，再试一次</motion.p>}
         </AnimatePresence>
       </motion.div>
-      <div className="ticket-cut mx-[18px]" style={{ "--raised": "var(--void)" } as CSSProperties} aria-hidden />
-      <motion.div className="rounded-b-[22px] bg-surface/90 px-6 pb-6 pt-5 backdrop-blur-2xl" style={{ boxShadow: "inset 0 -1px 0 rgb(255 255 255 / 0.04), inset 0 0 0 1px rgb(255 255 255 / 0.07)" }}
+      <div className="ticket-cut mx-[18px]" style={{ "--raised": "var(--bg)" } as CSSProperties} aria-hidden />
+      <motion.div className="hairline rounded-b-[22px] bg-surface px-6 pb-6 pt-5" style={{ boxShadow: "var(--shadow-lift)" }}
         exit={{ y: 70, rotate: 7, opacity: 0, transition: { duration: 0.6, ease: [0.5, 0, 0.75, 0] } }}>
         <button className="btn btn-primary h-11 w-full" type="submit" disabled={!code.trim() || busy}>{busy ? "核对中…" : "入场"}</button>
       </motion.div>
@@ -123,16 +143,16 @@ function Tile({ obj, index, url, onOpen }: { obj: Obj; index: number; url: strin
   const media = kind === "image" || kind === "video" || kind === "audio";
   const body = (
     <>
-      <motion.div layoutId={`share-${obj.name}`} className="relative aspect-[4/3] overflow-hidden rounded-[12px] bg-white/[0.04]" style={{ boxShadow: "inset 0 0 0 1px rgb(255 255 255 / 0.07)" }} transition={spring.soft}>
+      <motion.div layoutId={`share-${obj.name}`} className="hairline relative aspect-[4/3] overflow-hidden rounded-[12px] bg-[var(--hover)]" transition={spring.soft}>
         {obj.thumb && !broken
           ? <img src={obj.thumb} alt="" loading="lazy" referrerPolicy="no-referrer" onError={() => setBroken(true)} className="size-full object-cover transition-transform duration-700 ease-[var(--ease-expo)] group-hover:scale-[1.06]" />
-          : <span className="grid size-full place-items-center text-white/40"><KindIcon kind={kind} size={40} weight={obj.is_dir ? "duotone" : "light"} className="transition-transform duration-500 ease-[var(--ease-expo)] group-hover:scale-110 group-hover:-rotate-6" /></span>}
+          : <span className="grid size-full place-items-center text-faint"><KindIcon kind={kind} size={40} weight={obj.is_dir ? "duotone" : "light"} className="transition-transform duration-500 ease-[var(--ease-expo)] group-hover:scale-110 group-hover:-rotate-6" /></span>}
       </motion.div>
-      <p className="mt-2 line-clamp-2 break-all text-[13.5px] font-medium leading-snug text-white">{obj.name}</p>
-      <p className="text-[12px] text-white/50 tabular">{obj.is_dir ? formatDate(obj.modified) : formatBytes(obj.size)}</p>
+      <p className="mt-2 line-clamp-2 break-all text-[13.5px] font-medium leading-snug text-ink">{obj.name}</p>
+      <p className="text-[12px] text-muted tabular">{obj.is_dir ? formatDate(obj.modified) : formatBytes(obj.size)}</p>
     </>
   );
-  const className = "enter group block rounded-[16px] p-1.5 text-left transition-colors hover:bg-white/[0.05]";
+  const className = "enter group block rounded-[16px] p-1.5 text-left transition-colors hover:bg-[var(--hover)]";
   const style = { "--i": index } as CSSProperties;
   if (obj.is_dir || media) return <button className={className} style={style} onClick={onOpen}>{body}</button>;
   return <a className={className} style={style} href={url} download={obj.name}>{body}</a>;
@@ -146,13 +166,13 @@ function Single({ obj, url, share }: { obj: Obj; url: string; share: { sid: stri
       {kind === "video" && <div className="relative aspect-video w-full overflow-hidden rounded-[14px]"><ShareVideo obj={obj} url={url} share={share} /></div>}
       {kind === "audio" && <audio src={url} controls className="w-full" />}
       {kind !== "image" && kind !== "video" && kind !== "audio" && (
-        <motion.span className="grid size-24 place-items-center self-start rounded-[22px] bg-white/[0.05] text-accent" initial={{ rotate: -14, scale: 0.6 }} animate={{ rotate: 0, scale: 1 }} transition={{ ...spring.pop, delay: 0.5 }}>
+        <motion.span className="grid size-24 place-items-center self-start rounded-[22px] bg-[var(--hover)] text-accent-text" initial={{ rotate: -14, scale: 0.6 }} animate={{ rotate: 0, scale: 1 }} transition={{ ...spring.pop, delay: 0.5 }}>
           <KindIcon kind={kind} size={46} weight="duotone" />
         </motion.span>
       )}
       <div className="flex flex-wrap items-center gap-3">
         <a className="btn btn-primary h-11 px-5" href={url} download={obj.name}><DownloadSimpleIcon size={17} />下载 {formatBytes(obj.size)}</a>
-        <span className="text-[13px] text-white/50 tabular">{formatDate(obj.modified)}</span>
+        <span className="text-[13px] text-muted tabular">{formatDate(obj.modified)}</span>
       </div>
     </div>
   );
@@ -175,6 +195,14 @@ export function SharePage() {
   // A file picked in 片库: it is not in the folder the page has open.
   const [playing, setPlaying] = useState<string | null>(null);
   const [mode, setMode] = useState<"library" | "files" | null>(null);
+  const [theme, setTheme] = useState<ShareTheme>(savedTheme);
+
+  // The page brings its own palette (light unless chosen otherwise); leaving it
+  // gives the site's own theme back.
+  useEffect(() => {
+    applyTheme(theme);
+  }, [theme]);
+  useEffect(() => () => { applyTheme(usePrefs.getState().theme); }, []);
 
   const info = useQuery({ queryKey: ["share-get", sid, path, code], queryFn: () => visit.get(sid, path, code), retry: false, staleTime: 60_000 });
   const isDir = info.data?.is_dir;
@@ -221,14 +249,20 @@ export function SharePage() {
   const totalBytes = items.reduce((sum, item) => sum + (item.is_dir ? 0 : item.size), 0);
 
   return (
-    <div className="theme-dark relative min-h-dvh overflow-x-hidden bg-void text-ink">
-      <div className="fixed inset-0"><PosterWall /></div>
-      <div className="fixed inset-0 bg-void/55" />
+    <div className="relative min-h-dvh overflow-x-hidden bg-bg text-ink">
+      {/* Light is the default a share opens in; dark keeps the film wall. */}
+      {theme === "dark"
+        ? <div className="fixed inset-0"><PosterWall /></div>
+        : <div className="pointer-events-none fixed inset-0" style={{ background: "radial-gradient(1100px 520px at 50% -10%, rgb(196 236 92 / 0.16), transparent 70%)" }} />}
+      {theme === "dark" && <div className="fixed inset-0 bg-void/55" />}
       <header className="relative z-10 mx-auto flex max-w-[1180px] items-center gap-3 px-5 pt-[max(1.25rem,env(safe-area-inset-top))] sm:px-8">
         <Mark className="size-9 text-base" rounded="rounded-[11px]" />
-        <span className="font-semibold tracking-tight text-white">{siteTitle}</span>
+        <span className="font-semibold tracking-tight text-ink">{siteTitle}</span>
         <span className="flex-1" />
-        <Link href={signedIn ? "/" : "/@login"} className="rounded-full px-3 py-1.5 text-[13px] text-white/70 transition-colors hover:bg-white/10 hover:text-white">{signedIn ? "打开网盘" : "登录"}</Link>
+        <button className="icon-btn" aria-label={theme === "dark" ? "换成明亮主题" : "换成深色主题"} title={theme === "dark" ? "明亮" : "深色"} onClick={() => chooseTheme(theme === "dark" ? "light" : "dark", setTheme)}>
+          {theme === "dark" ? <SunIcon size={17} /> : <MoonIcon size={17} />}
+        </button>
+        <Link href={signedIn ? "/" : "/@login"} className="rounded-full px-3 py-1.5 text-[13px] text-muted transition-colors hover:bg-[var(--hover)] hover:text-ink">{signedIn ? "打开网盘" : "登录"}</Link>
       </header>
 
       <main className="relative z-10 mx-auto flex min-h-[calc(100dvh-80px)] max-w-[1180px] flex-col items-center justify-center px-4 pb-16 pt-8 sm:px-8">
@@ -243,40 +277,40 @@ export function SharePage() {
           )}
           {dead && (
             <motion.div key="dead" className="flex max-w-sm flex-col items-center gap-4 text-center" initial={{ opacity: 0, y: 30 }} animate={{ opacity: 1, y: 0 }} transition={spring.soft}>
-              <motion.span className="grid size-16 place-items-center rounded-[20px] bg-white/[0.06] text-white/70" initial={{ rotate: 0 }} animate={{ rotate: [0, -12, 10, -6, 0] }} transition={{ delay: 0.4, duration: 0.7 }}>
+              <motion.span className="grid size-16 place-items-center rounded-[20px] bg-[var(--hover)] text-muted" initial={{ rotate: 0 }} animate={{ rotate: [0, -12, 10, -6, 0] }} transition={{ delay: 0.4, duration: 0.7 }}>
                 <LinkBreakIcon size={30} />
               </motion.span>
-              <h1 className="text-[26px] font-semibold tracking-tight text-white">链接已失效</h1>
-              <p className="text-white/60">{/expired|no longer valid/i.test(info.error.message) ? "分享已过期，或访问次数已经用完。" : /not exist/i.test(info.error.message) ? "这个分享不存在，可能已被删除。" : explain(info.error).hint}</p>
+              <h1 className="text-[26px] font-semibold tracking-tight text-ink">链接已失效</h1>
+              <p className="text-muted">{/expired|no longer valid/i.test(info.error.message) ? "分享已过期，或访问次数已经用完。" : /not exist/i.test(info.error.message) ? "这个分享不存在，可能已被删除。" : explain(info.error).hint}</p>
             </motion.div>
           )}
           {info.data && (
-            <motion.section key="content" className="w-full overflow-hidden rounded-[26px] bg-[#0f0f11]/80 backdrop-blur-2xl"
-              style={{ boxShadow: "inset 0 1px 0 rgb(255 255 255 / 0.07), inset 0 0 0 1px rgb(255 255 255 / 0.06), 0 40px 120px -40px rgb(0 0 0 / 0.9)", transformPerspective: 1400, transformOrigin: "50% 0%" }}
+            <motion.section key="content" className="hairline w-full overflow-hidden rounded-[26px] bg-surface/85 backdrop-blur-2xl"
+              style={{ boxShadow: "var(--shadow-float)", transformPerspective: 1400, transformOrigin: "50% 0%" }}
               initial={{ opacity: 0, rotateX: 38, y: 90, scale: 0.94 }} animate={{ opacity: 1, rotateX: 0, y: 0, scale: 1 }} transition={{ ...spring.soft, delay: 0.1 }}>
               <div className="px-5 pb-5 pt-6 sm:px-8 sm:pt-8">
                 {crumbs.length > 0 && (
-                  <nav className="mb-3 flex flex-wrap items-center gap-1 text-[13px] text-white/55">
-                    <button className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 hover:bg-white/10 hover:text-white" onClick={() => go("/")}><ArrowLeftIcon size={13} />全部</button>
+                  <nav className="mb-3 flex flex-wrap items-center gap-1 text-[13px] text-muted">
+                    <button className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 hover:bg-[var(--hover)] hover:text-ink" onClick={() => go("/")}><ArrowLeftIcon size={13} />全部</button>
                     {crumbs.slice(0, -1).map((name, index) => (
                       <span key={index} className="inline-flex items-center gap-1">
                         <CaretRightIcon size={11} className="opacity-50" />
-                        <button className="rounded-md px-1.5 py-0.5 hover:bg-white/10 hover:text-white" onClick={() => go(`/${crumbs.slice(0, index + 1).join("/")}`)}>{name}</button>
+                        <button className="rounded-md px-1.5 py-0.5 hover:bg-[var(--hover)] hover:text-ink" onClick={() => go(`/${crumbs.slice(0, index + 1).join("/")}`)}>{name}</button>
                       </span>
                     ))}
                   </nav>
                 )}
                 <div className={`flex flex-wrap items-end justify-between gap-x-5 gap-y-3 ${isTitle ? "hidden" : ""}`}>
-                  <h1 className="break-words text-[clamp(26px,4.4vw,46px)] font-semibold leading-[1.05] tracking-[-0.04em] text-white">
+                  <h1 className="break-words text-[clamp(26px,4.4vw,46px)] font-semibold leading-[1.05] tracking-[-0.04em] text-ink">
                     <SplitText key={`${path}-${title}`} text={title || "分享"} />
                   </h1>
                   {/* 片库 / 文件: the same share, as films or as folders. A share
                       of one title has nothing to switch: it opens on its page. */}
                   {isDir && scope.data?.enabled && !isTitle && (
-                    <div className="flex shrink-0 items-center rounded-full bg-white/[0.06] p-0.5" role="group" aria-label="视图">
+                    <div className="flex shrink-0 items-center rounded-full bg-[var(--hover)] p-0.5" role="group" aria-label="视图">
                       {(["library", "files"] as const).map(key => (
                         <button key={key} aria-pressed={view === key} onClick={() => choose(key)}
-                          className={`relative h-8 rounded-full px-3.5 text-[13px] transition-colors ${view === key ? "text-void" : "text-white/60 hover:text-white"}`}>
+                          className={`relative h-8 rounded-full px-3.5 text-[13px] transition-colors ${view === key ? "text-accent-ink" : "text-muted hover:text-ink"}`}>
                           {view === key && <motion.span layoutId={`share-mode-${sid}`} className="absolute inset-0 rounded-full bg-accent" transition={spring.snappy} />}
                           <span className="relative">{key === "library" ? "片库" : "文件"}</span>
                         </button>
@@ -285,7 +319,7 @@ export function SharePage() {
                   )}
                 </div>
                 {isDir && list.data && !isTitle && (
-                  <p className="mt-2 text-[13px] text-white/50 tabular">
+                  <p className="mt-2 text-[13px] text-muted tabular">
                     {showLibrary ? "按海报浏览这个分享里的影视" : `${items.length} 项${totalBytes ? `，${formatBytes(totalBytes)}` : ""}`}
                   </p>
                 )}
@@ -309,11 +343,11 @@ export function SharePage() {
                 )}
                 {isDir && !showLibrary && list.isPending && (
                   <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-5">
-                    {Array.from({ length: 10 }, (_, i) => <div key={i} className="enter p-1.5" style={{ "--i": i } as CSSProperties}><div className="aspect-[4/3] rounded-[12px] bg-white/[0.05]" /><div className="mt-2 h-3.5 w-2/3 rounded bg-white/[0.06]" /></div>)}
+                    {Array.from({ length: 10 }, (_, i) => <div key={i} className="enter p-1.5" style={{ "--i": i } as CSSProperties}><div className="aspect-[4/3] rounded-[12px] bg-[var(--hover)]" /><div className="mt-2 h-3.5 w-2/3 rounded bg-[var(--hover)]" /></div>)}
                   </div>
                 )}
                 {isDir && !showLibrary && list.isError && <ErrorState className="mx-2" error={list.error} onRetry={() => list.refetch()} />}
-                {isDir && !showLibrary && list.data && items.length === 0 && <p className="px-2 text-white/55">这个文件夹是空的。</p>}
+                {isDir && !showLibrary && list.data && items.length === 0 && <p className="px-2 text-muted">这个文件夹是空的。</p>}
                 {isDir && !showLibrary && items.length > 0 && (
                   <LayoutGroup>
                     <div className="grid grid-cols-2 gap-1 sm:grid-cols-4 lg:grid-cols-5">
@@ -332,7 +366,7 @@ export function SharePage() {
                   {playing && <Lightbox key={playing} obj={asObj(playing)} url={shareFileUrl(sid, playing, code)} share={{ sid, code, path: playing }} onClose={() => setPlaying(null)} />}
                 </AnimatePresence>
                 {readme && (
-                  <div className="mx-2 mt-6 rounded-[16px] bg-white/[0.03] px-5 py-4" style={{ boxShadow: "inset 0 0 0 1px rgb(255 255 255 / 0.06)" }}>
+                  <div className="hairline mx-2 mt-6 rounded-[16px] bg-[var(--hover)] px-5 py-4">
                     <Suspense fallback={null}><Markdown source={readme} /></Suspense>
                   </div>
                 )}

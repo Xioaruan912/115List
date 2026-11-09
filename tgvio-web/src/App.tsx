@@ -28,6 +28,9 @@ onUploadFinished(dir => {
   (onUploadFinished as unknown as { timer?: number }).timer = window.setTimeout(() => void actions.reload(dir, false), 600);
 });
 
+/** A share page (/@s/<id>) owns its colours: light unless the visitor chose dark. */
+const isShareRoute = (): boolean => window.location.pathname.includes("/@s/");
+
 function Splash() {
   return (
     <div className="grid min-h-dvh place-items-center">
@@ -69,6 +72,8 @@ export function App() {
   useEffect(() => { syncProgress(account); }, [account]);
   useEffect(() => { useUploads.setState({ multipart: settings.multipart_enabled !== "false" }); }, [settings.multipart_enabled]);
   useEffect(() => {
+    // A share brings its own palette (light by default), and sets it itself.
+    if (isShareRoute()) return;
     applyTheme(theme);
     if (theme !== "system") return;
     const media = matchMedia("(prefers-color-scheme: dark)");
