@@ -548,7 +548,11 @@ func autoOrganize(ctx context.Context, root string) (done bool, final string, wh
 			// title's own name, which its parent already has: instead of failing
 			// every round, its contents move up beside the others.
 			target := stdpath.Join(stdpath.Dir(f.path), item.New)
-			if target != f.path {
+			// Only a folder below the one being organized: for the organized
+			// folder itself ("黑色五叶草" -> "黑色五叶草 (2017)") a target that
+			// exists is a duplicate series folder, a person's merge, never an
+			// episode wrapper to open up.
+			if f.depth > 0 && target != f.path {
 				if obj, _ := fs.Get(ctx, target, &fs.GetArgs{NoLog: true}); obj != nil {
 					if moved, uerr := unwrapFolder(ctx, stdpath.Dir(f.path), item.Old); uerr == nil {
 						if len(moved) > 0 {

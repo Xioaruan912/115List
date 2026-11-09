@@ -502,11 +502,16 @@ func (t *TMDB) PlanRenameIn(ctx context.Context, dir string, entries []RenameEnt
 	// the series' first film, "q伏2.2013…" another). Below a shelf, nothing.
 	if inherit != nil && inherit.ID > 0 && (subject.None || subject.ID != inherit.ID || subject.Kind != inherit.Kind) &&
 		(inherit.Kind == "tv" || inherit.Kind == "movie" && inherit.Film) {
-		above, err := t.Details(ctx, inherit.Kind, inherit.ID)
-		if err != nil {
-			return nil, err
+		// A series keeps its own film in a folder of its own ("黑色五叶草/黑色五叶草：
+		// 魔法帝之剑 (2023)"): a folder named with the film's year is that film, and
+		// nobody has to number it as an episode of the series.
+		if !ownFilmFolder(dir, subject) {
+			above, err := t.Details(ctx, inherit.Kind, inherit.ID)
+			if err != nil {
+				return nil, err
+			}
+			subject, ownSeason, plan.Inherited = above, false, true
 		}
-		subject, ownSeason, plan.Inherited = above, false, true
 	}
 	folder := pathBase(dir)
 	shelf := false
@@ -1070,6 +1075,16 @@ func (t *TMDB) PlanRenameIn(ctx context.Context, dir string, entries []RenameEnt
 	markConflicts(plan, entries)
 	freeingFirst(plan)
 	return plan, nil
+}
+
+// ownFilmFolder: a folder named with the year of the film its own name found is
+// that film, whatever series its parent plans ("黑色五叶草：魔法帝之剑 (2023)").
+func ownFilmFolder(dir string, subject *Poster) bool {
+	if subject == nil || subject.Kind != "movie" || subject.Year <= 0 {
+		return false
+	}
+	_, year, _, _ := CleanName(pathBase(dir))
+	return year > 0 && (year == subject.Year || year == subject.Year+1 || year+1 == subject.Year)
 }
 
 // sequelOf reports whether name, matched to found, is really film: film's

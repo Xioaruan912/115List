@@ -395,3 +395,35 @@ func TestPlanUnwrapSameName(t *testing.T) {
 		t.Fatalf("same-named wrapper -> %+v", got)
 	}
 }
+
+func TestSeriesKeepsItsOwnFilmInFolder(t *testing.T) {
+	// 黑色五叶草/黑色五叶草：魔法帝之剑 (2023): the film's folder is that film,
+	// although its parent folder is planned as the series.
+	tm := planTMDB(t, nil, nil)
+	tm.http.Transport = rawTMDB{
+		"tv/1": `{"id":1,"name":"黑色五叶草","first_air_date":"2017-10-03","seasons":[
+			{"season_number":1,"name":"第 1 季","episode_count":170,"air_date":"2017-10-03"},
+			{"season_number":2,"name":"第 2 季","episode_count":5,"air_date":"2026-01-10"}]}`,
+		"movie/2": `{"id":2,"title":"黑色五叶草：魔法帝之剑","release_date":"2023-06-16"}`,
+	}
+	series := "黑色五叶草"
+	tm.entries[Key(series)] = &Poster{Kind: "tv", ID: 1, Title: series, Year: 2017, Name: series, Rev: cleanerRev}
+	filmFolder := "黑色五叶草：魔法帝之剑 (2023)"
+	tm.entries[Key(filmFolder)] = &Poster{Kind: "movie", ID: 2, Title: "黑色五叶草：魔法帝之剑", Year: 2023, Name: filmFolder, Rev: cleanerRev}
+	plan, err := tm.PlanRenameIn(context.Background(), "/lib/"+series+"/"+filmFolder,
+		[]RenameEntry{{Name: filmFolder + ".mkv", Size: 1 << 30}}, 0, &RenameInherit{Kind: "tv", ID: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if plan.Subject == nil || plan.Subject.ID != 2 || !plan.Film {
+		t.Fatalf("the series' film -> %+v", plan.Subject)
+	}
+	for _, item := range plan.Items {
+		if item.Reason == "no-episode" {
+			t.Fatalf("named as an episode -> %+v", plan.Items)
+		}
+		if item.Kind == "video" && item.New != "" {
+			t.Fatalf("video already right -> %+v", item)
+		}
+	}
+}
