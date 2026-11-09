@@ -568,3 +568,34 @@ func TestPlanFolderOfNamedEpisodesIsThatSeason(t *testing.T) {
 		t.Fatalf("folder -> %+v", got)
 	}
 }
+
+func TestPlanSeriesFolderGathersEpisodesIntoSeason(t *testing.T) {
+	// A one-season series keeps its episodes in the series' folder today; asked
+	// to, they go into the season's folder instead, subtitles with them.
+	tm := filmsTMDB(t, nil, nil)
+	tm.http.Transport = rawTMDB{
+		"tv/9": `{"id":9,"name":"请回答1988","first_air_date":"2015-11-06","seasons":[
+			{"season_number":1,"name":"第 1 季","episode_count":2,"air_date":"2015-11-06"}]}`,
+		"tv/9/season/1": `{"episodes":[{"episode_number":1,"name":"手拉手"}]}`,
+	}
+	folder := "请回答1988 (2015)"
+	tm.entries[Key(folder)] = &Poster{Kind: "tv", ID: 9, Title: "请回答1988", Year: 2015, Name: folder, Rev: cleanerRev}
+	ep1 := "请回答1988 - S01E01 - 手拉手.mkv"
+	ep1s := "请回答1988 - S01E01 - 手拉手.ass"
+	ep2 := "请回答1988 - S01E02 - 你对我的一个误解.mkv"
+	plan, err := tm.PlanRenameIn(context.Background(), "/lib/"+folder,
+		[]RenameEntry{{Name: ep1, Size: 1 << 30}, {Name: ep1s, Size: 1 << 20}, {Name: ep2, Size: 1 << 30}}, 0, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "请回答1988 第一季 (2015)"
+	if got := find(plan, ep1); got.Into != want {
+		t.Fatalf("episode 1 -> %+v", got)
+	}
+	if got := find(plan, ep1s); got.Into != want {
+		t.Fatalf("subtitle -> %+v", got)
+	}
+	if got := find(plan, folder); got.New != "" {
+		t.Fatalf("series folder -> %+v", got)
+	}
+}

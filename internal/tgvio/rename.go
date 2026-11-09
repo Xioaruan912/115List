@@ -802,7 +802,18 @@ func (t *TMDB) PlanRenameIn(ctx context.Context, dir string, entries []RenameEnt
 				}
 			}
 		}
-		gather := folderSeason == 0 && len(seasonDirs) > 0 && last > 1
+		// A series' own folder holding one season's episodes at its level ("请回答1988
+		// (2015)/请回答1988 - S01E01 - ….mkv"): they go into that season's folder.
+		seasonFolder := folderSeason > 0 && SeasonOf(folder) == 0 && len(seasonDirs) == 0 && !plan.Inherited
+		if seasonFolder {
+			for _, v := range videos {
+				if s, ep := ParseEpisode(v); ep > 0 && s > 0 && s != folderSeason {
+					seasonFolder = false // episodes of other seasons too: the folder is no season's
+					break
+				}
+			}
+		}
+		gather := (folderSeason == 0 && len(seasonDirs) > 0 && last > 1) || seasonFolder
 		for _, f := range found {
 			stem := strings.TrimSuffix(f.old, stdpath.Ext(f.old))
 			newBase[stem] = f.name
