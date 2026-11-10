@@ -343,6 +343,7 @@ func autoOrganizeRound() {
 	}
 	autoGroupCollections(ctx)
 	autoCheckFollows(ctx)
+	autoRefreshTraktToken()
 }
 
 // mergeIntoSeries: a season organized into (or beside others in) its series'

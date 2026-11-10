@@ -13,6 +13,7 @@ const PAGES = [
   ["users", "用户", lazy(() => import("./Users"))],
   ["metas", "元信息", lazy(() => import("./Metas"))],
   ["settings", "设置", lazy(() => import("./Settings"))],
+  ["trakt", "Trakt", lazy(() => import("./Trakt"))],
   ["tasks", "任务", lazy(() => import("./Tasks"))],
 ] as const;
 

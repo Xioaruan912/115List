@@ -170,6 +170,8 @@ func Init(e *gin.Engine) {
 	auth.POST("/tgvio/subtitles/files", middlewares.AuthNotGuest, handles.TgvioSubtitlesFiles)
 	auth.POST("/tgvio/subtitles/save", middlewares.AuthNotGuest, handles.TgvioSubtitlesSave)
 	g.GET("/tgvio/poster/:size/:file", handles.TgvioPosterImage)
+	// Trakt sends the person back here after they approve the app (PKCE).
+	g.GET("/tgvio/trakt/callback", handles.TgvioTraktCallback)
 	auth.POST("/tgvio/thumbs", middlewares.AuthNotGuest, handles.TgvioThumbs)
 	g.GET("/tgvio/thumb/:file", handles.TgvioThumbImage)
 	if flags.Debug || flags.Dev {
@@ -202,6 +204,10 @@ func admin(g *gin.RouterGroup) {
 	// 115 keeps finished/failed cloud download records and refuses the same
 	// link again (任务已存在); this clears them without touching the files.
 	tgvioAdmin.POST("/offline/clean", handles.TgvioOfflineClean)
+	tgvioAdmin.GET("/trakt", handles.TgvioTraktGet)
+	tgvioAdmin.POST("/trakt", handles.TgvioTraktSet)
+	tgvioAdmin.POST("/trakt/connect", handles.TgvioTraktConnect)
+	tgvioAdmin.POST("/trakt/disconnect", handles.TgvioTraktDisconnect)
 	// Films of one TMDB series join one folder ("哥斯拉", "侏罗纪公园").
 	tgvioAdmin.POST("/collections/group", handles.TgvioCollectionsGroup)
 

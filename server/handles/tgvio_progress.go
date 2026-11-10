@@ -1,6 +1,8 @@
 package handles
 
 import (
+	"context"
+
 	"github.com/OpenListTeam/OpenList/v4/cmd/flags"
 	"github.com/OpenListTeam/OpenList/v4/internal/conf"
 	"github.com/OpenListTeam/OpenList/v4/internal/model"
@@ -33,5 +35,10 @@ func TgvioProgressMerge(c *gin.Context) {
 		return
 	}
 	user := c.Request.Context().Value(conf.UserKey).(*model.User)
-	common.SuccessResp(c, gin.H{"items": watching().Merge(user.ID, req.Items)})
+	items := watching().Merge(user.ID, req.Items)
+	if len(req.Items) > 0 {
+		// The player just told us where it is: the same play goes to Trakt.
+		go traktOnProgress(context.WithoutCancel(c.Request.Context()), req.Items)
+	}
+	common.SuccessResp(c, gin.H{"items": items})
 }
