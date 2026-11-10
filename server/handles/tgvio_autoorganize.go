@@ -341,6 +341,7 @@ func autoOrganizeRound() {
 		log.Infof("tgvio auto organize: %s -> %s", dir, final)
 		mergeIntoSeries(ctx, dir, final)
 	}
+	autoGroupCollections(ctx)
 }
 
 // mergeIntoSeries: a season organized into (or beside others in) its series'

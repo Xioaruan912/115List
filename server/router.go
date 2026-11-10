@@ -197,6 +197,8 @@ func admin(g *gin.RouterGroup) {
 	// 115 keeps finished/failed cloud download records and refuses the same
 	// link again (任务已存在); this clears them without touching the files.
 	tgvioAdmin.POST("/offline/clean", handles.TgvioOfflineClean)
+	// Films of one TMDB series join one folder ("哥斯拉", "侏罗纪公园").
+	tgvioAdmin.POST("/collections/group", handles.TgvioCollectionsGroup)
 
 	meta := g.Group("/meta")
 	meta.GET("/list", handles.ListMetas)

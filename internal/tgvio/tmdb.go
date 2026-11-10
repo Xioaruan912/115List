@@ -530,6 +530,16 @@ func (t *TMDB) Search(ctx context.Context, query string, year int) ([]*Poster, e
 	return out, nil
 }
 
+// FilmCollection reads a film's TMDB series (cached): its id and name, or 0
+// when the film stands alone.
+func (t *TMDB) FilmCollection(ctx context.Context, id int) (int, string) {
+	p, err := t.cachedDetails(ctx, "movie", id)
+	if err != nil || p == nil || p.None {
+		return 0, ""
+	}
+	return p.Collection, p.CollectionName
+}
+
 // Details reads one film or series by its TMDB id.
 func (t *TMDB) Details(ctx context.Context, kind string, id int) (*Poster, error) {
 	var item tmdbItem

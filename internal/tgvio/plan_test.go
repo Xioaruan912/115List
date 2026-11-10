@@ -626,3 +626,18 @@ func TestPlanSeriesFolderOfTwoSeasonsKeepsItsName(t *testing.T) {
 		t.Fatalf("episode -> %+v", got)
 	}
 }
+
+func TestCollectionFolderName(t *testing.T) {
+	// The collection's own name when the titles are only its short form.
+	if got := CollectionFolderName(328, "侏罗纪公园（系列）", []string{"侏罗纪世界", "侏罗纪公园", "侏罗纪世界2"}); got != "侏罗纪公园" {
+		t.Fatalf("jurassic -> %q", got)
+	}
+	// Its own name when that decides it ("英雄联盟" would be a game).
+	if got := CollectionFolderName(747874, "英雄联盟（动画系列）", []string{"钢铁侠与浩克", "钢铁侠与美国队长"}); got != "漫威动画" {
+		t.Fatalf("heroes united -> %q", got)
+	}
+	// Else what the titles share.
+	if got := CollectionFolderName(0, "", []string{"哥斯拉", "哥斯拉2：怪兽之王"}); got != "哥斯拉" {
+		t.Fatalf("godzilla -> %q", got)
+	}
+}

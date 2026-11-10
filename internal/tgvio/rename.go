@@ -141,10 +141,33 @@ func IsJunk(e RenameEntry) bool {
 	return knownAd.MatchString(e.Name) && e.Size < 64<<10
 }
 
-// seriesFolder names a folder of films of one series: what their titles
-// share ("招魂", "招魂2", "招魂3" -> "招魂"), else the series' own name without
-// its "系列" / "Collection".
-func seriesFolder(titles []string, collection string) string {
+// collectionAliases: a TMDB collection whose own Chinese name would mislead
+// here (or collide with another franchise's folder).
+var collectionAliases = map[int]string{
+	747874: "漫威动画", // "Heroes United": TMDB calls it 英雄联盟（动画系列）
+}
+
+// CollectionFolderName names a folder of films of one TMDB collection: the
+// collection's own name when the films' titles are only its short form
+// ("侏罗纪" -> "侏罗纪公园"), else what their titles share ("招魂").
+func CollectionFolderName(id int, collection string, titles []string) string {
+	if alias, ok := collectionAliases[id]; ok {
+		return alias
+	}
+	prefix := sharedTitlePrefix(titles)
+	base := SafeName(collectionSuffix.ReplaceAllString(collection, ""))
+	switch {
+	case prefix != "" && base != "" && strings.HasPrefix(normalizeTitle(base), normalizeTitle(prefix)):
+		return base
+	case prefix != "":
+		return SafeName(prefix)
+	default:
+		return base
+	}
+}
+
+// sharedTitlePrefix: what titles start with ("侏罗纪公园", "侏罗纪世界" -> "侏罗纪").
+func sharedTitlePrefix(titles []string) string {
 	prefix := ""
 	if len(titles) > 0 {
 		prefix = titles[0]
@@ -157,12 +180,12 @@ func seriesFolder(titles []string, collection string) string {
 			prefix = string(a[:i])
 		}
 	}
-	prefix = strings.TrimRight(prefix, " 0123456789:：·.-_（(【[之的与和")
-	if prefix != "" {
-		return SafeName(prefix)
-	}
-	name := collectionSuffix.ReplaceAllString(collection, "")
-	return SafeName(name)
+	return strings.TrimRight(prefix, " 0123456789:：·.-_（(【[之的与和")
+}
+
+// seriesFolder is CollectionFolderName for a collection with no id (tests).
+func seriesFolder(titles []string, collection string) string {
+	return CollectionFolderName(0, collection, titles)
 }
 
 // collectionWord: a folder named as a collection of films.
@@ -1226,7 +1249,7 @@ func (t *TMDB) seriesOf(ctx context.Context, films map[int]string) (name string,
 		return "", 0
 	}
 	sort.Strings(titles)
-	return seriesFolder(titles, name), first
+	return CollectionFolderName(collection, name, titles), first
 }
 
 // RenameWorthy reports whether a file is one the planner names (a video, a subtitle or .nfo).
