@@ -104,8 +104,8 @@ func TgvioTraktSet(c *gin.Context) {
 }
 
 type traktPending struct {
-	verifier string
-	at       int64
+	Verifier string `json:"verifier"`
+	At       int64  `json:"at"`
 }
 
 var (
@@ -152,11 +152,11 @@ func TgvioTraktConnect(c *gin.Context) {
 	traktStatesLoadLocked()
 	now := time.Now().Unix()
 	for k, v := range traktStates {
-		if now-v.at > 15*60 {
+		if now-v.At > 15*60 {
 			delete(traktStates, k)
 		}
 	}
-	traktStates[state] = traktPending{verifier: verifier, at: now}
+	traktStates[state] = traktPending{Verifier: verifier, At: now}
 	traktStatesSaveLocked()
 	traktStatesMu.Unlock()
 	q := url.Values{
@@ -190,7 +190,7 @@ func TgvioTraktCallback(c *gin.Context) {
 			traktStatesSaveLocked()
 		}
 		traktStatesMu.Unlock()
-		if !ok || time.Now().Unix()-p.at > 15*60 {
+		if !ok || time.Now().Unix()-p.At > 15*60 {
 			errMsg = "授权已过期，请回到设置页重新连接"
 		}
 		pend = p
@@ -205,7 +205,7 @@ func TgvioTraktCallback(c *gin.Context) {
 			"client_id":     id,
 			"redirect_uri":  traktRedirect,
 			"grant_type":    "authorization_code",
-			"code_verifier": pend.verifier,
+			"code_verifier": pend.Verifier,
 		})
 		if err != nil {
 			errMsg = err.Error()
