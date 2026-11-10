@@ -109,9 +109,30 @@ type traktPending struct {
 }
 
 var (
-	traktStatesMu sync.Mutex
-	traktStates   = map[string]traktPending{}
+	traktStatesMu    sync.Mutex
+	traktStates      = map[string]traktPending{}
+	traktStatesReady bool
 )
+
+// The pending authorizations outlive a restart (a deploy in the middle of a
+// sign-in would otherwise lose the verifier the token exchange needs).
+func traktStatesFile() string { return filepath.Join(flags.DataDir, "tgvio", "trakt-pending.json") }
+
+func traktStatesLoadLocked() {
+	if traktStatesReady {
+		return
+	}
+	traktStatesReady = true
+	if raw, err := os.ReadFile(traktStatesFile()); err == nil {
+		_ = json.Unmarshal(raw, &traktStates)
+	}
+}
+
+func traktStatesSaveLocked() {
+	if raw, err := json.Marshal(traktStates); err == nil {
+		_ = os.WriteFile(traktStatesFile(), raw, 0o600)
+	}
+}
 
 // POST /api/admin/tgvio/trakt/connect — the browser goes to the returned URL.
 func TgvioTraktConnect(c *gin.Context) {
@@ -128,6 +149,7 @@ func TgvioTraktConnect(c *gin.Context) {
 	challenge := base64.RawURLEncoding.EncodeToString(sum[:])
 	state := randomURL(16)
 	traktStatesMu.Lock()
+	traktStatesLoadLocked()
 	now := time.Now().Unix()
 	for k, v := range traktStates {
 		if now-v.at > 15*60 {
@@ -135,6 +157,7 @@ func TgvioTraktConnect(c *gin.Context) {
 		}
 	}
 	traktStates[state] = traktPending{verifier: verifier, at: now}
+	traktStatesSaveLocked()
 	traktStatesMu.Unlock()
 	q := url.Values{
 		"response_type":         {"code"},
@@ -160,9 +183,11 @@ func TgvioTraktCallback(c *gin.Context) {
 	var pend traktPending
 	if errMsg == "" {
 		traktStatesMu.Lock()
+		traktStatesLoadLocked()
 		p, ok := traktStates[state]
 		if ok {
 			delete(traktStates, state)
+			traktStatesSaveLocked()
 		}
 		traktStatesMu.Unlock()
 		if !ok || time.Now().Unix()-p.at > 15*60 {

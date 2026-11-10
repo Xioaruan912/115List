@@ -172,6 +172,7 @@ func Init(e *gin.Engine) {
 	g.GET("/tgvio/poster/:size/:file", handles.TgvioPosterImage)
 	// Trakt sends the person back here after they approve the app (PKCE).
 	g.GET("/tgvio/trakt/callback", handles.TgvioTraktCallback)
+	api.GET("/tgvio/trakt/callback", handles.TgvioTraktCallback)
 	auth.POST("/tgvio/thumbs", middlewares.AuthNotGuest, handles.TgvioThumbs)
 	g.GET("/tgvio/thumb/:file", handles.TgvioThumbImage)
 	if flags.Debug || flags.Dev {
