@@ -405,7 +405,10 @@ func scrobbleProgress(ctx context.Context, path string, entry tgvio.WatchEntry) 
 	if movie > 0 {
 		body["movie"] = map[string]any{"ids": map[string]int{"tmdb": movie}}
 	} else {
-		body["episode"] = map[string]any{"season": season, "number": episode, "ids": map[string]int{"tmdb": series}}
+		// The episode is named by its show and its season/number: the show's
+		// TMDB id is no episode id (it matched another series' episode).
+		body["show"] = map[string]any{"ids": map[string]int{"tmdb": series}}
+		body["episode"] = map[string]any{"season": season, "number": episode}
 	}
 	traktWatchMu.Lock()
 	_, started := traktStarted[path]
@@ -414,15 +417,21 @@ func scrobbleProgress(ctx context.Context, path string, entry tgvio.WatchEntry) 
 	switch {
 	case !started && !done:
 		if err := traktCall(ctx, "/scrobble/start", body); err == nil {
+			log.Infof("tgvio trakt: watching %s (%.0f%%)", path, pct*100)
 			traktWatchMu.Lock()
 			traktStarted[path] = time.Now().Unix()
 			traktWatchMu.Unlock()
+		} else {
+			log.Warnf("tgvio trakt: start %s: %v", path, err)
 		}
 	case done && started:
 		if err := traktCall(ctx, "/scrobble/stop", body); err == nil {
+			log.Infof("tgvio trakt: watched %s", path)
 			traktWatchMu.Lock()
 			delete(traktStarted, path)
 			traktWatchMu.Unlock()
+		} else {
+			log.Warnf("tgvio trakt: stop %s: %v", path, err)
 		}
 	}
 }
