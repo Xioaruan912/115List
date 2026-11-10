@@ -21,6 +21,7 @@ import (
 	"github.com/OpenListTeam/OpenList/v4/internal/offline_download/tool"
 	"github.com/OpenListTeam/OpenList/v4/internal/tgvio"
 	"github.com/OpenListTeam/OpenList/v4/server/common"
+	"github.com/OpenListTeam/tache"
 	"github.com/gin-gonic/gin"
 	log "github.com/sirupsen/logrus"
 )
@@ -321,10 +322,12 @@ func checkFollows(ctx context.Context, force bool) ([]string, error) {
 			if err != nil || magnet == "" {
 				continue
 			}
-			if _, err := tool.AddURL(ctx, &tool.AddURLArgs{URL: magnet, DstDirPath: cfg.Folder, Tool: "115 Cloud"}); err != nil {
+			t, err := tool.AddURL(ctx, &tool.AddURLArgs{URL: magnet, DstDirPath: cfg.Folder, Tool: "115 Cloud"})
+			if err != nil {
 				log.Warnf("tgvio follow %s: %v", seed.Title, err)
 				continue
 			}
+			go waitAndWrap(ctx, t, cfg.Folder, it.Path, seed.Title)
 			if it.Requested == nil {
 				it.Requested = map[string]int64{}
 			}
@@ -372,6 +375,66 @@ func placeInSeason(counts map[int]int, season, ep int) (int, int) {
 		}
 	}
 	return season, ep
+}
+
+// waitAndWrap: a single release lands as one file in the download folder (no
+// folder for the organizer to take); once the download is done it goes into a
+// folder of its own name and is marked, so the organizer files it into the
+// season, as it does for a release that came as a folder.
+func waitAndWrap(ctx context.Context, t interface{ GetState() tache.State }, root, season, release string) {
+	if t == nil || root == "" {
+		return
+	}
+	ctx = context.WithoutCancel(ctx)
+	for i := 0; i < 480; i++ { // up to two hours
+		s := t.GetState()
+		if s == tache.StateSucceeded || s == tache.StateFailed || s == tache.StateCanceled {
+			break
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(15 * time.Second):
+		}
+	}
+	path := stdpath.Join(root, release)
+	obj, err := fs.Get(ctx, path, &fs.GetArgs{NoLog: true})
+	if err != nil || obj == nil {
+		return
+	}
+	if season != "" {
+		// Into the season it belongs to: its plan, known from the follow, names
+		// the file (S02E06) where a release folder at the library root cannot
+		// say which series it is.
+		if err := moveRetrying(ctx, path, season); err != nil {
+			log.Warnf("tgvio follow: moving %s: %v", release, err)
+			return
+		}
+		posters().Moved(root, season, release)
+		_ = organizeStore().Mark(season, true)
+		KickAutoOrganize()
+		return
+	}
+	if obj.IsDir() {
+		_ = organizeStore().Mark(path, true)
+		KickAutoOrganize()
+		return
+	}
+	tmp := path + ".part"
+	if err := fs.MakeDir(ctx, tmp); err != nil {
+		log.Warnf("tgvio follow: wrapping %s: %v", release, err)
+		return
+	}
+	if err := moveRetrying(ctx, path, tmp); err != nil {
+		log.Warnf("tgvio follow: moving %s: %v", release, err)
+		return
+	}
+	if err := renameIn(ctx, root, stdpath.Base(tmp), release); err != nil {
+		log.Warnf("tgvio follow: naming %s: %v", release, err)
+		return
+	}
+	_ = organizeStore().Mark(path, true)
+	KickAutoOrganize()
 }
 
 var lastFollowCheck = time.Now()
