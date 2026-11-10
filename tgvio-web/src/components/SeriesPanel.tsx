@@ -1,8 +1,9 @@
-import { CaretLeftIcon, CaretRightIcon, CheckIcon, MagnetIcon, PlayIcon, StarIcon } from "@phosphor-icons/react";
+import { BellSimpleIcon, CaretLeftIcon, CaretRightIcon, CheckIcon, MagnetIcon, PlayIcon, StarIcon } from "@phosphor-icons/react";
 import { useQuery } from "@tanstack/react-query";
 import { motion } from "motion/react";
 import { createContext, useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { useLocation } from "wouter";
+import { follow } from "../api/follow";
 import { posterSrc } from "../api/posters";
 import { series, seriesInShare, type Films, type SeriesEpisode } from "../api/series";
 import { useResourceRoot } from "../hooks/useResourceRoot";
@@ -13,6 +14,7 @@ import { spring } from "../lib/motion";
 import { basename, encodePath, join, parent } from "../lib/path";
 import { getProgress, subscribeProgress, watched } from "../lib/progress";
 import type { Obj } from "../lib/types";
+import { toast } from "../stores/toast";
 import { useUi } from "../stores/ui";
 
 /**
@@ -186,6 +188,29 @@ export function SeriesPanel({ path, items }: { path: string; items: Obj[] }) {
   const share = useSharePanel();
   const query = useTitlePanel(path, items);
   useSyncExternalStore(subscribeProgress, () => tick);
+  const follows = useQuery({ queryKey: ["follow"], queryFn: follow.list, staleTime: 60_000, enabled: !share });
+  const [followOverride, setFollowOverride] = useState<boolean | null>(null);
+  const [followBusy, setFollowBusy] = useState(false);
+  const followed = followOverride ?? !!follows.data?.items.some(f => f.path === path);
+  const toggleFollow = async (): Promise<void> => {
+    if (followBusy) return;
+    setFollowBusy(true);
+    try {
+      if (followed) {
+        await follow.remove(path);
+        setFollowOverride(false);
+        toast.success("已取消追番");
+      } else {
+        const r = await follow.add(path);
+        setFollowOverride(true);
+        toast.success("已追番", `${r.item.title} 有新集时自动下载`);
+      }
+    } catch (e) {
+      toast.error("追番失败", e);
+    } finally {
+      setFollowBusy(false);
+    }
+  };
   const data = query.data?.series;
   if (!data && query.data?.films) return <FilmsPanel path={path} films={query.data.films} items={items} canFind={finder.enabled && !share} />;
   if (!data) return null;
@@ -244,6 +269,12 @@ export function SeriesPanel({ path, items }: { path: string; items: Obj[] }) {
               {data.root && !share && (
                 <button className="btn h-10 bg-white/12 px-4 text-white backdrop-blur-md hover:bg-white/20" onClick={() => navigate(encodePath(data.root))}>
                   全部季<CaretRightIcon size={14} />
+                </button>
+              )}
+              {!share && data.season > 0 && (
+                <button className="btn h-10 bg-white/12 px-4 text-white backdrop-blur-md hover:bg-white/20 disabled:opacity-60" disabled={followBusy}
+                  title={followed ? "不再自动下载新集" : "有新集时自动下载"} onClick={toggleFollow}>
+                  {followed ? <CheckIcon size={15} /> : <BellSimpleIcon size={15} />}{followed ? "已追番" : "追番"}
                 </button>
               )}
             </div>

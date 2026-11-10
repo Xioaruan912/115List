@@ -155,6 +155,11 @@ func Init(e *gin.Engine) {
 	auth.POST("/tgvio/organize", middlewares.AuthNotGuest, handles.TgvioOrganizeMark)
 	auth.POST("/tgvio/organize/check", middlewares.AuthNotGuest, handles.TgvioOrganizeCheck)
 	auth.GET("/tgvio/organize/recent", middlewares.AuthNotGuest, handles.TgvioOrganizeRecent)
+	// 追番: a followed season's new episodes are downloaded by themselves.
+	auth.GET("/tgvio/follow", middlewares.AuthNotGuest, handles.TgvioFollowList)
+	auth.POST("/tgvio/follow", middlewares.AuthNotGuest, handles.TgvioFollowAdd)
+	auth.POST("/tgvio/follow/remove", middlewares.AuthNotGuest, handles.TgvioFollowRemove)
+	auth.POST("/tgvio/follow/check", middlewares.AuthNotGuest, handles.TgvioFollowCheck)
 	auth.GET("/tgvio/library/news", middlewares.AuthNotGuest, handles.TgvioLibraryNews)
 	handles.StartTgvioAutoOrganize()
 	handles.StartTgvioStagedRecovery()
