@@ -401,7 +401,7 @@ func scrobbleProgress(ctx context.Context, path string, entry tgvio.WatchEntry) 
 	if movie == 0 && (series == 0 || episode == 0) {
 		return
 	}
-	body := map[string]any{"progress": pct}
+	body := map[string]any{"progress": pct * 100} // Trakt takes a percentage
 	if movie > 0 {
 		body["movie"] = map[string]any{"ids": map[string]int{"tmdb": movie}}
 	} else {
