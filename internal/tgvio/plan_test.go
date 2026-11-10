@@ -641,3 +641,36 @@ func TestCollectionFolderName(t *testing.T) {
 		t.Fatalf("godzilla -> %q", got)
 	}
 }
+
+func TestPlanKeepsLocalEpisodeTitle(t *testing.T) {
+	// TMDB has no episode names for Running Man; the file's own title stays.
+	if got := localEpisodeTitle("Running Man (2010) S01E100.100期特辑：诸神之战.{tmdbid-33238}.mp4", 1, 100); got != "100期特辑：诸神之战" {
+		t.Fatalf("emby name -> %q", got)
+	}
+	if got := localEpisodeTitle("Running Man - S01E101 - 寻找真金Ⅰ.mp4", 1, 101); got != "寻找真金Ⅰ" {
+		t.Fatalf("plain name -> %q", got)
+	}
+	if got := localEpisodeTitle("[Group] Show.S01E05.1080p.WEB-DL.mkv", 1, 5); got != "" {
+		t.Fatalf("release detail -> %q", got)
+	}
+	if got := localEpisodeTitle("Running Man - S01E100.mp4", 1, 100); got != "" {
+		t.Fatalf("no title -> %q", got)
+	}
+
+	tm := planTMDB(t, nil, nil)
+	tm.http.Transport = rawTMDB{
+		"tv/12": `{"id":12,"name":"Running Man","first_air_date":"2010-07-11","seasons":[
+			{"season_number":1,"name":"第 1 季","episode_count":2,"air_date":"2010-07-11"}]}`,
+		"tv/12/season/1": `{"episodes":[{"episode_number":1,"name":""},{"episode_number":2,"name":""}]}`,
+	}
+	folder := "Running Man (2010)"
+	tm.entries[Key(folder)] = &Poster{Kind: "tv", ID: 12, Title: "Running Man", Year: 2010, Name: folder, Dir: "/lib", Rev: cleanerRev}
+	old := "Running Man (2010) S01E01.寻找密码.{tmdbid-33238}.mp4"
+	plan, err := tm.PlanRenameIn(context.Background(), "/lib/"+folder, []RenameEntry{{Name: old, Size: 1 << 30}}, 0, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := find(plan, old).New; got != "Running Man - S01E01 - 寻找密码.mp4" {
+		t.Fatalf("episode -> %q", got)
+	}
+}

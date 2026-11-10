@@ -108,7 +108,11 @@ outer:
 		return nil
 	}
 	if t.tool.Name() == "115 Cloud" {
-		// The finished task stays in 115's own 云下载 list, where people look for it.
+		// 115 keeps a finished task in its 云下载 list and refuses the same link
+		// again ("任务已存在"); the record goes, the files stay.
+		if err := t.tool.Remove(t); err != nil {
+			log.Warnf("115 cloud: removing the finished record: %v", err)
+		}
 		return nil
 	}
 	if t.tool.Name() == "115 Open" {

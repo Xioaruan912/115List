@@ -257,6 +257,36 @@ var collectionSuffix = regexp.MustCompile(`(?i)\s*(?:[（(]?系列[）)]?|collec
 // extrasFolder: a release's bonus folders, no episodes of the series.
 var extrasFolder = regexp.MustCompile(`(?i)^(?:pv|pvs|sp|specials?|extras?|bonus|featurettes?|ncop|nced|ncop[&+ ]?nced|menu|menus|cds?|scans?|artwork|trailers?|previews?|samples?|特典|映像特典|花絮|预告|菜单|音楽|音乐)$`)
 
+// releaseTail: what follows an episode number in a release's own name is
+// release detail, never a title.
+var releaseTail = regexp.MustCompile(`(?i)^(?:\d{3,4}p|4k|uhd|web[- ]?dl|webrip|bluray|blu-ray|bdrip|bd|hdtv|remux|x26[45]|h\.?26[45]|hevc|avc|aac|dts|flac|truehd|10bit|hdr|dolby|end|v\d)`)
+
+// localEpisodeTitle: the episode's title as the file already carries it, for a
+// series TMDB has no episode names for ("Running Man - S01E100 - 100期特辑…",
+// "…S01E100.100期特辑：诸神之战.{tmdbid-33238}.mp4").
+func localEpisodeTitle(name string, season, episode int) string {
+	stem := mediaExt.ReplaceAllString(name, "")
+	mark := fmt.Sprintf("S%02dE%02d", season, episode)
+	upper := strings.ToUpper(stem)
+	i := strings.Index(upper, mark)
+	if i < 0 {
+		return ""
+	}
+	rest := strings.TrimLeft(stem[i+len(mark):], " ._-")
+	lower := strings.ToLower(rest)
+	if j := strings.Index(lower, "{tmdbid"); j >= 0 {
+		rest = rest[:j]
+	}
+	if j := strings.Index(strings.ToLower(rest), "-thumb"); j >= 0 {
+		rest = rest[:j]
+	}
+	rest = strings.Trim(rest, " ._-[]()（）【】")
+	if rest == "" || placeholderTitle.MatchString(rest) || releaseTail.MatchString(rest) {
+		return ""
+	}
+	return SafeName(rest)
+}
+
 // ParseEpisode reads a season and an episode number from a video name (season 0
 // when the name does not say). It ignores resolutions, codecs and years.
 func ParseEpisode(name string) (season, episode int) {
@@ -789,6 +819,10 @@ func (t *TMDB) PlanRenameIn(ctx context.Context, dir string, entries []RenameEnt
 			name := fmt.Sprintf("%s - S%02dE%02d", title, s, ep)
 			if et := SafeName(titles[s][ep]); et != "" && !placeholderTitle.MatchString(et) {
 				name += " - " + et
+			} else if lt := localEpisodeTitle(v, s, ep); lt != "" {
+				// TMDB has no name for it: the file's own name keeps its title
+				// ("…S01E100.100期特辑：诸神之战…" stays "… - 100期特辑：诸神之战").
+				name += " - " + lt
 			}
 			f := &episodeFile{old: v, s: s, ep: ep, name: name}
 			found = append(found, f)
