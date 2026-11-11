@@ -14,6 +14,7 @@ const PAGES = [
   ["metas", "元信息", lazy(() => import("./Metas"))],
   ["settings", "设置", lazy(() => import("./Settings"))],
   ["trakt", "Trakt", lazy(() => import("./Trakt"))],
+  ["follow", "追番", lazy(() => import("./Follow"))],
   ["tasks", "任务", lazy(() => import("./Tasks"))],
 ] as const;
 

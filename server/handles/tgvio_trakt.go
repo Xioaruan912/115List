@@ -19,6 +19,8 @@ import (
 	"time"
 
 	"github.com/OpenListTeam/OpenList/v4/cmd/flags"
+	"github.com/OpenListTeam/OpenList/v4/internal/fs"
+	"github.com/OpenListTeam/OpenList/v4/internal/op"
 	"github.com/OpenListTeam/OpenList/v4/internal/tgvio"
 	"github.com/OpenListTeam/OpenList/v4/server/common"
 	"github.com/gin-gonic/gin"
@@ -467,4 +469,237 @@ func autoRefreshTraktToken() {
 	if _, err := traktTokenNow(ctx); err != nil {
 		log.Warnf("tgvio trakt: %v", err)
 	}
+}
+
+// ---------------------------------------------------------------- sync
+
+type traktSyncOut struct {
+	Movies   int `json:"movies,omitempty"`
+	Shows    int `json:"shows,omitempty"`
+	Episodes int `json:"episodes,omitempty"`
+	Marked   int `json:"marked,omitempty"`
+}
+
+// POST /api/admin/tgvio/trakt/sync {direction: push|pull}
+func TgvioTraktSync(c *gin.Context) {
+	var req struct {
+		Direction string `json:"direction"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		common.ErrorStrResp(c, "direction is push or pull", 400)
+		return
+	}
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 180*time.Second)
+	defer cancel()
+	var out traktSyncOut
+	var err error
+	switch req.Direction {
+	case "push":
+		out, err = traktPush(ctx)
+	case "pull":
+		out, err = traktPull(ctx)
+	default:
+		common.ErrorStrResp(c, "direction is push or pull", 400)
+		return
+	}
+	if err != nil {
+		common.ErrorResp(c, err, 502)
+		return
+	}
+	common.SuccessResp(c, out)
+}
+
+// traktPush: what is watched here goes into the Trakt history.
+func traktPush(ctx context.Context) (traktSyncOut, error) {
+	out := traktSyncOut{}
+	admin, err := op.GetAdmin()
+	if err != nil {
+		return out, err
+	}
+	movies := map[int]bool{}
+	shows := map[int]map[int]map[int]bool{}
+	for path, e := range watching().All(admin.ID) {
+		if !(e.Done || e.Duration > 0 && e.Time/e.Duration >= 0.8) {
+			continue
+		}
+		movie, series, season, ep := traktIdentity(ctx, path)
+		if movie > 0 {
+			movies[movie] = true
+			continue
+		}
+		if series > 0 && season > 0 && ep > 0 {
+			if shows[series] == nil {
+				shows[series] = map[int]map[int]bool{}
+			}
+			if shows[series][season] == nil {
+				shows[series][season] = map[int]bool{}
+			}
+			shows[series][season][ep] = true
+		}
+	}
+	if len(movies) > 0 {
+		list := make([]any, 0, len(movies))
+		for id := range movies {
+			list = append(list, map[string]any{"ids": map[string]int{"tmdb": id}})
+		}
+		if err := traktCall(ctx, "/sync/history/movies", map[string]any{"movies": list}); err != nil {
+			return out, err
+		}
+		out.Movies = len(movies)
+	}
+	if len(shows) > 0 {
+		list := make([]any, 0, len(shows))
+		for id, seasons := range shows {
+			sl := make([]any, 0, len(seasons))
+			for season, eps := range seasons {
+				el := make([]any, 0, len(eps))
+				for ep := range eps {
+					el = append(el, map[string]int{"number": ep})
+					out.Episodes++
+				}
+				sl = append(sl, map[string]any{"number": season, "episodes": el})
+			}
+			out.Shows++
+			list = append(list, map[string]any{"ids": map[string]int{"tmdb": id}, "seasons": sl})
+		}
+		if err := traktCall(ctx, "/sync/history/shows", map[string]any{"shows": list}); err != nil {
+			return out, err
+		}
+	}
+	return out, nil
+}
+
+type traktWatchedMovie struct {
+	Movie struct {
+		IDs struct {
+			TMDb int `json:"tmdb"`
+		} `json:"ids"`
+	} `json:"movie"`
+}
+
+type traktWatchedShow struct {
+	Show struct {
+		IDs struct {
+			TMDb int `json:"tmdb"`
+		} `json:"ids"`
+	} `json:"show"`
+	Seasons []struct {
+		Number   int `json:"number"`
+		Episodes []struct {
+			Number int `json:"number"`
+		} `json:"episodes"`
+	} `json:"seasons"`
+}
+
+// traktPull: what Trakt has watched marks the files here as watched.
+func traktPull(ctx context.Context) (traktSyncOut, error) {
+	out := traktSyncOut{}
+	admin, err := op.GetAdmin()
+	if err != nil {
+		return out, err
+	}
+	var movies []traktWatchedMovie
+	if err := traktGet(ctx, "/sync/watched/movies", &movies); err != nil {
+		return out, err
+	}
+	var shows []traktWatchedShow
+	if err := traktGet(ctx, "/sync/watched/shows", &shows); err != nil {
+		return out, err
+	}
+	wantMovies := map[int]bool{}
+	for _, m := range movies {
+		if m.Movie.IDs.TMDb > 0 {
+			wantMovies[m.Movie.IDs.TMDb] = true
+		}
+	}
+	wantShows := map[int]map[int]map[int]bool{}
+	for _, s := range shows {
+		id := s.Show.IDs.TMDb
+		if id == 0 {
+			continue
+		}
+		wantShows[id] = map[int]map[int]bool{}
+		for _, season := range s.Seasons {
+			wantShows[id][season.Number] = map[int]bool{}
+			for _, ep := range season.Episodes {
+				wantShows[id][season.Number][ep.Number] = true
+			}
+		}
+	}
+	if len(wantMovies) == 0 && len(wantShows) == 0 {
+		return out, nil
+	}
+	mark := map[string]tgvio.WatchEntry{}
+	now := time.Now().UnixMilli()
+	addVideoFiles := func(dir string, season, ep int) {
+		objs, err := fs.List(ctx, dir, &fs.ListArgs{})
+		if err != nil {
+			return
+		}
+		for _, o := range objs {
+			if o.IsDir() || !tgvio.IsMediaFile(o.GetName()) {
+				continue
+			}
+			if season > 0 {
+				s, e := tgvio.ParseEpisode(o.GetName())
+				if s != season || e != ep {
+					continue
+				}
+			}
+			mark[stdpath.Join(dir, o.GetName())] = tgvio.WatchEntry{Time: 1, Duration: 1, At: now, Done: true}
+		}
+	}
+	for _, entry := range posters().Library() {
+		real := stdpath.Join(entry.Dir, entry.Name)
+		switch {
+		case entry.Kind == "movie" && wantMovies[entry.ID]:
+			if tgvio.IsMediaFile(entry.Name) {
+				mark[real] = tgvio.WatchEntry{Time: 1, Duration: 1, At: now, Done: true}
+				out.Movies++
+			} else {
+				addVideoFiles(real, 0, 0)
+			}
+		case entry.Kind == "tv" && wantShows[entry.ID] != nil:
+			for season, eps := range wantShows[entry.ID] {
+				if entry.Season != 0 && entry.Season != season {
+					continue
+				}
+				for ep := range eps {
+					addVideoFiles(real, season, ep)
+				}
+			}
+		}
+	}
+	out.Marked = len(mark)
+	if len(mark) > 0 {
+		watching().Merge(admin.ID, mark)
+	}
+	return out, nil
+}
+
+// traktGet: GET with the stored token.
+func traktGet(ctx context.Context, path string, out any) error {
+	tok, err := traktTokenNow(ctx)
+	if err != nil {
+		return err
+	}
+	parts := strings.SplitN(tok, "\x00", 2)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, traktAPI+path, nil)
+	if err != nil {
+		return err
+	}
+	req.Header.Set("trakt-api-version", "2")
+	req.Header.Set("trakt-api-key", parts[1])
+	req.Header.Set("Authorization", "Bearer "+parts[0])
+	req.Header.Set("User-Agent", "OpenList-TGVIO/1.0")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 300 {
+		data, _ := io.ReadAll(io.LimitReader(resp.Body, 8<<10))
+		return fmt.Errorf("Trakt %s: %s", path, strings.TrimSpace(string(data)))
+	}
+	return json.NewDecoder(resp.Body).Decode(out)
 }

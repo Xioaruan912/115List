@@ -209,6 +209,7 @@ func admin(g *gin.RouterGroup) {
 	tgvioAdmin.POST("/trakt", handles.TgvioTraktSet)
 	tgvioAdmin.POST("/trakt/connect", handles.TgvioTraktConnect)
 	tgvioAdmin.POST("/trakt/disconnect", handles.TgvioTraktDisconnect)
+	tgvioAdmin.POST("/trakt/sync", handles.TgvioTraktSync)
 	// Films of one TMDB series join one folder ("哥斯拉", "侏罗纪公园").
 	tgvioAdmin.POST("/collections/group", handles.TgvioCollectionsGroup)
 
