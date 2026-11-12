@@ -5,7 +5,9 @@ import * as actions from "../lib/actions";
 import { formatBytes } from "../lib/format";
 import { kindOf } from "../lib/kind";
 import { reason } from "../lib/errors";
+import { useLibraryScope } from "../hooks/useLibraryScope";
 import { toast } from "../stores/toast";
+import { FolderPicker } from "./Dialogs";
 import { ErrorState } from "./ErrorState";
 import { KindIcon } from "./KindIcon";
 import { Sheet } from "./Sheet";
@@ -26,12 +28,17 @@ export function Share115Dialog({ dir, onClose }: { dir: string; onClose: () => v
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<unknown>(null);
+  // 影视库 is where a share normally goes; the folder can be changed here.
+  const scope = useLibraryScope();
+  const [target, setTarget] = useState("");
+  const [pickOpen, setPickOpen] = useState(false);
+  const dirTo = target || scope.paths[0] || dir;
 
   const read = async (inside?: Crumb, path: Crumb[] = []): Promise<void> => {
     setLoading(true);
     setError(null);
     try {
-      const out = await share115.peek(link, dir, inside?.id ?? "");
+      const out = await share115.peek(link, dirTo, inside?.id ?? "");
       setPeek(out);
       setTrail(inside ? [...path, inside] : []);
       setPicked(new Set(out.items.map(item => item.id)));
@@ -45,9 +52,10 @@ export function Share115Dialog({ dir, onClose }: { dir: string; onClose: () => v
   const save = async (): Promise<void> => {
     setSaving(true);
     try {
-      await share115.save(link, dir, [...picked]);
-      toast.success("已转存", `${picked.size} 项存到了当前文件夹`);
-      void actions.reload(dir, true);
+      await share115.save(link, dirTo, [...picked]);
+      toast.success("已转存，正在识别", `${picked.size} 项存到了 ${dirTo.split("/").pop() || "/"}`);
+      void actions.reload(dirTo, true);
+      if (dirTo !== dir) void actions.reload(dir, true);
       onClose();
     } catch (err) {
       toast.error("转存失败", err);
@@ -89,7 +97,19 @@ export function Share115Dialog({ dir, onClose }: { dir: string; onClose: () => v
           <textarea id="share115-link" className="field text-[13px]" rows={3} value={link} autoFocus spellCheck={false}
             onChange={event => setLink(event.target.value)}
             placeholder={"https://115.com/s/sw…?password=abcd\n也可以直接粘贴「链接 + 提取码」整段文字"} />
-          <p className="mt-2 text-[12.5px] text-muted">由 115 在网盘里直接复制，存到「{dir.split("/").pop() || "/"}」。</p>
+          <div className="mt-3 flex flex-wrap items-center gap-2 text-[12.5px] text-muted">
+            <span className="shrink-0">保存到</span>
+            <code className="min-w-0 flex-1 truncate text-ink">{dirTo}</code>
+            <button type="button" className="btn btn-ghost h-8 px-2 text-[12.5px]" onClick={() => setPickOpen(open => !open)}>
+              {pickOpen ? "收起" : "更改"}
+            </button>
+          </div>
+          {pickOpen && (
+            <div className="mt-2">
+              <FolderPicker start={dirTo} value={dirTo} onChange={path => { setTarget(path); setPickOpen(false); }} />
+            </div>
+          )}
+          <p className="mt-2 text-[12.5px] text-muted">由 115 在网盘里直接复制，不进服务器。</p>
           {!!error && <ErrorState compact className="mt-4" error={error} onRetry={() => void read()} />}
         </>
       )}
@@ -135,6 +155,7 @@ export function Share115Dialog({ dir, onClose }: { dir: string; onClose: () => v
             })}
           </ul>
           {peek.count > items.length && <p className="mt-2 text-[12px] text-faint">只列出了前 {items.length} 项（共 {peek.count} 项），可以进子文件夹分开转存。</p>}
+          <p className="mt-2 text-[12px] text-faint">将保存到 {dirTo}</p>
         </>
       )}
     </Sheet>

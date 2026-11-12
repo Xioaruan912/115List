@@ -418,6 +418,11 @@ func FsRemove(c *gin.Context) {
 		common.ErrorResp(c, err, 500)
 		return
 	}
+	// Whatever was there is no title any more: the library and the search
+	// stop offering it at once.
+	for _, path := range paths {
+		posters().Forget(path)
+	}
 	//fs.ClearCache(req.Dir)
 	common.SuccessResp(c)
 }

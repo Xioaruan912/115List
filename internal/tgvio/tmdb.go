@@ -1033,6 +1033,60 @@ func (t *TMDB) Moved(fromDir, toDir, name string) {
 	t.RenamedDir(stdpath.Join(fromDir, name), stdpath.Join(toDir, name))
 }
 
+// Forget drops the poster records of a folder (or file) that is gone: the
+// title itself and everything seen inside it.
+func (t *TMDB) Forget(path string) {
+	if path == "" || path == "/" {
+		return
+	}
+	parent, name := stdpath.Dir(path), stdpath.Base(path)
+	t.mu.Lock()
+	changed := false
+	if e, ok := t.entries[Key(name)]; ok && e.Dir == parent {
+		delete(t.entries, Key(name))
+		changed = true
+	}
+	prefix := path + "/"
+	for k, e := range t.entries {
+		if e.Dir == path || strings.HasPrefix(e.Dir, prefix) {
+			delete(t.entries, k)
+			changed = true
+		}
+	}
+	t.mu.Unlock()
+	if changed {
+		t.save()
+	}
+}
+
+// ForgetMissing drops the records of a folder's children that are no longer
+// there (a title deleted in the 115 app, never looked at again). A poster
+// chosen by hand stays.
+func (t *TMDB) ForgetMissing(dir string, names []string) {
+	if dir == "" || dir == "/" {
+		return
+	}
+	present := make(map[string]bool, len(names))
+	for _, name := range names {
+		present[Key(name)] = true
+	}
+	t.mu.Lock()
+	changed := false
+	for k, e := range t.entries {
+		if e.Dir != dir || e.Manual {
+			continue
+		}
+		if !present[Key(e.Name)] {
+			delete(t.entries, k)
+			changed = true
+		}
+	}
+	t.mu.Unlock()
+	if changed {
+		t.save()
+	}
+}
+
 // NameFolderAs gives a new folder made for a file (a film of a folder of
 // several put in a folder of its own) the file's film, when the folder has
 // no record yet: the library shows the folder, not the file.

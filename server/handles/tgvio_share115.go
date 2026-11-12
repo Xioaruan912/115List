@@ -1,12 +1,14 @@
 package handles
 
 import (
+	stdpath "path"
 	"regexp"
 	"strings"
 
 	_115 "github.com/OpenListTeam/OpenList/v4/drivers/115"
 	"github.com/OpenListTeam/OpenList/v4/internal/conf"
 	"github.com/OpenListTeam/OpenList/v4/internal/errs"
+	"github.com/OpenListTeam/OpenList/v4/internal/fs"
 	"github.com/OpenListTeam/OpenList/v4/internal/model"
 	"github.com/OpenListTeam/OpenList/v4/internal/op"
 	"github.com/OpenListTeam/OpenList/v4/server/common"
@@ -130,5 +132,29 @@ func Tgvio115ShareSave(c *gin.Context) {
 		return
 	}
 	op.Cache.DeleteDirectory(pan, actual) // the next listing shows what arrived
+	// What was just saved is looked up now, so 影视库 shows it without waiting
+	// for the ten-minute root scan; a folder goes to the organizer right away.
+	if snap, err := pan.ShareSnap(ctx, code, pass, req.Dir); err == nil {
+		picked := map[string]bool{}
+		for _, id := range req.IDs {
+			picked[id] = true
+		}
+		names := make([]string, 0, len(req.IDs))
+		for _, item := range snap.Items {
+			if picked[item.ID] {
+				names = append(names, item.Name)
+			}
+		}
+		if len(names) > 0 {
+			_, _ = posters().Lookup(actual, names)
+			for _, name := range names {
+				path := stdpath.Join(actual, name)
+				if obj, err := fs.Get(ctx, path, &fs.GetArgs{NoLog: true}); err == nil && obj.IsDir() {
+					_ = organizeStore().Mark(path, true)
+				}
+			}
+			KickAutoOrganize()
+		}
+	}
 	common.SuccessResp(c, gin.H{"saved": len(req.IDs)})
 }

@@ -390,11 +390,16 @@ func scanLibraryRoots(ctx context.Context) {
 			continue
 		}
 		var names []string
+		all := make([]string, 0, len(objs))
 		for _, obj := range objs {
+			all = append(all, obj.GetName())
 			if obj.IsDir() && !tgvio.Skip(obj.GetName()) {
 				names = append(names, obj.GetName())
 			}
 		}
+		// A title deleted in the 115 app leaves a record behind: the listing is
+		// the truth, so what is not in it is forgotten.
+		posters().ForgetMissing(root, all)
 		for _, p := range organizeStore().NewFolders(root, names) {
 			if !busyUnder(downloadingInto(), p) {
 				_ = organizeStore().Mark(p, true)
