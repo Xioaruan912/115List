@@ -377,10 +377,10 @@ func mergeIntoSeries(ctx context.Context, dir, final string) {
 func holdLooseVideos(ctx context.Context, root string, objs []model.Obj) []string {
 	var made []string
 	for _, obj := range objs {
-		if obj.IsDir() || !tgvio.IsVideo(obj.GetName()) {
+		if obj.IsDir() || !tgvio.IsVideo(obj.GetName()) || strings.HasPrefix(obj.GetName(), ".") {
 			continue
 		}
-		if at := obj.ModTime(); !at.IsZero() && time.Since(at) < 5*time.Minute {
+		if at := obj.ModTime(); !at.IsZero() && time.Since(at) < 30*time.Minute {
 			continue
 		}
 		name := tgvio.SafeName(tgvio.VideoStem(obj.GetName()))
