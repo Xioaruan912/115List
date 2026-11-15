@@ -3,6 +3,7 @@ package handles
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	stdpath "path"
 	"path/filepath"
@@ -370,6 +371,48 @@ func mergeIntoSeries(ctx context.Context, dir, final string) {
 	}
 }
 
+// holdLooseVideos gives a video lying bare in a library root a folder of its
+// own (影视库/Other.Mommy…/), so it is a title like the rest and the organizer
+// can name it. A file written a moment ago (an upload still going) waits.
+func holdLooseVideos(ctx context.Context, root string, objs []model.Obj) []string {
+	var made []string
+	for _, obj := range objs {
+		if obj.IsDir() || !tgvio.IsVideo(obj.GetName()) {
+			continue
+		}
+		if at := obj.ModTime(); !at.IsZero() && time.Since(at) < 5*time.Minute {
+			continue
+		}
+		name := tgvio.SafeName(tgvio.VideoStem(obj.GetName()))
+		if r := []rune(strings.TrimSpace(name)); len(r) > 100 {
+			name = strings.TrimSpace(string(r[:100]))
+		}
+		if name == "" {
+			continue
+		}
+		folder := stdpath.Join(root, name)
+		for n := 2; n < 50; n++ {
+			if found, _ := fs.Get(ctx, folder, &fs.GetArgs{NoLog: true}); found == nil {
+				break
+			}
+			folder = stdpath.Join(root, fmt.Sprintf("%s (%d)", name, n))
+		}
+		if err := fs.MakeDir(ctx, folder); err != nil {
+			continue
+		}
+		if err := moveRetrying(ctx, stdpath.Join(root, obj.GetName()), folder); err != nil {
+			_ = fs.Remove(ctx, folder)
+			continue
+		}
+		if posters().InLibrary(folder) {
+			posters().Moved(root, folder, obj.GetName())
+		}
+		made = append(made, folder)
+		log.Infof("tgvio auto organize: loose video %s into %s", obj.GetName(), folder)
+	}
+	return made
+}
+
 var lastRootScan time.Time
 
 // scanLibraryRoots: folders put straight into a library folder (by hand, by
@@ -400,6 +443,9 @@ func scanLibraryRoots(ctx context.Context) {
 		// A title deleted in the 115 app leaves a record behind: the listing is
 		// the truth, so what is not in it is forgotten.
 		posters().ForgetMissing(root, all)
+		for _, folder := range holdLooseVideos(ctx, root, objs) {
+			_ = organizeStore().Mark(folder, true)
+		}
 		for _, p := range organizeStore().NewFolders(root, names) {
 			if !busyUnder(downloadingInto(), p) {
 				_ = organizeStore().Mark(p, true)

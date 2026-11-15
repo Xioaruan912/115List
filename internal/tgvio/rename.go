@@ -1291,6 +1291,12 @@ func RenameWorthy(name string) bool {
 	return mediaExt.MatchString(name) || subtitleExt.MatchString(name)
 }
 
+// IsVideo reports a name with a video extension.
+func IsVideo(name string) bool { return mediaExt.MatchString(name) }
+
+// VideoStem strips the video extension from a name.
+func VideoStem(name string) string { return mediaExt.ReplaceAllString(name, "") }
+
 // versionTag tells apart the versions of one episode: by resolution when the
 // names say different ones ("2160p"), else by number ("版本2").
 func versionTag(names []string, i int) string {

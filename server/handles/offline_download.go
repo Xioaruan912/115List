@@ -355,10 +355,21 @@ func AddOfflineDownload(c *gin.Context) {
 		return
 	}
 	var tasks []task.TaskExtensionInfo
+	saved := 0
 	for _, url := range req.Urls {
 		// Filter out empty lines and whitespace-only strings
 		trimmedUrl := strings.TrimSpace(url)
 		if trimmedUrl == "" {
+			continue
+		}
+		// A 115 share link is a transfer into the drive, not a URL to fetch:
+		// fetching it only saves the share page.
+		if n, handled, err := receiveShareLink(c.Request.Context(), reqPath, trimmedUrl); handled {
+			if err != nil {
+				common.ErrorResp(c, err, 502)
+				return
+			}
+			saved += n
 			continue
 		}
 
@@ -376,7 +387,11 @@ func AddOfflineDownload(c *gin.Context) {
 			tasks = append(tasks, t)
 		}
 	}
-	common.SuccessResp(c, gin.H{
+	resp := gin.H{
 		"tasks": getTaskInfos(tasks),
-	})
+	}
+	if saved > 0 {
+		resp["shares"] = saved
+	}
+	common.SuccessResp(c, resp)
 }

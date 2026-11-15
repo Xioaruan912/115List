@@ -233,13 +233,15 @@ function OfflineDialog({ dir, onClose }: { dir: string; onClose: () => void }) {
       footer={<><button className="btn btn-ghost" onClick={onClose}>取消</button>
         <button className="btn btn-primary" disabled={!list.length || !tool || busy} onClick={() => void run(async () => {
           try {
-            await fs.offlineDownload(dir, list, tool, policy);
-            toast.success("已添加离线任务", `${list.length} 个链接`);
+            const out = await fs.offlineDownload(dir, list, tool, policy);
+            if (out.shares) toast.success("已转存，正在识别", `${out.shares} 项存到了 ${dir.split("/").pop() || "/"}`);
+            else toast.success("已添加离线任务", `${list.length} 个链接`);
             onClose();
           } catch (error) { toast.error("添加失败", error); return false; }
         })}>添加</button></>}>
       <label className="label" htmlFor="offline-urls">链接，每行一个</label>
       <textarea id="offline-urls" className="field font-mono text-[12.5px]" rows={5} value={urls} onChange={event => setUrls(event.target.value)} autoFocus placeholder="magnet:?xt=… 或 https://…" />
+      <p className="mt-2 text-[12px] text-faint">115 分享链接会直接转存到当前文件夹，不需要下载。</p>
       <div className="mt-4 grid gap-4 sm:grid-cols-2">
         <label>
           <span className="label">工具</span>

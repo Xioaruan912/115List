@@ -37,7 +37,7 @@ export function search(parent: string, keywords: string, scope = 0, perPage = 10
   return post("/fs/search", { parent, keywords, scope, page: 1, per_page: perPage, password });
 }
 
-export function offlineDownload(path: string, urls: string[], tool: string, deletePolicy: string): Promise<unknown> {
+export function offlineDownload(path: string, urls: string[], tool: string, deletePolicy: string): Promise<{ shares?: number }> {
   return post("/fs/add_offline_download", { path, urls, tool, delete_policy: deletePolicy });
 }
 
