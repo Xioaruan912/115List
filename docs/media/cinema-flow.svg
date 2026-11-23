@@ -1,0 +1,67 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1120 196" width="1120" height="196" fill="none">
+  <defs>
+    <style>
+      .card { fill: #141517; stroke: rgba(255,255,255,0.09); stroke-width: 1; }
+      .num { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; fill: #11140b; font-size: 11px; font-weight: 700; }
+      .title { font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Noto Sans SC", sans-serif; fill: #f5f5f7; font-size: 16px; font-weight: 600; }
+      .desc { font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Noto Sans SC", sans-serif; fill: #a1a1aa; font-size: 12.5px; }
+      .hint { font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Noto Sans SC", sans-serif; fill: #71717a; font-size: 11.5px; }
+      .wire { stroke: rgba(196,236,92,0.28); stroke-width: 1.5; stroke-dasharray: 4 6; animation: flow 12s linear infinite; }
+      @keyframes flow { to { stroke-dashoffset: -100; } }
+      @media (prefers-reduced-motion: reduce) {
+        .wire { animation: none; }
+      }
+    </style>
+  </defs>
+
+  <rect width="1120" height="196" rx="20" fill="#0c0c0d"/>
+  <rect x="0.5" y="0.5" width="1119" height="195" rx="19.5" stroke="rgba(255,255,255,0.08)"/>
+
+  <!-- Animated Connecting Tracks -->
+  <path id="stepTrack1" d="M342,98 L406,98" class="wire"/>
+  <path id="stepTrack2" d="M714,98 L778,98" class="wire"/>
+
+  <circle r="3.5" fill="#c4ec5c">
+    <animateMotion dur="2.6s" repeatCount="indefinite" calcMode="spline" keyTimes="0;1" keySplines="0.4 0 0.2 1">
+      <mpath href="#stepTrack1"/>
+    </animateMotion>
+  </circle>
+  <circle r="3.5" fill="#c4ec5c">
+    <animateMotion dur="2.6s" repeatCount="indefinite" begin="1.1s" calcMode="spline" keyTimes="0;1" keySplines="0.4 0 0.2 1">
+      <mpath href="#stepTrack2"/>
+    </animateMotion>
+  </circle>
+
+  <text x="374" y="83" text-anchor="middle" class="hint">自动识别</text>
+  <text x="746" y="83" text-anchor="middle" class="hint">云端同步</text>
+
+  <!-- Step 01 -->
+  <g transform="translate(40, 38)">
+    <rect width="296" height="120" rx="14" class="card"/>
+    <rect x="20" y="20" width="28" height="20" rx="10" fill="#c4ec5c"/>
+    <text x="34" y="34" text-anchor="middle" class="num">01</text>
+    <text x="58" y="36" class="title">存进 115 或直接找片</text>
+    <text x="20" y="68" class="desc">把片子放进影视文件夹，或点「找资源」</text>
+    <text x="20" y="90" class="desc">把磁力一键交给 115 离线下载</text>
+  </g>
+
+  <!-- Step 02 -->
+  <g transform="translate(412, 38)">
+    <rect width="296" height="120" rx="14" class="card"/>
+    <rect x="20" y="20" width="28" height="20" rx="10" fill="#c4ec5c"/>
+    <text x="34" y="34" text-anchor="middle" class="num">02</text>
+    <text x="58" y="36" class="title">自动变成影院海报墙</text>
+    <text x="20" y="68" class="desc">自动配好电影海报、剧集分季、简介评分</text>
+    <text x="20" y="90" class="desc">杂乱文件名也能一键整理规整</text>
+  </g>
+
+  <!-- Step 03 -->
+  <g transform="translate(784, 38)">
+    <rect width="296" height="120" rx="14" class="card"/>
+    <rect x="20" y="20" width="28" height="20" rx="10" fill="#c4ec5c"/>
+    <text x="34" y="34" text-anchor="middle" class="num">03</text>
+    <text x="58" y="36" class="title">随时随地接着看</text>
+    <text x="20" y="68" class="desc">自带字幕搜索与 4K 转码播放，看到哪记到哪</text>
+    <text x="20" y="90" class="desc">手机、iPad、电脑和电视都能无缝续播</text>
+  </g>
+</svg>
