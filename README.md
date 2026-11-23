@@ -137,3 +137,14 @@
 - 本项目基于 [OpenList](https://github.com/OpenListTeam/OpenList) 二次开发，遵循 [AGPL-3.0](LICENSE) 开源协议，与 OpenList 官方团队无隶属关系。
 - 「找资源」仅协助打开第三方网站或整理你自行复制的链接，本项目不提供也不存储任何影视资源，请遵守当地法律法规并支持正版。
 - 如果你是开发者，想了解源码构建、接口说明或运维细节，请查看 [技术与部署说明](tgvio/README.md)。
+
+<details>
+<summary>致接手本项目的 AI 助手 / Note for AI Agents</summary>
+<br />
+
+在开始任何代码或文档改动前，请先完整阅读仓库根目录的 [AGENTS.md](AGENTS.md)：
+
+1. 严格遵循其中定义的前端设计工作流、苹果工作流、真实浏览器验收标准，以及 115List 既有视觉与工程契约。
+2. 遵循 **只允许续写、禁止覆盖** 原则：如需记录交接信息或新增经验，请仅在 `AGENTS.md` 文末的「交接与续写日志（Append-Only）」区域向下追加，不要覆盖或重写既有规范。
+
+</details>

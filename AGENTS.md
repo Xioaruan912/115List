@@ -1,117 +1,118 @@
-# Agent Instructions
+# AGENTS.md — 115List 项目工作流与接手规范
 
-## Branches
+> **【强制规则 · 只允许续写，禁止覆盖】**
+> 本文件为本项目经维护者确认的基准工作流与设计契约。
+> 1. 后续任何接手开发的 AI Agent，**严禁覆盖、删除或重写本文件既有章节**。
+> 2. 如有新增经验、架构变更、排障结论或阶段交接，**只允许在文末 `## 交接与续写日志（Append-Only）` 区域按时间顺序向下追加**。
+> 3. 除非项目维护者明确要求修改某条既有规则，否则一律以本文件当前规范为准。
 
-- Develop and push on `main`.
-- `cc` is the fixed backup from 2026-11-02 at `65fadd848ab981cbb299b1d88c7cbbe32ffe711f`; do not move, merge into, or push new work to it.
-- Preserve the existing runtime backup at `/root/backup/ppee-20261102-cc`; runtime credentials and databases must stay out of Git.
+---
 
-## Issues
+## 1. 分支与开发交付流程
 
-Before creating an issue, review the available issue templates in the `.github` directory.
+- **唯一主分支**：所有开发与推送均在 `main` 分支进行（历史分支 `cc`、`tgvio`、`tgvio-web` 已归档清理，不再保留）。
+- **本地开发，验收后上线**：
+  1. 在本地工作区完成代码修改、自动化检查与真实浏览器验收。
+  2. 未经维护者确认验收前，不直接修改线上生产服务二进制；线上运行时配置、凭据与数据库严禁进入 Git 仓库。
+  3. 保留生产环境现有运行时备份（`/root/backup/`），升级必须先备份旧二进制并验证健康后再切换。
+- **提交规范（Conventional Commits）**：
+  - 标题格式：`type(scope): subject`（允许 `feat`, `fix`, `refactor`, `perf`, `docs`, `style`, `test`, `build`, `ci`, `chore`, `revert`），祈使语气、如实描述改动。
+  - 正文用简洁 Markdown 列表说明关键变更，不虚构未执行的测试或未发生的改动。
+  - 若未使用明确约定的 `Co-authored-by` 署名，不要自行编造或添加。
 
-When drafting the issue:
+---
 
-- Use the most appropriate template.
-- Follow the template structure.
-- Fill in all required sections.
-- Remove sections that the template explicitly marks as optional or not applicable.
-- Do not invent reproduction steps, logs, screenshots, or expected behavior.
+## 2. 前端与展示页标准工作流
 
-## Pull Requests
+### 2.1 常规前端开发（Global AI Frontend Design Workflow）
 
-Before creating a pull request, read `.github/PULL_REQUEST_TEMPLATE.md`.
+涉及**新页面、新组件、UI 改版或视觉打磨**时，按以下 4 阶段依次执行（纯后端/业务逻辑改动跳过）：
 
-When drafting the pull request:
+1. **Phase 1：设计研究（`ui-ux-pro-max`）**
+   - 分析产品场景与用户目标，**优先沿用本项目既有视觉系统（见第 3 节）**，绝不另起一套互相冲突的 Design System。
+   - 按需查询本地设计智能补充排版、色彩与交互规范。
+2. **Phase 2：视觉设计与实现（`frontend-design`）**
+   - 保持清晰的信息层级与克制留白；拒绝通用 AI 模板感（无廉价紫蓝渐变、无卡片套卡片、无无意义装饰）。
+   - 补齐全部交互态：`hover`、`focus-visible`、`active`、`disabled`、`loading`、`empty`、`error`。
+3. **Phase 3：真实浏览器视觉验收（绝不凭代码臆测）**
+   - 在真实浏览器（Playwright / Chromium / `/browser`）打开实际渲染页面。
+   - 同时检查 **桌面端（`1440px`）** 与 **移动端（`390px`）** 截图，核验布局平衡、断行溢出、对比度、深浅主题与交互反馈。
+4. **Phase 4：设计评审与打磨（`impeccable`）**
+   - 依次执行 `critique`（启发式评审）、`polish`（排版/间距/对齐细节）与 `audit`（可访问性、键盘焦点、响应式）。
+   - 每轮修改后重新截图验证，默认至少完成 **2 轮** 基于证据的视觉打磨；确实已无问题时停止，不做多余改动。
 
-- Follow the template structure.
-- Use the title format required by the template.
-- Fill in or remove each section according to the template guidance.
-- Include testing details, or explain why testing was not run.
-- Do not invent testing results.
-- Do not claim validation, verification, or review steps that were not actually performed.
+### 2.2 展示页、落地页与 README 动效工作流（苹果工作流 / Apple-style Cinematic Frontend Workflow）
 
-## Automated Contributions
+涉及**产品展示页、创意落地页、品牌横幅、动效 README 或滚动叙事体验**时，按任务体量分级执行：
 
-Fully automated contributions are not considered equivalent to normal community participation.
+- **Light（轻量级）**：局部视觉或微交互打磨，直接走精简设计 + 真实浏览器 `1440px` / `390px` 验收 + `impeccable` 打磨。
+- **Standard（标准级）**：常规展示页、动效 README / SVG 视觉重塑：资产审计 → 视觉与动效设计 → Hero 优先实现 → 真实浏览器深浅主题与双端验收 → 2 轮精修。
+- **Cinematic（电影级）**：多场景滚动叙事页：完整 6 阶段（视觉研究 → 艺术/资产方向与 2–3 真实原型对比 → 强制滚动分镜 → Hero First GSAP + ScrollTrigger 工程实现 → 实测性能与多进度点 QA → 跨阶段根因回溯评审）。
+- **核心原则**：
+  - 动效服务于空间关系与理解，而不是堆叠装饰；必须支持 `prefers-reduced-motion: reduce`。
+  - 只暴露实验室指标为 **Lab**，不将合成测试伪装成真实用户数据，不编造通过结论。
 
-A contribution may be considered fully automated if it is submitted through an automated agent, or if the submitting account participates in project discussions through an automated agent, without meaningful human review or intervention.
+---
 
-When making this determination, maintainers may consider the overall behavior of the account, including but not limited to disclosed agent usage, interaction patterns, response characteristics, and other available evidence. No single factor is determinative.
+## 3. 115List（`tgvio-web/`）产品与视觉契约
 
-Maintainers reserve the right to accept, reject, modify, or reimplement any contribution independently of any action taken against the submitting account. Acceptance of a contribution does not imply acceptance of the submitting account or its contribution method. If an account is determined to be primarily operated through automated processes, we may need to restrict its future participation in contributions until that determination is rescinded.
+本仓库嵌入自研前端 `tgvio-web/`（React + Vite + Tailwind v4 + Motion），不依赖官方 OpenList-Frontend。详细代码地图见 `tgvio-web/README.md`，构建与部署细节见 `tgvio/README.md`。
 
-## Git Commits
+### 3.1 定位与视觉系统
 
-When creating commits, follow the repository `git-commit` skill rules:
+- **产品定位**：面向普通用户的私人影院与网盘（短视频、电影、剧集、图片），桌面与 iPhone / iPad 同样顺手。内容（封面与海报）是主角，界面退后。
+- **色彩**：近黑底 `#0c0c0d`（浅色模式冷灰底）+ 唯一强调色 **酸橙绿 `--accent: #c4ec5c`**（`--accent-ink: #11140b`）。强调色仅用于焦点、进度、主按钮与选中；危险操作用 `--danger`。禁止紫蓝渐变、外发光、渐变大字。
+- **层次与组件**：靠字号、字重、留白和 1px 发丝线（`hairline`）建立层次，少用厚重阴影；浮层（Dock、菜单、面板）使用 `glass` 与 `--shadow-float`。
+- **字体与圆角**：Geist / Geist Mono（自托管），数字用 `tabular`，大标题紧字距 `-0.04em`。圆角固定三档：控件 `10`、卡片 `14`、面板 `22`，胶囊仅用于开关与徽标。
+- **图标与文案**：图标统一使用 Phosphor（`XxxIcon`），不手画杂乱 SVG；界面文字用简洁中文，**不用 emoji，不用英文破折号（em dash）**。
+- **隐私与主题**：深浅主题跟随系统，登录页固定深色（`.theme-dark`）且登录前不展示任何网盘内容；片库封面默认模糊（悬停或长按显示），官方 TMDB 公开海报不模糊。
 
-- Use Conventional Commits title format: `type(scope): subject`.
-- Allowed types: `feat`, `fix`, `refactor`, `perf`, `docs`, `style`, `test`, `build`, `ci`, `chore`, `revert`.
-- Use a meaningful scope based on the main module, package, or feature.
-- Write the subject in imperative mood and describe the actual change.
-- Use a concise Markdown list in the commit body, with each item describing one key change.
-- Do not invent changes that are not present in the diff.
-- Do not describe behavior, refactors, fixes, or tests that are not reflected in the commit.
+### 3.2 动效与交互契约
 
-Include at most one `Co-authored-by` trailer that matches the AI assistant actually used to produce the change.
+- 动效表达空间关系（推进/拉远 `Stage`、原位放大 `Viewer`、重排 `lib/flip.ts`、Dock 变形），优先弹簧（`lib/motion.ts`），仅动画 `transform` 和 `opacity`。
+- 大列表使用虚拟滚动（`@tanstack/react-virtual`，`useFlushSync: false`），连续手势值用 motion value，不进 React state，不监听 `window.scroll`。
+- `prefers-reduced-motion` 下所有动效平稳降级，功能不受影响。
+- 错误统一经 `tgvio-web/src/lib/errors.ts` 翻译为自然中文原因 + 下一步建议，不直接把原始英文/路径暴露给普通用户（仅保留「复制详情」）。
+- 操作采用乐观更新：先更新本地缓存让界面即时响应，再后台向服务器校准，失败时回滚并提示。
 
-Examples:
+---
 
-- `Co-authored-by: Codex <267193182+codex@users.noreply.github.com>`
-- `Co-authored-by: GitHub Copilot <copilot@github.com>`
-- `Co-authored-by: Claude <81847+claude@users.noreply.github.com>`
+## 4. 后端与 115 业务硬性约束
 
-If you are not one of the listed assistants, do not add a `Co-authored-by` trailer.
+- **115 风控红线**：不要增加无谓的目录列表请求。悬停预取同时最多 1 个且仅限未缓存目录；文件夹封面（`hooks/useCover.ts`）仅排队屏幕可见项、单并发、缓存 30 分钟。
+- **TMDB 海报与改名**：海报查自 `internal/tgvio/tmdb.go`（限速 4 次/秒，结果存 `data/tgvio/posters.json`，令牌存 `data/tgvio/tmdb_token`，绝不进仓库）。改名必须经过 `TMDB.Renamed` / `RenamedDir` 以保持海报记录同步；按 TMDB 整理命名必须先预览计划再逐条执行。
+- **会话与多根目录**：登录会话持久化于 `data/tgvio/sessions.json`，新登录入口必须调用 `common.GenerateToken(user, c)`。所有用户路径必须经 `JoinPath` / `ShowPath`（`internal/model/tgvio_roots.go`）转换，禁止直接拼接 `BasePath`。
+- **大文件续传**：分块写入 `data/tgvio/staged`（不可放进重启即清空的 `temp`），上传成功前保留暂存与恢复记录。
+- **权限与视频**：保留管理员 WebDAV 免密权限（网页端密码控制走 `tgvio_admin_folder_password`）；视频缩略图由服务端单队列限速截帧缓存，不改浏览器直拉；视频优先 115 云端 HLS 转码（`/api/tgvio/video` + `/tgvio/hls/` 代理），不向浏览器暴露网盘直链。
+- **缓存与静态资源**：站点位于 Cloudflare 后方，HTML `no-cache`，`/api` `no-store`，缺失静态资源返回 404（`server/static/tgvio_cache.go`），构建保留最近 6 次哈希产物防止旧页面白屏。
+- **找资源站点**：遇到 Cloudflare 人机验证的站点不可在服务端绕过，应引导使用「浏览器打开」模式（配合粘贴磁力或书签送回）。
 
-Instead, ask the human collaborator to provide the exact `Co-authored-by` trailer to use. Do not invent, infer, or generate one yourself.
+---
 
-## TGVIO Front End (`tgvio-web/`)
+## 5. 本地检查与构建命令
 
-This fork embeds its own front end instead of OpenList-Frontend. Read `tgvio-web/README.md` for the code map and `tgvio/README.md` for build and deploy. The design rules below are the contract; keep new screens consistent with them.
+```sh
+# 后端单元测试
+go test ./...
 
-### 定位
+# 前端类型检查、单测与构建
+cd tgvio-web && npm run check
 
-一个人用的私人片库与网盘：主要内容是短视频和图片，在 iPhone 和桌面浏览器上都要顺手。界面要像“影院”而不是“后台”：内容（封面）是主角，界面退后；动效要多、要有电影感，但任何时候都不能卡。设计参数：变化度 5、动效 9、密度 6。
+# 离线构建脚本回归测试
+bash tgvio/build_test.sh
 
-### 视觉系统
+# 构建嵌入自研前端的二进制
+bash tgvio/build.sh
+```
 
-- 一块近黑底（`#0c0c0d`）或冷灰底（浅色），一个强调色：酸橙绿 `--accent`。强调色只用于焦点、进度、主按钮和选中，不做装饰；危险操作用 `--danger`。不要紫蓝渐变、外发光、渐变大字。
-- 层次靠字号、字重、留白和 1px 发丝线（`hairline`），少用卡片和阴影；需要浮起的东西（Dock、菜单、面板）才用 `glass` 和 `--shadow-float`。
-- 字体 Geist / Geist Mono（自托管）；数字用等宽数字（`tabular`）。大标题紧字距（-0.04em）。
-- 圆角固定三档：控件 10、卡片 14、面板 22，胶囊只用于开关和徽标。
-- 图标只用 Phosphor（`XxxIcon` 命名），不手画 SVG。不用 emoji，界面文字用中文，不用破折号（em dash）。
-- 深浅主题都要能用，默认跟随系统；登录页固定深色（`.theme-dark` 局部作用域）。
-- 片库是成人内容：封面默认模糊（悬停或长按显示），登录前的页面不展示任何网盘内容（登录海报墙由代码绘制）。
+---
 
-### 动效原则
+## 交接与续写日志（Append-Only）
 
-- 动效表达空间关系，而不是装饰：进入文件夹是从点击处“推进”，返回是“拉远”（`Stage`）；预览从缩略图原位放大，关闭时缩回当前文件的格子（`Viewer`）；删除、排序、重命名、捏合换列时其余文件滑向新位置（`lib/flip.ts`）；Dock 在有选择时变形为操作栏；搜索框展开成搜索面板；主题从点击处扩散。
-- 一律弹簧（`lib/motion.ts` 的预设），时长型动画用 expo 缓出。按下有回弹（scale 0.92 到 0.97）。
-- 只动 transform 和 opacity。连续值（指针位置、拖拽、滚动、下拉距离）用 Motion 的 motion value，不进 React state；不要监听 window scroll。
-- 大列表靠虚拟滚动（`@tanstack/react-virtual`，必须 `useFlushSync: false`），格子 `memo`，入场动画用 CSS 关键帧和 `--i` 错峰，只有首屏错峰。
-- 有隐喻的地方用实物的动作：分享结果是一张会“撕开”的票（二维码从中心涟漪拼出，提取码像翻牌落位），文件夹是一叠纸（封面由里面的图拼成，悬停时纸张散开、格子互换），影院模式的海报跟着指针倾斜并带高光。
-- 一直在动的东西要自我保护：登录海报墙先测帧率，撑不住就停下来（`useCanDrift`）。颗粒只放在固定层上。
-- `prefers-reduced-motion` 时所有动效关闭（`MotionConfig reducedMotion="user"` 加 CSS 媒体查询），功能不受影响。
+> 后续每位接手开发的 Agent 请按 `### YYYY-MM-DD · <简短标题>` 格式在下方追加记录，**禁止删除或覆盖以上任何内容**。
 
-### 交互模型
+### 2026-11-23 · 工作流定版、分支清理与面向普通用户的 README 重构
 
-- 桌面：悬停显示次要按钮和光斑，右键菜单、框选、Shift 连选、拖到文件夹或面包屑移动、键盘（`/` 搜索、Backspace 上一级、Ctrl A、Delete、F2）。
-- 手机：长按进入多选（多选中再长按出菜单），菜单一律底部操作表，双指捏合 2/3/4 列，下拉刷新，面板可下滑关闭，输入框 16px，悬停才有的按钮在触屏上隐藏。
-- 预览里：滚轮在空白处切换文件，一次手势只切一个（冷却期内的滚轮事件会延长冷却）；缩略图条只给图片和视频；视频要有加载、自动播放被拦、浏览器放不了（给外部播放器）三种状态，并记住播放进度。
-- 错误一律经过 `lib/errors.ts` 翻译成一句人话加下一步，原始英文报错（路径、驱动信息）绝不显示，只能“复制详情”。整块的错误用 `ErrorState`（被撕断的胶片，重试时两半接回去再请求），一行的用它的 compact 形态或 `reason()`。
-- 片名对应的海报来自 TMDB（`internal/tgvio/tmdb.go`）：服务器清洗名字、后台排队查询（4 次/秒）、结果存 `data/tgvio/posters.json`、图片缓存在 `data/tgvio/posters/`；令牌只在 `data/tgvio/tmdb_token`，绝不进仓库和输出。有海报就不再为封面列 115 目录。匹配错了用右键「更换封面」改，人工选择优先。改名要经过 `TMDB.Renamed`/`RenamedDir`，海报记录才跟得上新名字；按 TMDB 改名一律先给计划再逐条执行。官方海报是公开图，不做模糊。
-- 登录令牌绑定设备会话（`server/common/tgvio_sessions.go`），有效性看磁盘上的会话，不看内存缓存；新的登录入口要调用 `common.GenerateToken(user, c)` 传上请求。
-- 用户可以有多个根目录（`BasePath` 一行一个，`internal/model/tgvio_roots.go`）：所有请求路径都经 `JoinPath` 换成真实路径，返回给用户的路径用 `ShowPath` 换回来；新增接口不要直接拼 `BasePath`。
-- 大文件上传走 `/api/fs/staged/*`（`server/handles/tgvio_staged.go`）：分块写进 `data/tgvio/staged`（不是 temp，OpenList 启动会清空 temp），可跨会话续传。
-- 管理员带「免密访问」，因为 Player 和后台任务用管理员走 WebDAV；不要去掉这个权限。想让管理员在网页里也输入文件夹密码，用设置 `tgvio_admin_folder_password`（只影响网页接口）。
-- 视频缩略图（`hooks/useThumbs.ts`）：剧集单集用 TMDB 剧照，其他视频由服务器从 115 云端转码截帧，后台单队列、限速、熔断时暂停，结果永久缓存；不要改成浏览器直接拉视频截图。
-- 视频优先用 115 云端转码（`/api/tgvio/video` 拿清晰度和票据，`/tgvio/hls/` 由服务器代取分片，浏览器拿不到网盘地址）；默认 1080P，原文件放不了或卡住时自动换云端，用户的清晰度选择会记住。
-- 每个状态都要设计：骨架屏加载、空文件夹给出下一步、错误就地显示并可重试、需要密码的文件夹给内联表单、操作结果用 toast（可横滑关闭）。
-- 操作先改本地缓存让界面立刻动起来，再后台向服务器重读；失败要回滚并提示。
-
-### 工程约束
-
-- 只调用 OpenList HTTP API，不依赖官方前端代码。新接口加在 `src/api/`，类型在 `src/lib/types.ts`。
-- 115 有风控：不要增加列表请求。悬停预取同时最多一个，且只取未缓存的目录。文件夹封面（`hooks/useCover.ts`）只为在屏幕上停留过的文件夹排队取列表，同时一个、新的优先，结果缓存 30 分钟并顺手写入目录缓存。
-- 站点在 Cloudflare 后面：页面 HTML 是 `no-cache`，`/api` 是 `no-store`，缺失的静态资源返回 404（`server/static/tgvio_cache.go`）；构建会把最近 6 次构建的哈希资源一起嵌入，旧页面不至于白屏。
-- 改完先在本机测试实例 `/root/dev/oltest`（端口 5299，本地存储）上用 Playwright 走一遍桌面和手机流程并截图（`/root/dev/shots/olshot*.sh`），看帧时间，再用 `tgvio/upgrade.sh` 上线。
+- **分支状态**：远端与本地已统一仅保留 `main` 分支（旧分支 `cc`、`tgvio`、`tgvio-web` 已确认合入并清理）。
+- **找资源配置**：生产环境 `/opt/openlist/data/tgvio/resources.json` 中 SeedHub 因开启 Cloudflare Managed Challenge，已切换为「浏览器打开」模式恢复立即可用（原配置已备份为 `resources.json.bak`）。
+- **README 与动效资产**：按苹果工作流重构 `README.md`（降低技术密度，面向普通用户），新增 `docs/media/hero-banner.svg` 与 `docs/media/cinema-flow.svg`，并通过 Playwright + Chromium 完成桌面 `1440px`（深/浅色）与手机 `390px` 两轮实测验收。
